@@ -48,6 +48,8 @@ func InitOptionMap() {
 	common.OptionMap["AutomaticDisableChannelEnabled"] = strconv.FormatBool(common.AutomaticDisableChannelEnabled)
 	common.OptionMap["AutomaticEnableChannelEnabled"] = strconv.FormatBool(common.AutomaticEnableChannelEnabled)
 	common.OptionMap["LogConsumeEnabled"] = strconv.FormatBool(common.LogConsumeEnabled)
+	common.OptionMap["LogRequestDebugEnabled"] = strconv.FormatBool(common.LogRequestDebugEnabled)
+	common.OptionMap["LogRequestBodyMaxBytes"] = strconv.Itoa(common.LogRequestBodyMaxBytes)
 	common.OptionMap["DisplayInCurrencyEnabled"] = strconv.FormatBool(common.DisplayInCurrencyEnabled)
 	common.OptionMap["DisplayTokenStatEnabled"] = strconv.FormatBool(common.DisplayTokenStatEnabled)
 	common.OptionMap["DrawingEnabled"] = strconv.FormatBool(common.DrawingEnabled)
@@ -307,7 +309,9 @@ func updateOptionMap(key string, value string) (err error) {
 		case "AutomaticEnableChannelEnabled":
 			common.AutomaticEnableChannelEnabled = boolValue
 		case "LogConsumeEnabled":
-			common.LogConsumeEnabled = boolValue
+				common.LogConsumeEnabled = boolValue
+			case "LogRequestDebugEnabled":
+				common.LogRequestDebugEnabled = boolValue
 		case "DisplayInCurrencyEnabled":
 			// 兼容旧字段：同步到新配置 general_setting.quota_display_type（运行时生效）
 			// true -> USD, false -> TOKENS
@@ -565,7 +569,9 @@ func updateOptionMap(key string, value string) (err error) {
 	case "AutomaticRetryStatusCodes":
 		err = operation_setting.AutomaticRetryStatusCodesFromString(value)
 	case "StreamCacheQueueLength":
-		setting.StreamCacheQueueLength, _ = strconv.Atoi(value)
+			setting.StreamCacheQueueLength, _ = strconv.Atoi(value)
+		case "LogRequestBodyMaxBytes":
+			common.LogRequestBodyMaxBytes, _ = strconv.Atoi(value)
 	case "PayMethods":
 		err = operation_setting.UpdatePayMethodsByJsonString(value)
 	case "WaffoPayMethods":

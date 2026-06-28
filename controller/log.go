@@ -27,6 +27,8 @@ func GetAllLogs(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	userRole := c.GetInt("role")
+	model.FilterSuperAdminFields(logs, userRole)
 	pageInfo.SetTotal(int(total))
 	pageInfo.SetItems(logs)
 	common.ApiSuccess(c, pageInfo)
