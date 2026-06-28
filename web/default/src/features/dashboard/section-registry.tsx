@@ -40,6 +40,16 @@ const DASHBOARD_SECTIONS = [
     build: () => null,
   },
   {
+    id: 'daily-tokens',
+    titleKey: 'Daily Token Usage',
+    build: () => null,
+  },
+  {
+    id: 'daily-model-tokens',
+    titleKey: 'Daily Model Token Usage',
+    build: () => null,
+  },
+  {
     id: 'users',
     titleKey: 'User Analytics',
     adminOnly: true,

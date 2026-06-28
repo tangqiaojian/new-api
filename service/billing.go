@@ -3,9 +3,13 @@ package service
 import (
 	"fmt"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
+	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/types"
+
+	"github.com/bytedance/gopkg/util/gopool"
 	"github.com/gin-gonic/gin"
 )
 
@@ -58,15 +62,26 @@ func SettleBilling(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, actualQuo
 			return err
 		}
 
-		// 发送额度通知（订阅计费使用订阅剩余额度）
-		if actualQuota != 0 {
-			if relayInfo.BillingSource == BillingSourceSubscription {
-				checkAndSendSubscriptionQuotaNotify(relayInfo)
-			} else {
-				checkAndSendQuotaNotify(relayInfo, actualQuota-preConsumed, preConsumed)
+			// 发送额度通知（订阅计费使用订阅剩余额度）
+			if actualQuota != 0 {
+				if relayInfo.BillingSource == BillingSourceSubscription {
+					checkAndSendSubscriptionQuotaNotify(relayInfo)
+				} else {
+					checkAndSendQuotaNotify(relayInfo, actualQuota-preConsumed, preConsumed)
+				}
 			}
-		}
-		return nil
+
+			// 周额度用量增加（异步，不阻塞主流程）
+			if actualQuota > 0 && relayInfo.UserId > 0 {
+				userId := relayInfo.UserId
+				quota := actualQuota
+				gopool.Go(func() {
+					if err := model.IncreaseWeeklyQuotaUsed(userId, quota); err != nil {
+						common.SysLog(fmt.Sprintf("error increasing weekly quota used (userId=%d, quota=%d): %s", userId, quota, err.Error()))
+					}
+				})
+			}
+			return nil
 	}
 
 	// 回退：无 BillingSession 时使用旧路径

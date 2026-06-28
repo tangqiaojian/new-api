@@ -55,6 +55,7 @@ import {
   type DashboardFilters,
   type QuotaDataItem,
   type UserChartsFilters,
+  type DailyTokensFilters,
 } from './types'
 
 const route = getRouteApi('/_authenticated/dashboard/$section')
@@ -92,6 +93,18 @@ const LazyUserCharts = lazy(() =>
 const LazyFlowCharts = lazy(() =>
   import('./components/flow/flow-charts').then((m) => ({
     default: m.FlowCharts,
+  }))
+)
+
+const LazyDailyTokensSection = lazy(() =>
+  import('./components/daily-tokens/daily-tokens-section').then((m) => ({
+    default: m.DailyTokensSection,
+  }))
+)
+
+const LazyDailyModelTokensSection = lazy(() =>
+  import('./components/daily-model-tokens/daily-model-tokens-section').then((m) => ({
+    default: m.DailyModelTokensSection,
   }))
 )
 
@@ -158,6 +171,12 @@ const SECTION_META: Record<DashboardSectionId, { titleKey: string }> = {
   flow: {
     titleKey: 'Flow',
   },
+  'daily-tokens': {
+    titleKey: 'Daily Token Usage',
+  },
+  'daily-model-tokens': {
+    titleKey: 'Daily Model Token Usage',
+  },
   users: {
     titleKey: 'User Analytics',
   },
@@ -189,6 +208,12 @@ export function Dashboard() {
     }
   )
   const [flowSensitiveVisible, setFlowSensitiveVisible] = useState(true)
+  const [dailyTokensFilters, setDailyTokensFilters] =
+    useState<DailyTokensFilters>(() => ({
+      timeGranularity: 'day',
+      selectedRange: 7,
+      topUserLimit: 10,
+    }))
 
   const handleFilterChange = useCallback((filters: DashboardFilters) => {
     setModelFilters(filters)
@@ -378,6 +403,26 @@ export function Dashboard() {
                 <LazyFlowCharts
                   filters={modelFilters}
                   sensitiveVisible={flowSensitiveVisible}
+                />
+              </Suspense>
+            </FadeIn>
+          )}
+          {activeSection === 'daily-tokens' && (
+            <FadeIn>
+              <Suspense fallback={<ModelChartsFallback />}>
+                <LazyDailyTokensSection
+                  filters={dailyTokensFilters}
+                  onFiltersChange={setDailyTokensFilters}
+                />
+              </Suspense>
+            </FadeIn>
+          )}
+          {activeSection === 'daily-model-tokens' && (
+            <FadeIn>
+              <Suspense fallback={<ModelChartsFallback />}>
+                <LazyDailyModelTokensSection
+                  filters={dailyTokensFilters}
+                  onFiltersChange={setDailyTokensFilters}
                 />
               </Suspense>
             </FadeIn>

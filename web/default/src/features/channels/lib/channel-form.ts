@@ -209,6 +209,9 @@ export const channelFormSchema = z
     upstream_model_update_check_enabled: z.boolean().optional(),
     upstream_model_update_auto_sync_enabled: z.boolean().optional(),
     upstream_model_update_ignored_models: z.string().optional(),
+    // Balance query settings (stored in settings JSON)
+    balance_query_url: z.string().optional(),
+    balance_query_json_path: z.string().optional(),
   })
   .superRefine((data, ctx) => {
     if ([3, 8, 36, 45].includes(data.type) && !data.base_url?.trim()) {
@@ -349,6 +352,9 @@ export const CHANNEL_FORM_DEFAULT_VALUES: ChannelFormValues = {
   upstream_model_update_auto_sync_enabled: false,
   upstream_model_update_ignored_models: '',
   advanced_custom: '',
+  // Balance query settings
+  balance_query_url: '',
+  balance_query_json_path: '',
 }
 
 // ============================================================================
@@ -405,6 +411,8 @@ export function transformChannelToFormDefaults(
   let upstreamModelUpdateAutoSyncEnabled = false
   let upstreamModelUpdateIgnoredModels = ''
   let advancedCustom = ''
+  let balanceQueryUrl = ''
+  let balanceQueryJsonPath = ''
 
   if (channel.settings) {
     try {
@@ -433,6 +441,8 @@ export function transformChannelToFormDefaults(
       if (parsed.advanced_custom) {
         advancedCustom = stringifyAdvancedCustomConfig(parsed.advanced_custom)
       }
+      balanceQueryUrl = parsed.balance_query_url || ''
+      balanceQueryJsonPath = parsed.balance_query_json_path || ''
     } catch (error) {
       // eslint-disable-next-line no-console
       console.error('Failed to parse channel settings:', error)
@@ -484,6 +494,8 @@ export function transformChannelToFormDefaults(
     upstream_model_update_auto_sync_enabled: upstreamModelUpdateAutoSyncEnabled,
     upstream_model_update_ignored_models: upstreamModelUpdateIgnoredModels,
     advanced_custom: advancedCustom,
+    balance_query_url: balanceQueryUrl,
+    balance_query_json_path: balanceQueryJsonPath,
   }
 }
 
@@ -620,6 +632,18 @@ function buildSettingsJSON(formData: ChannelFormValues): string {
     }
   } else if ('advanced_custom' in settingsObj) {
     delete settingsObj.advanced_custom
+  }
+
+  // Balance query settings (available for all channel types)
+  if (formData.balance_query_url) {
+    settingsObj.balance_query_url = formData.balance_query_url
+  } else if ('balance_query_url' in settingsObj) {
+    delete settingsObj.balance_query_url
+  }
+  if (formData.balance_query_json_path) {
+    settingsObj.balance_query_json_path = formData.balance_query_json_path
+  } else if ('balance_query_json_path' in settingsObj) {
+    delete settingsObj.balance_query_json_path
   }
 
   return JSON.stringify(settingsObj)

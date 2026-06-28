@@ -625,6 +625,48 @@ export async function getOllamaVersion(
 export const getGroups = getUserGroups
 
 // ============================================================================
+// Export / Import
+// ============================================================================
+
+export type SystemConfigExport = {
+  version: number
+  exported_at: number
+  channels: Record<string, unknown>[]
+  model_pricing: Record<string, string>
+  group_pricing: Record<string, string>
+}
+
+/**
+ * Export full system configuration (channels + model pricing + group pricing)
+ */
+export async function exportConfig(): Promise<{
+  success: boolean
+  message?: string
+  data?: SystemConfigExport
+}> {
+  const res = await api.get('/api/channel/export', channelActionConfig())
+  return res.data
+}
+
+/**
+ * Import full system configuration
+ */
+export async function importConfig(
+  data: SystemConfigExport
+): Promise<{
+  success: boolean
+  message?: string
+  data?: { channel_count: number; pricing_map_count: number }
+}> {
+  const res = await api.post(
+    '/api/channel/import',
+    { data },
+    channelActionConfig()
+  )
+  return res.data
+}
+
+// ============================================================================
 // Prefill Groups (Model Groups)
 // ============================================================================
 

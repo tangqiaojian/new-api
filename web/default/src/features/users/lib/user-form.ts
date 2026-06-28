@@ -39,6 +39,9 @@ export const userFormSchema = z.object({
   password: z.string().optional(),
   role: z.number().optional(),
   quota_dollars: z.number().min(0).optional(),
+  weekly_quota: z.number().min(0).optional(),
+  rate_limit_total: z.number().min(0).optional(),
+  rate_limit_success: z.number().min(0).optional(),
   group: z.string().optional(),
   remark: z.string().optional(),
   admin_permissions: z
@@ -58,6 +61,9 @@ export const USER_FORM_DEFAULT_VALUES: UserFormValues = {
   password: '',
   role: 1, // Default to common user
   quota_dollars: 0,
+  weekly_quota: 0,
+  rate_limit_total: 0,
+  rate_limit_success: 0,
   group: DEFAULT_GROUP,
   remark: '',
   // Filled against the backend catalog at render time; see UsersMutateDrawer.
@@ -119,6 +125,9 @@ export function transformUserToFormDefaults(user: User): UserFormValues {
     password: '',
     role: user.role,
     quota_dollars: quotaUnitsToDollars(user.quota),
+    weekly_quota: user.weekly_quota || 0,
+    rate_limit_total: user.rate_limit_total || 0,
+    rate_limit_success: user.rate_limit_success || 0,
     group: user.group || DEFAULT_GROUP,
     remark: user.remark || '',
     admin_permissions: user.admin_permissions ?? {},

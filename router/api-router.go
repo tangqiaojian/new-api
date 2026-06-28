@@ -137,6 +137,8 @@ func SetApiRouter(router *gin.Engine) {
 				adminRoute.GET("/:id", controller.GetUser)
 				adminRoute.POST("/", controller.CreateUser)
 				adminRoute.POST("/manage", controller.ManageUser)
+				adminRoute.POST("/batch", controller.BatchDeleteUsers)
+				adminRoute.POST("/batch/manage", controller.BatchManageUsers)
 				adminRoute.PUT("/", controller.UpdateUser)
 				adminRoute.DELETE("/:id", controller.DeleteUser)
 				adminRoute.DELETE("/:id/reset_passkey", controller.AdminResetPasskey)
@@ -298,6 +300,10 @@ func SetApiRouter(router *gin.Engine) {
 		dataRoute.GET("/self", middleware.UserAuth(), controller.GetUserQuotaDates)
 		dataRoute.GET("/flow", middleware.AdminAuth(), controller.GetAllFlowQuotaDates)
 		dataRoute.GET("/flow/self", middleware.UserAuth(), controller.GetUserFlowQuotaDates)
+		dataRoute.GET("/daily-tokens", middleware.AdminAuth(), controller.GetAllDailyTokenData)
+		dataRoute.GET("/daily-tokens/self", middleware.UserAuth(), controller.GetUserDailyTokenData)
+		dataRoute.GET("/daily-model-tokens", middleware.AdminAuth(), controller.GetAllDailyModelTokenData)
+		dataRoute.GET("/daily-model-tokens/self", middleware.UserAuth(), controller.GetUserDailyModelTokenData)
 
 		logRoute.Use(middleware.CORS(), middleware.CriticalRateLimit())
 		{

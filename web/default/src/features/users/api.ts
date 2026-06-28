@@ -128,6 +128,52 @@ export async function adjustUserQuota(
 }
 
 /**
+ * Set user weekly quota limit (0 = unlimited)
+ */
+export async function setUserWeeklyQuota(
+  userId: number,
+  weeklyQuota: number
+): Promise<ApiResponse> {
+  const res = await api.post('/api/user/manage', {
+    id: userId,
+    action: 'set_weekly_quota',
+    value: weeklyQuota,
+  })
+  return res.data
+}
+
+export async function setUserRateLimit(
+  userId: number,
+  total: number,
+  success: number
+): Promise<ApiResponse> {
+  const res = await api.post('/api/user/manage', {
+    id: userId,
+    action: 'set_rate_limit',
+    value: total,
+    mode: String(success),
+  })
+  return res.data
+}
+
+export async function batchDeleteUsers(
+  ids: number[]
+): Promise<ApiResponse> {
+  const res = await api.post('/api/user/batch', { ids })
+  return res.data
+}
+
+export async function batchManageUsers(
+  ids: number[],
+  action: 'enable' | 'disable'
+): Promise<ApiResponse> {
+  const res = await api.post(`/api/user/batch/manage?action=${action}`, {
+    ids,
+  })
+  return res.data
+}
+
+/**
  * Reset user's Passkey registration
  */
 export async function resetUserPasskey(id: number): Promise<ApiResponse> {

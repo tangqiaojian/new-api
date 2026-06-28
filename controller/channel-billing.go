@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -356,7 +357,78 @@ func updateChannelMoonshotBalance(channel *model.Channel) (float64, error) {
 	return availableBalanceUsd, nil
 }
 
+// extractValueByJsonPath traverses a nested map using a dot-separated path
+// (e.g. "data.totalBalance") and returns the leaf value.
+func extractValueByJsonPath(data map[string]interface{}, path string) (interface{}, error) {
+	parts := strings.Split(path, ".")
+	var current interface{} = data
+	for _, part := range parts {
+		if part == "" {
+			continue
+		}
+		m, ok := current.(map[string]interface{})
+		if !ok {
+			return nil, fmt.Errorf("path segment %q not found: expected object, got %T", part, current)
+		}
+		current, ok = m[part]
+		if !ok {
+			return nil, fmt.Errorf("path segment %q not found in object", part)
+		}
+	}
+	return current, nil
+}
+
+// queryCustomBalance queries a custom balance URL configured in the channel's
+// other settings. It sends a GET request with the channel key as Bearer auth,
+// parses the JSON response, and extracts the balance using the configured JSON Path.
+func queryCustomBalance(channel *model.Channel) (float64, error) {
+	otherSettings := channel.GetOtherSettings()
+	if otherSettings.BalanceQueryURL == "" {
+		return 0, errors.New("自定义余额查询 URL 未配置")
+	}
+	if otherSettings.BalanceQueryJsonPath == "" {
+		return 0, errors.New("余额 JSON 路径未配置")
+	}
+
+	body, err := GetResponseBody("GET", otherSettings.BalanceQueryURL, channel, GetAuthHeader(channel.Key))
+	if err != nil {
+		return 0, fmt.Errorf("请求自定义余额 URL 失败: %w", err)
+	}
+
+	var result map[string]interface{}
+	err = json.Unmarshal(body, &result)
+	if err != nil {
+		return 0, fmt.Errorf("解析余额响应 JSON 失败: %w", err)
+	}
+
+	value, err := extractValueByJsonPath(result, otherSettings.BalanceQueryJsonPath)
+	if err != nil {
+		return 0, fmt.Errorf("按 JSON 路径 %q 提取余额失败: %w", otherSettings.BalanceQueryJsonPath, err)
+	}
+
+	switch v := value.(type) {
+	case float64:
+		channel.UpdateBalance(v)
+		return v, nil
+	case string:
+		balance, err := strconv.ParseFloat(v, 64)
+		if err != nil {
+			return 0, fmt.Errorf("余额值 %q 无法转为数字: %w", v, err)
+		}
+		channel.UpdateBalance(balance)
+		return balance, nil
+	default:
+		return 0, fmt.Errorf("余额值类型不支持: %T (期望数字或字符串)", value)
+	}
+}
+
 func updateChannelBalance(channel *model.Channel) (float64, error) {
+	// Check custom balance query URL first — if configured, use it instead of the hardcoded switch
+	otherSettings := channel.GetOtherSettings()
+	if otherSettings.BalanceQueryURL != "" {
+		return queryCustomBalance(channel)
+	}
+
 	baseURL := constant.ChannelBaseURLs[channel.Type]
 	if channel.GetBaseURL() == "" {
 		channel.BaseURL = &baseURL

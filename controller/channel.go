@@ -14,6 +14,7 @@ import (
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	relaychannel "github.com/QuantumNous/new-api/relay/channel"
 	"github.com/QuantumNous/new-api/relay/channel/gemini"
 	"github.com/QuantumNous/new-api/relay/channel/ollama"
@@ -2165,6 +2166,302 @@ func OllamaVersion(c *gin.Context) {
 		"success": true,
 		"data": gin.H{
 			"version": version,
+		},
+	})
+}
+
+// SystemConfigExport represents the full system configuration export format
+type SystemConfigExport struct {
+	Version      int                    `json:"version"`
+	ExportedAt   int64                  `json:"exported_at"`
+	Channels     []channelExportEntry   `json:"channels"`
+	ModelPricing modelPricingExport     `json:"model_pricing"`
+	GroupPricing groupPricingExport     `json:"group_pricing"`
+}
+
+type channelExportEntry struct {
+	Id                 int                    `json:"id"`
+	Type               int                    `json:"type"`
+	Key                string                 `json:"key"`
+	OpenAIOrganization *string                `json:"openai_organization"`
+	TestModel          *string                `json:"test_model"`
+	Status             int                    `json:"status"`
+	Name               string                 `json:"name"`
+	Weight             *uint                  `json:"weight"`
+	CreatedTime        int64                  `json:"created_time"`
+	BaseURL            *string                `json:"base_url"`
+	Other              string                 `json:"other"`
+	Models             string                 `json:"models"`
+	Group              string                 `json:"group"`
+	ModelMapping       *string                `json:"model_mapping"`
+	StatusCodeMapping  *string                `json:"status_code_mapping"`
+	Priority           *int64                 `json:"priority"`
+	AutoBan            *int                   `json:"auto_ban"`
+	OtherInfo          string                 `json:"other_info"`
+	Tag                *string                `json:"tag"`
+	Setting            *string                `json:"setting"`
+	ParamOverride      *string                `json:"param_override"`
+	HeaderOverride     *string                `json:"header_override"`
+	Remark             *string                `json:"remark"`
+	ChannelInfo        model.ChannelInfo      `json:"channel_info"`
+	OtherSettings      string                 `json:"settings"`
+}
+
+type modelPricingExport struct {
+	ModelRatio           string `json:"model_ratio"`
+	ModelPrice           string `json:"model_price"`
+	CompletionRatio      string `json:"completion_ratio"`
+	CacheRatio           string `json:"cache_ratio"`
+	CreateCacheRatio     string `json:"create_cache_ratio"`
+	ImageRatio           string `json:"image_ratio"`
+	AudioRatio           string `json:"audio_ratio"`
+	AudioCompletionRatio string `json:"audio_completion_ratio"`
+}
+
+type groupPricingExport struct {
+	GroupRatio      string `json:"group_ratio"`
+	GroupGroupRatio string `json:"group_group_ratio"`
+}
+
+// ExportConfig exports all channels + model pricing + group pricing as a JSON file
+func ExportConfig(c *gin.Context) {
+	// Get all channels including keys
+	channels, err := model.GetAllChannels(0, 0, true, true)
+	if err != nil {
+		common.SysError("failed to get all channels for export: " + err.Error())
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": "获取渠道列表失败",
+		})
+		return
+	}
+
+	// Convert channels to export entries, stripping runtime fields
+	exportChannels := make([]channelExportEntry, 0, len(channels))
+	for _, ch := range channels {
+		exportChannels = append(exportChannels, channelExportEntry{
+			Id:                 ch.Id,
+			Type:               ch.Type,
+			Key:                ch.Key,
+			OpenAIOrganization: ch.OpenAIOrganization,
+			TestModel:          ch.TestModel,
+			Status:             ch.Status,
+			Name:               ch.Name,
+			Weight:             ch.Weight,
+			CreatedTime:        ch.CreatedTime,
+			BaseURL:            ch.BaseURL,
+			Other:              ch.Other,
+			Models:             ch.Models,
+			Group:              ch.Group,
+			ModelMapping:       ch.ModelMapping,
+			StatusCodeMapping:  ch.StatusCodeMapping,
+			Priority:           ch.Priority,
+			AutoBan:            ch.AutoBan,
+			OtherInfo:          ch.OtherInfo,
+			Tag:                ch.Tag,
+			Setting:            ch.Setting,
+			ParamOverride:      ch.ParamOverride,
+			HeaderOverride:     ch.HeaderOverride,
+			Remark:             ch.Remark,
+			ChannelInfo:        ch.ChannelInfo,
+			OtherSettings:      ch.OtherSettings,
+		})
+	}
+
+	export := SystemConfigExport{
+		Version:      1,
+		ExportedAt:   time.Now().Unix(),
+		Channels:     exportChannels,
+		ModelPricing: modelPricingExport{
+			ModelRatio:           ratio_setting.ModelRatio2JSONString(),
+			ModelPrice:           ratio_setting.ModelPrice2JSONString(),
+			CompletionRatio:      ratio_setting.CompletionRatio2JSONString(),
+			CacheRatio:           ratio_setting.CacheRatio2JSONString(),
+			CreateCacheRatio:     ratio_setting.CreateCacheRatio2JSONString(),
+			ImageRatio:           ratio_setting.ImageRatio2JSONString(),
+			AudioRatio:           ratio_setting.AudioRatio2JSONString(),
+			AudioCompletionRatio: ratio_setting.AudioCompletionRatio2JSONString(),
+		},
+		GroupPricing: groupPricingExport{
+			GroupRatio:      ratio_setting.GroupRatio2JSONString(),
+			GroupGroupRatio: ratio_setting.GroupGroupRatio2JSONString(),
+		},
+	}
+
+	recordManageAudit(c, "channel.export_config", map[string]interface{}{
+		"channel_count": len(channels),
+	})
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "",
+		"data":    export,
+	})
+}
+
+// ImportConfigRequest represents the import request body
+type ImportConfigRequest struct {
+	Data SystemConfigExport `json:"data"`
+}
+
+// ImportConfig imports channels + model pricing + group pricing from a JSON file
+func ImportConfig(c *gin.Context) {
+	req := ImportConfigRequest{}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": "请求参数错误",
+		})
+		return
+	}
+
+	data := req.Data
+	if data.Version != 1 {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": "不支持的配置版本",
+		})
+		return
+	}
+
+	importedChannels := 0
+	importedPricingMaps := 0
+
+	// Import channels
+	if len(data.Channels) > 0 {
+		channels := make([]model.Channel, 0, len(data.Channels))
+		for _, entry := range data.Channels {
+			ch := model.Channel{
+				Type:               entry.Type,
+				Key:                entry.Key,
+				OpenAIOrganization: entry.OpenAIOrganization,
+				TestModel:          entry.TestModel,
+				Status:             entry.Status,
+				Name:               entry.Name,
+				Weight:             entry.Weight,
+				CreatedTime:        common.GetTimestamp(),
+				BaseURL:            entry.BaseURL,
+				Other:              entry.Other,
+				Models:             entry.Models,
+				Group:              entry.Group,
+				ModelMapping:       entry.ModelMapping,
+				StatusCodeMapping:  entry.StatusCodeMapping,
+				Priority:           entry.Priority,
+				AutoBan:            entry.AutoBan,
+				OtherInfo:          entry.OtherInfo,
+				Tag:                entry.Tag,
+				Setting:            entry.Setting,
+				ParamOverride:      entry.ParamOverride,
+				HeaderOverride:     entry.HeaderOverride,
+				Remark:             entry.Remark,
+				ChannelInfo:        entry.ChannelInfo,
+				OtherSettings:      entry.OtherSettings,
+			}
+			channels = append(channels, ch)
+		}
+		if err := model.BatchInsertChannels(channels); err != nil {
+			common.SysError("failed to batch insert channels during import: " + err.Error())
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": "导入渠道失败: " + err.Error(),
+			})
+			return
+		}
+		importedChannels = len(channels)
+		model.InitChannelCache()
+	}
+
+	// Import model pricing maps
+	if data.ModelPricing.ModelRatio != "" {
+		if err := ratio_setting.UpdateModelRatioByJSONString(data.ModelPricing.ModelRatio); err != nil {
+			common.SysError("failed to import model_ratio: " + err.Error())
+		} else {
+			importedPricingMaps++
+		}
+	}
+	if data.ModelPricing.ModelPrice != "" {
+		if err := ratio_setting.UpdateModelPriceByJSONString(data.ModelPricing.ModelPrice); err != nil {
+			common.SysError("failed to import model_price: " + err.Error())
+		} else {
+			importedPricingMaps++
+		}
+	}
+	if data.ModelPricing.CompletionRatio != "" {
+		if err := ratio_setting.UpdateCompletionRatioByJSONString(data.ModelPricing.CompletionRatio); err != nil {
+			common.SysError("failed to import completion_ratio: " + err.Error())
+		} else {
+			importedPricingMaps++
+		}
+	}
+	if data.ModelPricing.CacheRatio != "" {
+		if err := ratio_setting.UpdateCacheRatioByJSONString(data.ModelPricing.CacheRatio); err != nil {
+			common.SysError("failed to import cache_ratio: " + err.Error())
+		} else {
+			importedPricingMaps++
+		}
+	}
+	if data.ModelPricing.CreateCacheRatio != "" {
+		if err := ratio_setting.UpdateCreateCacheRatioByJSONString(data.ModelPricing.CreateCacheRatio); err != nil {
+			common.SysError("failed to import create_cache_ratio: " + err.Error())
+		} else {
+			importedPricingMaps++
+		}
+	}
+	if data.ModelPricing.ImageRatio != "" {
+		if err := ratio_setting.UpdateImageRatioByJSONString(data.ModelPricing.ImageRatio); err != nil {
+			common.SysError("failed to import image_ratio: " + err.Error())
+		} else {
+			importedPricingMaps++
+		}
+	}
+	if data.ModelPricing.AudioRatio != "" {
+		if err := ratio_setting.UpdateAudioRatioByJSONString(data.ModelPricing.AudioRatio); err != nil {
+			common.SysError("failed to import audio_ratio: " + err.Error())
+		} else {
+			importedPricingMaps++
+		}
+	}
+	if data.ModelPricing.AudioCompletionRatio != "" {
+		if err := ratio_setting.UpdateAudioCompletionRatioByJSONString(data.ModelPricing.AudioCompletionRatio); err != nil {
+			common.SysError("failed to import audio_completion_ratio: " + err.Error())
+		} else {
+			importedPricingMaps++
+		}
+	}
+
+	// Import group pricing maps
+	if data.GroupPricing.GroupRatio != "" {
+		if err := ratio_setting.UpdateGroupRatioByJSONString(data.GroupPricing.GroupRatio); err != nil {
+			common.SysError("failed to import group_ratio: " + err.Error())
+		} else {
+			importedPricingMaps++
+		}
+	}
+	if data.GroupPricing.GroupGroupRatio != "" {
+		if err := ratio_setting.UpdateGroupGroupRatioByJSONString(data.GroupPricing.GroupGroupRatio); err != nil {
+			common.SysError("failed to import group_group_ratio: " + err.Error())
+		} else {
+			importedPricingMaps++
+		}
+	}
+
+	if importedPricingMaps > 0 {
+		ratio_setting.InvalidateExposedDataCache()
+	}
+
+	service.ResetProxyClientCache()
+
+	recordManageAudit(c, "channel.import_config", map[string]interface{}{
+		"channel_count":      importedChannels,
+		"pricing_map_count": importedPricingMaps,
+	})
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "",
+		"data": gin.H{
+			"channel_count":      importedChannels,
+			"pricing_map_count": importedPricingMaps,
 		},
 	})
 }

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/dto"
@@ -13,6 +14,7 @@ import (
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 
 	"github.com/bytedance/gopkg/util/gopool"
+	"github.com/samber/lo"
 	"gorm.io/gorm"
 )
 
@@ -21,49 +23,57 @@ const UserNameMaxLength = 20
 // User if you add sensitive fields, don't forget to clean them in setupLogin function.
 // Otherwise, the sensitive information will be saved on local storage in plain text!
 type User struct {
-	Id               int                        `json:"id"`
-	Username         string                     `json:"username" gorm:"unique;index" validate:"max=20"`
-	Password         string                     `json:"password" gorm:"not null;" validate:"min=8,max=20"`
-	OriginalPassword string                     `json:"original_password" gorm:"-:all"` // this field is only for Password change verification, don't save it to database!
-	DisplayName      string                     `json:"display_name" gorm:"index" validate:"max=20"`
-	Role             int                        `json:"role" gorm:"type:int;default:1"`   // admin, common
-	Status           int                        `json:"status" gorm:"type:int;default:1"` // enabled, disabled
-	Email            string                     `json:"email" gorm:"index" validate:"max=50"`
-	GitHubId         string                     `json:"github_id" gorm:"column:github_id;index"`
-	DiscordId        string                     `json:"discord_id" gorm:"column:discord_id;index"`
-	OidcId           string                     `json:"oidc_id" gorm:"column:oidc_id;index"`
-	WeChatId         string                     `json:"wechat_id" gorm:"column:wechat_id;index"`
-	TelegramId       string                     `json:"telegram_id" gorm:"column:telegram_id;index"`
-	VerificationCode string                     `json:"verification_code" gorm:"-:all"`                         // this field is only for Email verification, don't save it to database!
-	AccessToken      *string                    `json:"-" gorm:"type:char(32);column:access_token;uniqueIndex"` // this token is for system management
-	Quota            int                        `json:"quota" gorm:"type:int;default:0"`
-	UsedQuota        int                        `json:"used_quota" gorm:"type:int;default:0;column:used_quota"` // used quota
-	RequestCount     int                        `json:"request_count" gorm:"type:int;default:0;"`               // request number
-	Group            string                     `json:"group" gorm:"type:varchar(64);default:'default'"`
-	AffCode          string                     `json:"aff_code" gorm:"type:varchar(32);column:aff_code;uniqueIndex"`
-	AffCount         int                        `json:"aff_count" gorm:"type:int;default:0;column:aff_count"`
-	AffQuota         int                        `json:"aff_quota" gorm:"type:int;default:0;column:aff_quota"`           // 邀请剩余额度
-	AffHistoryQuota  int                        `json:"aff_history_quota" gorm:"type:int;default:0;column:aff_history"` // 邀请历史额度
-	InviterId        int                        `json:"inviter_id" gorm:"type:int;column:inviter_id;index"`
-	DeletedAt        gorm.DeletedAt             `gorm:"index"`
-	LinuxDOId        string                     `json:"linux_do_id" gorm:"column:linux_do_id;index"`
-	Setting          string                     `json:"setting" gorm:"type:text;column:setting"`
-	Remark           string                     `json:"remark,omitempty" gorm:"type:varchar(255)" validate:"max=255"`
-	StripeCustomer   string                     `json:"stripe_customer" gorm:"type:varchar(64);column:stripe_customer;index"`
-	CreatedAt        int64                      `json:"created_at" gorm:"autoCreateTime;column:created_at"`
-	LastLoginAt      int64                      `json:"last_login_at" gorm:"default:0;column:last_login_at"`
-	AdminPermissions map[string]map[string]bool `json:"admin_permissions,omitempty" gorm:"-:all"`
+	Id                 int                        `json:"id"`
+	Username           string                     `json:"username" gorm:"unique;index" validate:"max=20"`
+	Password           string                     `json:"password" gorm:"not null;" validate:"min=8,max=20"`
+	OriginalPassword   string                     `json:"original_password" gorm:"-:all"` // this field is only for Password change verification, don't save it to database!
+	DisplayName        string                     `json:"display_name" gorm:"index" validate:"max=20"`
+	Role               int                        `json:"role" gorm:"type:int;default:1"`   // admin, common
+	Status             int                        `json:"status" gorm:"type:int;default:1"` // enabled, disabled
+	Email              string                     `json:"email" gorm:"index" validate:"max=50"`
+	GitHubId           string                     `json:"github_id" gorm:"column:github_id;index"`
+	DiscordId          string                     `json:"discord_id" gorm:"column:discord_id;index"`
+	OidcId             string                     `json:"oidc_id" gorm:"column:oidc_id;index"`
+	WeChatId           string                     `json:"wechat_id" gorm:"column:wechat_id;index"`
+	TelegramId         string                     `json:"telegram_id" gorm:"column:telegram_id;index"`
+	VerificationCode   string                     `json:"verification_code" gorm:"-:all"`                         // this field is only for Email verification, don't save it to database!
+	AccessToken        *string                    `json:"-" gorm:"type:char(32);column:access_token;uniqueIndex"` // this token is for system management
+	Quota              int                        `json:"quota" gorm:"type:int;default:0"`
+	UsedQuota          int                        `json:"used_quota" gorm:"type:int;default:0;column:used_quota"`                 // used quota
+	RequestCount       int                        `json:"request_count" gorm:"type:int;default:0;"`                               // request number
+	WeeklyQuota        int                        `json:"weekly_quota" gorm:"type:int;default:0;column:weekly_quota"`             // 周额度上限，0表示不限
+	WeeklyQuotaUsed    int                        `json:"weekly_quota_used" gorm:"type:int;default:0;column:weekly_quota_used"`   // 本周已用周额度
+	WeeklyQuotaResetAt int64                      `json:"weekly_quota_reset_at" gorm:"default:0;column:weekly_quota_reset_at"`    // 下次重置时间(unix timestamp)
+	RateLimitTotal     int                        `json:"rate_limit_total" gorm:"type:int;default:0;column:rate_limit_total"`     // 每分钟总请求数限制，0=按group默认
+	RateLimitSuccess   int                        `json:"rate_limit_success" gorm:"type:int;default:0;column:rate_limit_success"` // 每分钟成功请求数限制，0=按group默认
+	Group              string                     `json:"group" gorm:"type:varchar(64);default:'default'"`
+	AffCode            string                     `json:"aff_code" gorm:"type:varchar(32);column:aff_code;uniqueIndex"`
+	AffCount           int                        `json:"aff_count" gorm:"type:int;default:0;column:aff_count"`
+	AffQuota           int                        `json:"aff_quota" gorm:"type:int;default:0;column:aff_quota"`           // 邀请剩余额度
+	AffHistoryQuota    int                        `json:"aff_history_quota" gorm:"type:int;default:0;column:aff_history"` // 邀请历史额度
+	InviterId          int                        `json:"inviter_id" gorm:"type:int;column:inviter_id;index"`
+	DeletedAt          gorm.DeletedAt             `gorm:"index"`
+	LinuxDOId          string                     `json:"linux_do_id" gorm:"column:linux_do_id;index"`
+	Setting            string                     `json:"setting" gorm:"type:text;column:setting"`
+	Remark             string                     `json:"remark,omitempty" gorm:"type:varchar(255)" validate:"max=255"`
+	StripeCustomer     string                     `json:"stripe_customer" gorm:"type:varchar(64);column:stripe_customer;index"`
+	CreatedAt          int64                      `json:"created_at" gorm:"autoCreateTime;column:created_at"`
+	LastLoginAt        int64                      `json:"last_login_at" gorm:"default:0;column:last_login_at"`
+	AdminPermissions   map[string]map[string]bool `json:"admin_permissions,omitempty" gorm:"-:all"`
 }
 
 func (user *User) ToBaseUser() *UserBase {
 	cache := &UserBase{
-		Id:       user.Id,
-		Group:    user.Group,
-		Quota:    user.Quota,
-		Status:   user.Status,
-		Username: user.Username,
-		Setting:  user.Setting,
-		Email:    user.Email,
+		Id:                 user.Id,
+		Group:              user.Group,
+		Quota:              user.Quota,
+		Status:             user.Status,
+		Username:           user.Username,
+		Setting:            user.Setting,
+		Email:              user.Email,
+		WeeklyQuota:        user.WeeklyQuota,
+		WeeklyQuotaUsed:    user.WeeklyQuotaUsed,
+		WeeklyQuotaResetAt: user.WeeklyQuotaResetAt,
 	}
 	return cache
 }
@@ -428,6 +438,23 @@ func HardDeleteUserById(id int) error {
 			return err
 		}
 		return tx.Unscoped().Delete(&User{}, "id = ?", id).Error
+	})
+}
+
+func BatchHardDeleteUsers(ids []int) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	return DB.Transaction(func(tx *gorm.DB) error {
+		for _, chunk := range lo.Chunk(ids, 200) {
+			if err := tx.Where("user_id IN ?", chunk).Delete(&UserOAuthBinding{}).Error; err != nil {
+				return err
+			}
+			if err := tx.Unscoped().Where("id IN ?", chunk).Delete(&User{}).Error; err != nil {
+				return err
+			}
+		}
+		return nil
 	})
 }
 
@@ -1238,4 +1265,100 @@ func RootUserExists() bool {
 		return false
 	}
 	return true
+}
+
+// CalcNextWeeklyResetTime 计算下一个周一 00:00 的 unix 时间戳。
+func CalcNextWeeklyResetTime() int64 {
+	now := time.Now()
+	weekday := now.Weekday()
+	// Sunday = 0, Monday = 1, ..., Saturday = 6
+	daysUntilMonday := int(time.Monday - weekday)
+	if daysUntilMonday <= 0 {
+		daysUntilMonday += 7
+	}
+	nextMonday := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()).AddDate(0, 0, daysUntilMonday)
+	return nextMonday.Unix()
+}
+
+// CheckAndResetWeeklyQuota 检查用户的周额度是否需要重置，如果需要则重置。
+// 返回 (weeklyQuotaLimit, weeklyQuotaUsed, error)。
+func CheckAndResetWeeklyQuota(userId int) (int, int, error) {
+	var user User
+	if err := DB.Where("id = ?", userId).First(&user).Error; err != nil {
+		return 0, 0, err
+	}
+	// 周额度上限为 0 表示不限制
+	if user.WeeklyQuota <= 0 {
+		return 0, 0, nil
+	}
+	now := time.Now().Unix()
+	if user.WeeklyQuotaResetAt <= 0 || now >= user.WeeklyQuotaResetAt {
+		// 需要重置
+		nextReset := CalcNextWeeklyResetTime()
+		if err := DB.Model(&User{}).Where("id = ?", userId).Updates(map[string]interface{}{
+			"weekly_quota_used":     0,
+			"weekly_quota_reset_at": nextReset,
+		}).Error; err != nil {
+			return user.WeeklyQuota, user.WeeklyQuotaUsed, err
+		}
+		return user.WeeklyQuota, 0, nil
+	}
+	return user.WeeklyQuota, user.WeeklyQuotaUsed, nil
+}
+
+// IncreaseWeeklyQuotaUsed 增加用户周额度已用量。如果超过上限则返回错误。
+func IncreaseWeeklyQuotaUsed(userId int, quota int) error {
+	if quota <= 0 {
+		return nil
+	}
+	// 先检查并重置（如果需要）
+	limit, used, err := CheckAndResetWeeklyQuota(userId)
+	if err != nil {
+		return err
+	}
+	if limit <= 0 {
+		// 不限制周额度
+		return DB.Model(&User{}).Where("id = ?", userId).
+			Update("weekly_quota_used", gorm.Expr("weekly_quota_used + ?", quota)).Error
+	}
+	if used+quota > limit {
+		return fmt.Errorf("周额度不足, 本周已用: %s, 周额度上限: %s, 本次需要: %s",
+			logger.FormatQuota(used), logger.FormatQuota(limit), logger.FormatQuota(quota))
+	}
+	return DB.Model(&User{}).Where("id = ? AND weekly_quota_used + ? <= weekly_quota", userId, quota, quota).
+		Update("weekly_quota_used", gorm.Expr("weekly_quota_used + ?", quota)).Error
+}
+
+// SetUserWeeklyQuota 设置用户的周额度上限（管理员操作）。
+func SetUserWeeklyQuota(userId int, weeklyQuota int) error {
+	nextReset := CalcNextWeeklyResetTime()
+	return DB.Model(&User{}).Where("id = ?", userId).Updates(map[string]interface{}{
+		"weekly_quota":          weeklyQuota,
+		"weekly_quota_used":     0,
+		"weekly_quota_reset_at": nextReset,
+	}).Error
+}
+
+func SetUserRateLimit(userId int, total int, success int) error {
+	return DB.Model(&User{}).Where("id = ?", userId).Updates(map[string]interface{}{
+		"rate_limit_total":   total,
+		"rate_limit_success": success,
+	}).Error
+}
+
+// ResetDueWeeklyQuotas 批量重置到期用户的周额度。返回重置的用户数。
+func ResetDueWeeklyQuotas(batchSize int) (int, error) {
+	now := time.Now().Unix()
+	nextReset := CalcNextWeeklyResetTime()
+	result := DB.Model(&User{}).
+		Where("weekly_quota > 0 AND weekly_quota_reset_at > 0 AND weekly_quota_reset_at <= ?", now).
+		Limit(batchSize).
+		Updates(map[string]interface{}{
+			"weekly_quota_used":     0,
+			"weekly_quota_reset_at": nextReset,
+		})
+	if result.Error != nil {
+		return 0, result.Error
+	}
+	return int(result.RowsAffected), nil
 }

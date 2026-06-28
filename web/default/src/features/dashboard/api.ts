@@ -22,6 +22,8 @@ import type {
   FlowQuotaDataItem,
   QuotaDataItem,
   UptimeGroupResult,
+  DailyTokenDataItem,
+  DailyModelTokenDataItem,
 } from './types'
 
 // ============================================================================
@@ -89,5 +91,62 @@ export async function getUptimeStatus() {
   const res = await api.get<{ success: boolean; data: UptimeGroupResult[] }>(
     '/api/uptime/status'
   )
+  return res.data
+}
+
+// ----------------------------------------------------------------------------
+// Daily Token Usage Statistics
+// ----------------------------------------------------------------------------
+
+// Get daily token usage data for all users (admin only)
+export async function getDailyTokenData(params: {
+  start_timestamp: number
+  end_timestamp: number
+  username?: string
+}) {
+  const res = await api.get<{ success: boolean; data: DailyTokenDataItem[] }>(
+    '/api/data/daily-tokens',
+    { params }
+  )
+  return res.data
+}
+
+// Get daily token usage data for current user
+export async function getSelfDailyTokenData(params: {
+  start_timestamp: number
+  end_timestamp: number
+}) {
+  const res = await api.get<{ success: boolean; data: DailyTokenDataItem[] }>(
+    '/api/data/daily-tokens/self',
+    { params }
+  )
+  return res.data
+}
+
+// ----------------------------------------------------------------------------
+// Daily Model Token Usage Statistics
+// ----------------------------------------------------------------------------
+
+// Get daily model token usage data for all users (admin only)
+export async function getDailyModelTokenData(params: {
+  start_timestamp: number
+  end_timestamp: number
+}) {
+  const res = await api.get<{
+    success: boolean
+    data: DailyModelTokenDataItem[]
+  }>('/api/data/daily-model-tokens', { params })
+  return res.data
+}
+
+// Get daily model token usage data for current user
+export async function getSelfDailyModelTokenData(params: {
+  start_timestamp: number
+  end_timestamp: number
+}) {
+  const res = await api.get<{
+    success: boolean
+    data: DailyModelTokenDataItem[]
+  }>('/api/data/daily-model-tokens/self', { params })
   return res.data
 }

@@ -184,11 +184,21 @@ func ModelRequestRateLimit() func(c *gin.Context) {
 		}
 
 		//获取分组的限流配置
-		groupTotalCount, groupSuccessCount, found := setting.GetGroupRateLimit(group)
-		if found {
-			totalMaxCount = groupTotalCount
-			successMaxCount = groupSuccessCount
-		}
+			groupTotalCount, groupSuccessCount, found := setting.GetGroupRateLimit(group)
+			if found {
+				totalMaxCount = groupTotalCount
+				successMaxCount = groupSuccessCount
+			}
+
+			// 用户级限速覆盖：如果用户设置了个人限速，优先使用
+			userRateLimitTotal := common.GetContextKeyInt(c, constant.ContextKeyUserRateLimitTotal)
+			userRateLimitSuccess := common.GetContextKeyInt(c, constant.ContextKeyUserRateLimitSuccess)
+			if userRateLimitTotal > 0 {
+				totalMaxCount = userRateLimitTotal
+			}
+			if userRateLimitSuccess > 0 {
+				successMaxCount = userRateLimitSuccess
+			}
 
 		// 根据存储类型选择并执行限流处理器
 		if common.RedisEnabled {

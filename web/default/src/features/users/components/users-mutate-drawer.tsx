@@ -80,6 +80,8 @@ import {
   getUser,
   getGroups,
   getPermissionCatalog,
+  setUserWeeklyQuota,
+  setUserRateLimit,
 } from '../api'
 import { BINDING_FIELDS, ERROR_MESSAGES, SUCCESS_MESSAGES } from '../constants'
 import {
@@ -110,6 +112,8 @@ export function UsersMutateDrawer({
   const currentUser = useAuthStore((s) => s.auth.user)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [quotaDialogOpen, setQuotaDialogOpen] = useState(false)
+  const [weeklyQuotaSaving, setWeeklyQuotaSaving] = useState(false)
+  const [rateLimitSaving, setRateLimitSaving] = useState(false)
 
   // Fetch groups
   const { data: groupsData } = useQuery({
@@ -447,6 +451,143 @@ export function UsersMutateDrawer({
                       </FormItem>
                     )}
                   />
+
+	                  <FormField
+	                    control={form.control}
+	                    name='weekly_quota'
+	                    render={({ field }) => (
+	                      <FormItem>
+	                        <FormLabel>{t('Weekly Quota Limit (Tokens)')}</FormLabel>
+	                        <div className='flex gap-2'>
+	                          <FormControl>
+	                            <Input
+	                              type='number'
+	                              min={0}
+	                              step={1}
+	                              value={String(field.value || 0)}
+	                              onChange={(e) => {
+	                                field.onChange(parseInt(e.target.value) || 0)
+	                              }}
+	                              className='flex-1'
+	                            />
+	                          </FormControl>
+	                          <Button
+	                            type='button'
+	                            variant='outline'
+	                            disabled={weeklyQuotaSaving}
+	                            onClick={async () => {
+	                              if (!currentRow) return
+	                              setWeeklyQuotaSaving(true)
+	                              try {
+	                                const result = await setUserWeeklyQuota(currentRow.id, field.value || 0)
+	                                if (result.success) {
+	                                  toast.success(t('Weekly quota updated'))
+	                                  refreshUserData()
+	                                } else {
+	                                  toast.error(result.message || t('Failed to update weekly quota'))
+	                                }
+	                              } catch {
+	                                toast.error(t('Failed to update weekly quota'))
+	                              } finally {
+	                                setWeeklyQuotaSaving(false)
+	                              }
+	                            }}
+	                          >
+	                            {weeklyQuotaSaving ? t('Saving...') : t('Set')}
+	                          </Button>
+	                        </div>
+	                        <FormDescription>
+	                          {field.value
+	                            ? t('Weekly limit: {{amount}}, resets every Monday', {
+	                                amount: formatQuota(field.value || 0),
+	                              })
+	                            : t('0 means unlimited, resets every Monday')}
+	                        </FormDescription>
+	                        <FormMessage />
+	                      </FormItem>
+	                    )}
+	                  />
+
+	                  <div className='border-border/60 border-t pt-4'>
+	                    <h4 className='text-muted-foreground mb-3 text-xs font-medium uppercase tracking-wider'>
+	                      {t('Rate Limit (RPM)')}
+	                    </h4>
+	                    <div className='grid grid-cols-2 gap-3'>
+	                      <FormField
+	                        control={form.control}
+	                        name='rate_limit_total'
+	                        render={({ field }) => (
+	                          <FormItem>
+	                            <FormLabel>{t('Total RPM')}</FormLabel>
+	                            <FormControl>
+	                              <Input
+	                                type='number'
+	                                min={0}
+	                                step={1}
+	                                value={String(field.value || 0)}
+	                                onChange={(e) => {
+	                                  field.onChange(parseInt(e.target.value) || 0)
+	                                }}
+	                              />
+	                            </FormControl>
+	                            <FormMessage />
+	                          </FormItem>
+	                        )}
+	                      />
+	                      <FormField
+	                        control={form.control}
+	                        name='rate_limit_success'
+	                        render={({ field }) => (
+	                          <FormItem>
+	                            <FormLabel>{t('Success RPM')}</FormLabel>
+	                            <FormControl>
+	                              <Input
+	                                type='number'
+	                                min={0}
+	                                step={1}
+	                                value={String(field.value || 0)}
+	                                onChange={(e) => {
+	                                  field.onChange(parseInt(e.target.value) || 0)
+	                                }}
+	                              />
+	                            </FormControl>
+	                            <FormMessage />
+	                          </FormItem>
+	                        )}
+	                      />
+	                    </div>
+	                    <Button
+	                      type='button'
+	                      variant='outline'
+	                      size='sm'
+	                      className='mt-2'
+	                      disabled={rateLimitSaving}
+	                      onClick={async () => {
+	                        if (!currentRow) return
+	                        setRateLimitSaving(true)
+	                        try {
+	                          const total = form.getValues('rate_limit_total') || 0
+	                          const success = form.getValues('rate_limit_success') || 0
+	                          const result = await setUserRateLimit(currentRow.id, total, success)
+	                          if (result.success) {
+	                            toast.success(t('Rate limit updated'))
+	                            refreshUserData()
+	                          } else {
+	                            toast.error(result.message || t('Failed to update rate limit'))
+	                          }
+	                        } catch {
+	                          toast.error(t('Failed to update rate limit'))
+	                        } finally {
+	                          setRateLimitSaving(false)
+	                        }
+	                      }}
+	                    >
+	                      {rateLimitSaving ? t('Saving...') : t('Set')}
+	                    </Button>
+	                    <p className='text-muted-foreground mt-1 text-xs'>
+	                      {t('0 means use group default rate limit')}
+	                    </p>
+	                  </div>
                 </SideDrawerSection>
               )}
 

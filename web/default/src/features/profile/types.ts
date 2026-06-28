@@ -81,6 +81,12 @@ export interface UserProfile {
   telegram_id?: string
   /** LinuxDO ID (OAuth) */
   linux_do_id?: string
+  /** Weekly quota limit (0 = unlimited) */
+  weekly_quota?: number
+  /** Weekly quota used this period */
+  weekly_quota_used?: number
+  /** Next weekly quota reset time (unix timestamp) */
+  weekly_quota_reset_at?: number
 }
 
 /**

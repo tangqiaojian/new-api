@@ -480,31 +480,36 @@ func GetSelf(c *gin.Context) {
 
 	// 构建响应数据，包含用户信息和权限
 	responseData := map[string]interface{}{
-		"id":                user.Id,
-		"username":          user.Username,
-		"display_name":      user.DisplayName,
-		"role":              user.Role,
-		"status":            user.Status,
-		"email":             user.Email,
-		"github_id":         user.GitHubId,
-		"discord_id":        user.DiscordId,
-		"oidc_id":           user.OidcId,
-		"wechat_id":         user.WeChatId,
-		"telegram_id":       user.TelegramId,
-		"group":             user.Group,
-		"quota":             user.Quota,
-		"used_quota":        user.UsedQuota,
-		"request_count":     user.RequestCount,
-		"aff_code":          user.AffCode,
-		"aff_count":         user.AffCount,
-		"aff_quota":         user.AffQuota,
-		"aff_history_quota": user.AffHistoryQuota,
-		"inviter_id":        user.InviterId,
-		"linux_do_id":       user.LinuxDOId,
-		"setting":           user.Setting,
-		"stripe_customer":   user.StripeCustomer,
-		"sidebar_modules":   userSetting.SidebarModules, // 正确提取sidebar_modules字段
-		"permissions":       permissions,                // 新增权限字段
+		"id":                    user.Id,
+		"username":              user.Username,
+		"display_name":          user.DisplayName,
+		"role":                  user.Role,
+		"status":                user.Status,
+		"email":                 user.Email,
+		"github_id":             user.GitHubId,
+		"discord_id":            user.DiscordId,
+		"oidc_id":               user.OidcId,
+		"wechat_id":             user.WeChatId,
+		"telegram_id":           user.TelegramId,
+		"group":                 user.Group,
+		"quota":                 user.Quota,
+		"used_quota":            user.UsedQuota,
+		"request_count":         user.RequestCount,
+		"aff_code":              user.AffCode,
+		"aff_count":             user.AffCount,
+		"aff_quota":             user.AffQuota,
+		"aff_history_quota":     user.AffHistoryQuota,
+		"inviter_id":            user.InviterId,
+		"linux_do_id":           user.LinuxDOId,
+		"setting":               user.Setting,
+		"stripe_customer":       user.StripeCustomer,
+		"sidebar_modules":       userSetting.SidebarModules, // 正确提取sidebar_modules字段
+		"permissions":           permissions,                // 新增权限字段
+		"weekly_quota":          user.WeeklyQuota,
+		"weekly_quota_used":     user.WeeklyQuotaUsed,
+		"weekly_quota_reset_at": user.WeeklyQuotaResetAt,
+		"rate_limit_total":      user.RateLimitTotal,
+		"rate_limit_success":    user.RateLimitSuccess,
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -931,6 +936,135 @@ func DeleteUser(c *gin.Context) {
 	return
 }
 
+type UserBatchRequest struct {
+	Ids []int `json:"ids"`
+}
+
+func BatchDeleteUsers(c *gin.Context) {
+	req := UserBatchRequest{}
+	if err := c.ShouldBindJSON(&req); err != nil || len(req.Ids) == 0 {
+		common.ApiError(c, fmt.Errorf("invalid request: ids required"))
+		return
+	}
+	myRole := c.GetInt("role")
+	myId := c.GetInt("id")
+
+	// Filter out users with equal or higher role and self
+	filteredIds := make([]int, 0, len(req.Ids))
+	for _, id := range req.Ids {
+		if id == myId {
+			continue
+		}
+		user, err := model.GetUserById(id, false)
+		if err != nil {
+			continue
+		}
+		if user.Role >= myRole {
+			continue
+		}
+		filteredIds = append(filteredIds, id)
+	}
+
+	if len(filteredIds) == 0 {
+		common.ApiError(c, fmt.Errorf("no valid users to delete"))
+		return
+	}
+
+	err := model.BatchHardDeleteUsers(filteredIds)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+
+	recordManageAudit(c, "user.delete_batch", map[string]interface{}{
+		"count": len(filteredIds),
+		"ids":   filteredIds,
+	})
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "",
+		"data":    len(filteredIds),
+	})
+}
+
+func BatchManageUsers(c *gin.Context) {
+	req := UserBatchRequest{}
+	if err := c.ShouldBindJSON(&req); err != nil || len(req.Ids) == 0 {
+		common.ApiError(c, fmt.Errorf("invalid request: ids required"))
+		return
+	}
+	action := c.Query("action")
+	if action == "" {
+		common.ApiError(c, fmt.Errorf("action is required"))
+		return
+	}
+
+	myRole := c.GetInt("role")
+	myId := c.GetInt("id")
+
+	successCount := 0
+	failCount := 0
+
+	for _, id := range req.Ids {
+		if id == myId {
+			failCount++
+			continue
+		}
+		user, err := model.GetUserById(id, false)
+		if err != nil {
+			failCount++
+			continue
+		}
+		if user.Role >= myRole {
+			failCount++
+			continue
+		}
+
+		switch action {
+		case "enable":
+			user.Status = common.UserStatusEnabled
+		case "disable":
+			if user.Role == common.RoleRootUser {
+				failCount++
+				continue
+			}
+			user.Status = common.UserStatusDisabled
+		default:
+			failCount++
+			continue
+		}
+
+		if err := user.Update(false); err != nil {
+			failCount++
+			continue
+		}
+		if action == "disable" {
+			if err := model.InvalidateUserCache(user.Id); err != nil {
+				common.SysLog(fmt.Sprintf("failed to invalidate user cache for user %d: %s", user.Id, err.Error()))
+			}
+			if err := model.InvalidateUserTokensCache(user.Id); err != nil {
+				common.SysLog(fmt.Sprintf("failed to invalidate tokens cache for user %d: %s", user.Id, err.Error()))
+			}
+		}
+		successCount++
+	}
+
+	recordManageAudit(c, fmt.Sprintf("user.%s_batch", action), map[string]interface{}{
+		"success_count": successCount,
+		"fail_count":    failCount,
+	})
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "",
+		"data": gin.H{
+			"success_count": successCount,
+			"fail_count":    failCount,
+		},
+	})
+}
+
 func DeleteSelf(c *gin.Context) {
 	id := c.GetInt("id")
 	user, _ := model.GetUserById(id, false)
@@ -1142,6 +1276,43 @@ func ManageUser(c *gin.Context) {
 			common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 			return
 		}
+		c.JSON(http.StatusOK, gin.H{
+			"success": true,
+			"message": "",
+		})
+		return
+	case "set_weekly_quota":
+		if err := model.SetUserWeeklyQuota(user.Id, req.Value); err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		if err := model.InvalidateUserCache(user.Id); err != nil {
+			common.SysLog(fmt.Sprintf("failed to invalidate user cache for user %d: %s", user.Id, err.Error()))
+		}
+		recordManageAuditFor(c, user.Id, "user.set_weekly_quota", map[string]interface{}{
+			"weekly_quota": req.Value,
+		})
+		c.JSON(http.StatusOK, gin.H{
+			"success": true,
+			"message": "",
+		})
+		return
+	case "set_rate_limit":
+		successCount := 0
+		if req.Mode != "" {
+			successCount, _ = strconv.Atoi(req.Mode)
+		}
+		if err := model.SetUserRateLimit(user.Id, req.Value, successCount); err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		if err := model.InvalidateUserCache(user.Id); err != nil {
+			common.SysLog(fmt.Sprintf("failed to invalidate user cache for user %d: %s", user.Id, err.Error()))
+		}
+		recordManageAuditFor(c, user.Id, "user.set_rate_limit", map[string]interface{}{
+			"rate_limit_total":   req.Value,
+			"rate_limit_success": successCount,
+		})
 		c.JSON(http.StatusOK, gin.H{
 			"success": true,
 			"message": "",
