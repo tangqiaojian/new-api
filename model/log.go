@@ -113,7 +113,7 @@ func assignDisplayLogIds(logs []*Log, startIdx int) {
 	}
 }
 
-func formatUserLogs(logs []*Log, startIdx int) {
+func formatUserLogs(logs []*Log, startIdx int, userRole int) {
 	for i := range logs {
 		logs[i].ChannelName = ""
 		var otherMap map[string]interface{}
@@ -125,10 +125,32 @@ func formatUserLogs(logs []*Log, startIdx int) {
 			delete(otherMap, "audit_info")
 			// delete(otherMap, "reject_reason")
 			delete(otherMap, "stream_status")
+			// Non-super-admin users must not see request debug info.
+			if userRole < common.RoleRootUser {
+				delete(otherMap, "request_headers")
+				delete(otherMap, "request_body")
+			}
 		}
 		logs[i].Other = common.MapToJsonStr(otherMap)
 	}
 	assignDisplayLogIds(logs, startIdx)
+}
+
+// FilterSuperAdminFields removes super-admin-only fields (request_headers,
+// request_body) from logs when the requesting user is not a super admin.
+func FilterSuperAdminFields(logs []*Log, userRole int) {
+	if userRole >= common.RoleRootUser {
+		return
+	}
+	for i := range logs {
+		var otherMap map[string]interface{}
+		otherMap, _ = common.StrToMap(logs[i].Other)
+		if otherMap != nil {
+			delete(otherMap, "request_headers")
+			delete(otherMap, "request_body")
+		}
+		logs[i].Other = common.MapToJsonStr(otherMap)
+	}
 }
 
 func GetLogByTokenId(tokenId int) (logs []*Log, err error) {
@@ -137,7 +159,7 @@ func GetLogByTokenId(tokenId int) (logs []*Log, err error) {
 		order = clickHouseLogOrder("")
 	}
 	err = LOG_DB.Model(&Log{}).Where("token_id = ?", tokenId).Order(order).Limit(common.MaxRecentItems).Find(&logs).Error
-	formatUserLogs(logs, 0)
+	formatUserLogs(logs, 0, 0)
 	return logs, err
 }
 
@@ -605,7 +627,7 @@ func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int
 		return nil, 0, errors.New("查询日志失败")
 	}
 
-	formatUserLogs(logs, startIdx)
+	formatUserLogs(logs, startIdx, 0)
 	return logs, total, err
 }
 

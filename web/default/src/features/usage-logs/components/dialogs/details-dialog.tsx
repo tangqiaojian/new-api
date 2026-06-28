@@ -25,6 +25,7 @@ import {
   Headphones,
   Monitor,
   Cloud,
+  Code,
   Globe,
   ShieldCheck,
   UserCog,
@@ -411,6 +412,7 @@ function TokenBreakdown(props: { log: UsageLog; other: LogOtherData }) {
 interface DetailsDialogProps {
   log: UsageLog
   isAdmin: boolean
+  isSuperAdmin: boolean
   open: boolean
   onOpenChange: (open: boolean) => void
 }
@@ -1161,6 +1163,46 @@ export function DetailsDialog(props: DetailsDialogProps) {
                 </div>
               )
             })}
+          </DetailSection>
+        )}
+
+        {/* Request Headers - Super Admin Only */}
+        {props.isSuperAdmin && other?.request_headers && (
+          <DetailSection
+            icon={<Globe className='size-3.5' aria-hidden='true' />}
+            label={t('Request Headers')}
+          >
+            {Object.entries(other.request_headers).map(([key, value]) => (
+              <DetailRow key={key} label={key} value={value} mono />
+            ))}
+          </DetailSection>
+        )}
+
+        {/* Request Body - Super Admin Only */}
+        {props.isSuperAdmin && other?.request_body && (
+          <DetailSection
+            icon={<Code className='size-3.5' aria-hidden='true' />}
+            label={t('Request Body')}
+          >
+            <div className='bg-background/60 relative min-w-0 overflow-hidden rounded border p-2'>
+              <Button
+                variant='ghost'
+                size='sm'
+                className='absolute top-1 right-1 h-5 w-5 p-0'
+                onClick={() => copyToClipboard(other.request_body!)}
+                title={t('Copy to clipboard')}
+                aria-label={t('Copy to clipboard')}
+              >
+                {copiedText === other.request_body ? (
+                  <Check className='size-3 text-green-600' />
+                ) : (
+                  <Copy className='size-3' />
+                )}
+              </Button>
+              <pre className='min-w-0 max-h-64 overflow-auto pr-6 text-[11px] leading-relaxed whitespace-pre-wrap break-all font-mono'>
+                {other.request_body}
+              </pre>
+            </div>
           </DetailSection>
         )}
 

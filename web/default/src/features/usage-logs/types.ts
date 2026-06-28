@@ -218,6 +218,8 @@ export interface LogOtherData {
   subscription_consumed?: number
   subscription_remain?: number
   subscription_total?: number
+  request_headers?: Record<string, string>
+  request_body?: string
 }
 
 /**

@@ -98,6 +98,8 @@ const OPERATIONS_SECTIONS = [
     build: (settings: OperationsSettings) => (
       <LogSettingsSection
         defaultEnabled={Boolean(settings.LogConsumeEnabled)}
+        defaultDebugEnabled={Boolean(settings.LogRequestDebugEnabled)}
+        defaultMaxBytes={Number(settings.LogRequestBodyMaxBytes) || 8192}
       />
     ),
   },

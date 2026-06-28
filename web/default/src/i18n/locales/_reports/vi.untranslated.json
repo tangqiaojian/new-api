@@ -1,0 +1,9 @@
+{
+  "Are you sure you want to delete {{count}} selected users? This action cannot be undone.": "Are you sure you want to delete {{count}} selected users? This action cannot be undone.",
+  "Dot-separated path to extract balance value from JSON response": "Dot-separated path to extract balance value from JSON response",
+  "Exported {{count}} channels and pricing configuration": "Exported {{count}} channels and pricing configuration",
+  "Failed to update rate limit": "Failed to update rate limit",
+  "Failed to update weekly quota": "Failed to update weekly quota",
+  "Imported {{channelCount}} channels and {{pricingCount}} pricing maps": "Imported {{channelCount}} channels and {{pricingCount}} pricing maps",
+  "This will import channels and pricing configuration from the selected file. Existing channels will not be affected, but pricing settings will be overwritten. This action cannot be undone.": "This will import channels and pricing configuration from the selected file. Existing channels will not be affected, but pricing settings will be overwritten. This action cannot be undone."
+}

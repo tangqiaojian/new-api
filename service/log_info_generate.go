@@ -3,6 +3,7 @@ package service
 import (
 	"encoding/base64"
 	"fmt"
+	"io"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -114,6 +115,7 @@ func GenerateTextOtherInfo(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, m
 	appendBillingInfo(relayInfo, other)
 	appendParamOverrideInfo(relayInfo, other)
 	appendStreamStatus(relayInfo, other)
+	appendRequestDebugInfo(ctx, relayInfo, other)
 	return other
 }
 
@@ -315,5 +317,46 @@ func InjectTieredBillingInfo(other map[string]interface{}, relayInfo *relaycommo
 	other["expr_b64"] = base64.StdEncoding.EncodeToString([]byte(snap.ExprString))
 	if result != nil {
 		other["matched_tier"] = result.MatchedTier
+	}
+}
+
+// appendRequestDebugInfo adds request headers and request body to the other map
+// when LogRequestDebugEnabled is true. Sensitive headers (Authorization, Cookie)
+// are masked. The request body is truncated to LogRequestBodyMaxBytes.
+func appendRequestDebugInfo(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, other map[string]interface{}) {
+	if !common.LogRequestDebugEnabled || other == nil {
+		return
+	}
+	// Request headers from relayInfo (already cloned during GenRelayInfo).
+	if relayInfo != nil && len(relayInfo.RequestHeaders) > 0 {
+		safeHeaders := make(map[string]string, len(relayInfo.RequestHeaders))
+		for k, v := range relayInfo.RequestHeaders {
+			if strings.EqualFold(k, "Authorization") || strings.EqualFold(k, "Cookie") {
+				safeHeaders[k] = "***"
+			} else {
+				safeHeaders[k] = v
+			}
+		}
+		other["request_headers"] = safeHeaders
+	}
+	// Request body from gin context, truncated.
+	if ctx != nil {
+		storage, err := common.GetBodyStorage(ctx)
+		if err == nil && storage != nil {
+			maxBytes := common.LogRequestBodyMaxBytes
+			if maxBytes <= 0 {
+				maxBytes = 8192
+			}
+			// Only read up to maxBytes+1 to detect truncation without
+			// materializing the entire body into memory.
+			buf := make([]byte, maxBytes+1)
+			n, _ := storage.Read(buf)
+			_, _ = storage.Seek(0, io.SeekStart)
+			bodyStr := string(buf[:min(n, maxBytes)])
+			if n > maxBytes {
+				bodyStr += "\n... (truncated)"
+			}
+			other["request_body"] = bodyStr
+		}
 	}
 }

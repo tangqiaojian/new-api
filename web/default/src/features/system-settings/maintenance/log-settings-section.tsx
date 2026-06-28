@@ -80,12 +80,16 @@ import type { LogCleanupTask } from '../types'
 
 const logSettingsSchema = z.object({
   LogConsumeEnabled: z.boolean(),
+  LogRequestDebugEnabled: z.boolean(),
+  LogRequestBodyMaxBytes: z.coerce.number().int().min(1024).max(1048576),
 })
 
 type LogSettingsFormValues = z.infer<typeof logSettingsSchema>
 
 type LogSettingsSectionProps = {
   defaultEnabled: boolean
+  defaultDebugEnabled: boolean
+  defaultMaxBytes: number
 }
 
 type ServerLogInfo = {
@@ -141,6 +145,8 @@ function isActiveLogCleanupTask(task: LogCleanupTask | null) {
 
 export function LogSettingsSection({
   defaultEnabled,
+  defaultDebugEnabled,
+  defaultMaxBytes,
 }: LogSettingsSectionProps) {
   const { t } = useTranslation()
   const updateOption = useUpdateOption()
@@ -148,6 +154,8 @@ export function LogSettingsSection({
     resolver: zodResolver(logSettingsSchema),
     defaultValues: {
       LogConsumeEnabled: defaultEnabled,
+      LogRequestDebugEnabled: defaultDebugEnabled,
+      LogRequestBodyMaxBytes: defaultMaxBytes,
     },
   })
 
@@ -174,8 +182,12 @@ export function LogSettingsSection({
   }, [])
 
   useEffect(() => {
-    form.reset({ LogConsumeEnabled: defaultEnabled })
-  }, [defaultEnabled, form])
+    form.reset({
+      LogConsumeEnabled: defaultEnabled,
+      LogRequestDebugEnabled: defaultDebugEnabled,
+      LogRequestBodyMaxBytes: defaultMaxBytes,
+    })
+  }, [defaultEnabled, defaultDebugEnabled, defaultMaxBytes, form])
 
   useEffect(() => {
     fetchServerLogInfo()
@@ -257,11 +269,34 @@ export function LogSettingsSection({
   }, [logCleanupActive, logCleanupTaskId, t])
 
   const onSubmit = async (values: LogSettingsFormValues) => {
-    if (values.LogConsumeEnabled === defaultEnabled) return
-    await updateOption.mutateAsync({
-      key: 'LogConsumeEnabled',
-      value: values.LogConsumeEnabled,
-    })
+    const promises: Promise<unknown>[] = []
+    if (values.LogConsumeEnabled !== defaultEnabled) {
+      promises.push(
+        updateOption.mutateAsync({
+          key: 'LogConsumeEnabled',
+          value: values.LogConsumeEnabled,
+        })
+      )
+    }
+    if (values.LogRequestDebugEnabled !== defaultDebugEnabled) {
+      promises.push(
+        updateOption.mutateAsync({
+          key: 'LogRequestDebugEnabled',
+          value: values.LogRequestDebugEnabled,
+        })
+      )
+    }
+    if (values.LogRequestBodyMaxBytes !== defaultMaxBytes) {
+      promises.push(
+        updateOption.mutateAsync({
+          key: 'LogRequestBodyMaxBytes',
+          value: values.LogRequestBodyMaxBytes,
+        })
+      )
+    }
+    if (promises.length > 0) {
+      await Promise.all(promises)
+    }
   }
 
   const handleRequestCleanLogs = () => {
@@ -366,6 +401,59 @@ export function LogSettingsSection({
               </SettingsSwitchItem>
             )}
           />
+
+          <FormField
+            control={form.control}
+            name='LogRequestDebugEnabled'
+            render={({ field }) => (
+              <SettingsSwitchItem>
+                <SettingsSwitchContent>
+                  <FormLabel>{t('Log Request Debug')}</FormLabel>
+                  <FormDescription>
+                    {t(
+                      'Record request headers and body in logs for super admin debugging. Increases database storage.'
+                    )}
+                  </FormDescription>
+                </SettingsSwitchContent>
+                <FormControl>
+                  <Switch
+                    checked={field.value}
+                    onCheckedChange={field.onChange}
+                  />
+                </FormControl>
+                <FormMessage />
+              </SettingsSwitchItem>
+            )}
+          />
+
+          {form.watch('LogRequestDebugEnabled') && (
+            <FormField
+              control={form.control}
+              name='LogRequestBodyMaxBytes'
+              render={({ field }) => (
+                <SettingsSwitchItem>
+                  <SettingsSwitchContent>
+                    <FormLabel>{t('Max Request Body Size (bytes)')}</FormLabel>
+                    <FormDescription>
+                      {t(
+                        'Request body beyond this limit will be truncated.'
+                      )}
+                    </FormDescription>
+                  </SettingsSwitchContent>
+                  <FormControl>
+                    <Input
+                      type='number'
+                      min={1024}
+                      max={1048576}
+                      {...field}
+                      className='w-[120px]'
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </SettingsSwitchItem>
+              )}
+            />
+          )}
 
           <SettingsControlGroup className='space-y-3'>
             <div>
