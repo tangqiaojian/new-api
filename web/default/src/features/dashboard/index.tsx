@@ -18,8 +18,9 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useState, useCallback, useMemo, lazy, Suspense } from 'react'
 import { getRouteApi, useNavigate } from '@tanstack/react-router'
-import { Eye, EyeOff } from 'lucide-react'
+import { Eye, EyeOff, RotateCw } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { useQueryClient } from '@tanstack/react-query'
 import { useAuthStore } from '@/stores/auth-store'
 import { ROLE } from '@/lib/roles'
 import { Button } from '@/components/ui/button'
@@ -30,12 +31,27 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+} from '@/components/ui/dropdown-menu'
 import { SectionPageLayout } from '@/components/layout'
 import { FadeIn } from '@/components/page-transition'
 import { ModelsChartPreferences } from './components/models/models-chart-preferences'
 import { ModelsFilter } from './components/models/models-filter-dialog'
 import { OverviewDashboard } from './components/overview/overview-dashboard'
 import { DEFAULT_TIME_GRANULARITY } from './constants'
+import {
+  AutoRefreshContext,
+  AUTO_REFRESH_OPTIONS,
+  useAutoRefreshState,
+} from './hooks/use-auto-refresh'
+import type { AutoRefreshInterval } from './hooks/use-auto-refresh'
 import {
   buildDefaultDashboardFilters,
   getDefaultDays,
@@ -180,6 +196,76 @@ const SECTION_META: Record<DashboardSectionId, { titleKey: string }> = {
   },
 }
 
+function DashboardAutoRefreshControls() {
+  const { t } = useTranslation()
+  const queryClient = useQueryClient()
+  const { refetchInterval, setRefetchInterval } = useAutoRefreshState()
+
+  const handleRefresh = useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+    void queryClient.invalidateQueries({ queryKey: ['perf-metrics-summary'] })
+  }, [queryClient])
+
+  return (
+    <div className='flex items-center gap-1'>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <Button
+              variant='ghost'
+              size='icon'
+              onClick={handleRefresh}
+              aria-label={t('Refresh')}
+              className='text-muted-foreground hover:text-foreground size-8'
+            />
+          }
+        >
+          <RotateCw className='size-3.5' />
+        </TooltipTrigger>
+        <TooltipContent>{t('Refresh')}</TooltipContent>
+      </Tooltip>
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          render={
+            <Button
+              variant='ghost'
+              size='sm'
+              className='text-muted-foreground hover:text-foreground h-8 gap-1.5 px-2'
+            />
+          }
+        >
+          <span className='text-xs'>{t('Auto Refresh')}</span>
+          <span className='text-muted-foreground/60 text-xs'>
+            {refetchInterval === 0
+              ? t('Off')
+              : t(
+                  AUTO_REFRESH_OPTIONS.find(
+                    (o) => o.value === refetchInterval
+                  )?.labelKey ?? 'Off'
+                )}
+          </span>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align='end'>
+          <DropdownMenuLabel>{t('Auto Refresh')}</DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          <DropdownMenuRadioGroup
+            value={String(refetchInterval)}
+            onValueChange={(val) =>
+              setRefetchInterval(Number(val) as AutoRefreshInterval)
+            }
+          >
+            {AUTO_REFRESH_OPTIONS.map((opt) => (
+              <DropdownMenuRadioItem key={opt.value} value={String(opt.value)}>
+                {t(opt.labelKey)}
+              </DropdownMenuRadioItem>
+            ))}
+          </DropdownMenuRadioGroup>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  )
+}
+
 export function Dashboard() {
   const { t } = useTranslation()
   const navigate = useNavigate()
@@ -187,6 +273,8 @@ export function Dashboard() {
   const userRole = useAuthStore((state) => state.auth.user?.role)
   const activeSection = (params.section ??
     DASHBOARD_DEFAULT_SECTION) as DashboardSectionId
+
+  const { refetchInterval, setRefetchInterval } = useAutoRefreshState()
 
   const [modelData, setModelData] = useState<QuotaDataItem[]>([])
   const [dataLoading, setDataLoading] = useState(false)
@@ -313,9 +401,13 @@ export function Dashboard() {
   const sectionActions = modelActions ?? flowActions
 
   return (
-    <SectionPageLayout>
-      <SectionPageLayout.Title>{t(meta.titleKey)}</SectionPageLayout.Title>
-      <SectionPageLayout.Content>
+    <AutoRefreshContext.Provider value={{ refetchInterval, setRefetchInterval }}>
+      <SectionPageLayout>
+        <div className='flex items-center gap-2'>
+          <SectionPageLayout.Title>{t(meta.titleKey)}</SectionPageLayout.Title>
+          <DashboardAutoRefreshControls />
+        </div>
+        <SectionPageLayout.Content>
         <div className='space-y-3 sm:space-y-4'>
           {activeSection !== 'overview' && (
             <div className='flex flex-wrap items-center justify-between gap-1.5 sm:gap-2'>
@@ -428,5 +520,6 @@ export function Dashboard() {
         </div>
       </SectionPageLayout.Content>
     </SectionPageLayout>
+    </AutoRefreshContext.Provider>
   )
 }

@@ -57,6 +57,7 @@ import {
   useApiInfo,
   useDashboardContentVisibility,
 } from '../../hooks/use-status-data'
+import { useAutoRefresh } from '@/features/dashboard/hooks/use-auto-refresh'
 import { AnnouncementsPanel } from './announcements-panel'
 import { ApiInfoPanel } from './api-info-panel'
 import { FAQPanel } from './faq-panel'
@@ -462,6 +463,7 @@ export function OverviewDashboard() {
     faq: showFAQPanel,
     uptimeKuma: showUptimePanel,
   } = useDashboardContentVisibility()
+  const { refetchInterval } = useAutoRefresh()
   const [manualSetupGuideExpanded, setManualSetupGuideExpanded] = useState<
     boolean | null
   >(() => getSavedSetupGuideExpanded())
@@ -478,6 +480,7 @@ export function OverviewDashboard() {
       return result.success ? (result.data?.items ?? []) : []
     },
     staleTime: 60 * 1000,
+    refetchInterval: refetchInterval || undefined,
   })
 
   const modelsQuery = useQuery({
@@ -487,6 +490,7 @@ export function OverviewDashboard() {
       return result.success ? (result.data ?? []) : []
     },
     staleTime: 5 * 60 * 1000,
+    refetchInterval: refetchInterval || undefined,
   })
 
   const preferredKey = useMemo(

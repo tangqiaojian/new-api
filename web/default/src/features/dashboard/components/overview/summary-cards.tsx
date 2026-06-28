@@ -31,6 +31,7 @@ import { Button } from '@/components/ui/button'
 import { StaggerContainer, StaggerItem } from '@/components/page-transition'
 import { getUserQuotaDates } from '@/features/dashboard/api'
 import { useSummaryCardsConfig } from '@/features/dashboard/hooks/use-dashboard-config'
+import { useAutoRefresh } from '@/features/dashboard/hooks/use-auto-refresh'
 import type { QuotaDataItem } from '@/features/dashboard/types'
 import { StatCard } from '../ui/stat-card'
 
@@ -138,6 +139,7 @@ export function SummaryCards() {
   const { t } = useTranslation()
   const user = useAuthStore((state) => state.auth.user)
   const { status, loading } = useStatus()
+  const { refetchInterval } = useAutoRefresh()
 
   const summaryTimeRange = useMemo(() => computeTimeRange(1), [])
   const remainQuota = Number(user?.quota ?? 0)
@@ -159,6 +161,7 @@ export function SummaryCards() {
         default_time: 'hour',
       }),
     staleTime: 60 * 1000,
+    refetchInterval: refetchInterval || undefined,
   })
 
   const summaryValues = useMemo(() => {

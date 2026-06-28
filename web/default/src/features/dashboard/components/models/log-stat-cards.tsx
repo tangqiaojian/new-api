@@ -16,7 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { useAuthStore } from '@/stores/auth-store'
 import { formatCompactNumber, formatNumber, formatQuota } from '@/lib/format'
@@ -25,6 +26,7 @@ import { cn } from '@/lib/utils'
 import { Skeleton } from '@/components/ui/skeleton'
 import { getUserQuotaDates } from '@/features/dashboard/api'
 import { useModelStatCardsConfig } from '@/features/dashboard/hooks/use-dashboard-config'
+import { useAutoRefresh } from '@/features/dashboard/hooks/use-auto-refresh'
 import {
   buildQueryParams,
   calculateDashboardStats,
@@ -60,57 +62,51 @@ export function LogStatCards(props: LogStatCardsProps) {
   const statCardsConfig = useModelStatCardsConfig()
   const user = useAuthStore((state) => state.auth.user)
   const isAdmin = !!(user?.role && user.role >= 10)
-  const [stats, setStats] = useState<{
-    totalQuota: number
-    totalCount: number
-    totalTokens: number
-  } | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(false)
-
-  const [timeRangeMinutes, setTimeRangeMinutes] = useState(0)
+  const { refetchInterval } = useAutoRefresh()
 
   const { filters, onDataUpdate } = props
 
+  const timeRange = useMemo(
+    () =>
+      computeTimeRange(
+        getDefaultDays(filters?.time_granularity),
+        filters?.start_timestamp,
+        filters?.end_timestamp
+      ),
+    [filters?.time_granularity, filters?.start_timestamp, filters?.end_timestamp]
+  )
+
+  const timeRangeMinutes = useMemo(
+    () => (timeRange.end_timestamp - timeRange.start_timestamp) / 60,
+    [timeRange.end_timestamp, timeRange.start_timestamp]
+  )
+
+  const quotaQuery = useQuery({
+    queryKey: [
+      'dashboard',
+      'models',
+      'log-stats',
+      buildQueryParams(timeRange, filters),
+      isAdmin,
+    ],
+    queryFn: () => getUserQuotaDates(buildQueryParams(timeRange, filters), isAdmin),
+    staleTime: 60_000,
+    refetchInterval: refetchInterval || undefined,
+  })
+
+  const data = quotaQuery.data?.data ?? []
+  const loading = quotaQuery.isLoading
+  const error = quotaQuery.isError
+
+  const stats = useMemo(
+    () => (data.length > 0 ? calculateDashboardStats(data) : null),
+    [data]
+  )
+
+  // Notify parent of data changes
   useEffect(() => {
-    const abortController = new AbortController()
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setLoading(true)
-
-    setError(false)
-    onDataUpdate?.([], true)
-
-    const timeRange = computeTimeRange(
-      getDefaultDays(filters?.time_granularity),
-      filters?.start_timestamp,
-      filters?.end_timestamp
-    )
-    const timeDiff = (timeRange.end_timestamp - timeRange.start_timestamp) / 60
-    setTimeRangeMinutes(timeDiff)
-
-    getUserQuotaDates(buildQueryParams(timeRange, filters), isAdmin)
-      .then((res) => {
-        if (abortController.signal.aborted) return
-        const data = res?.data || []
-        setStats(calculateDashboardStats(data))
-        onDataUpdate?.(data, false)
-      })
-      .catch(() => {
-        if (abortController.signal.aborted) return
-        setStats(null)
-        setError(true)
-        onDataUpdate?.([], false)
-      })
-      .finally(() => {
-        if (!abortController.signal.aborted) {
-          setLoading(false)
-        }
-      })
-
-    return () => {
-      abortController.abort()
-    }
-  }, [filters, isAdmin, onDataUpdate])
+    onDataUpdate?.(data, loading)
+  }, [data, loading, onDataUpdate])
 
   const adaptedStats = {
     rpm: stats?.totalCount ?? 0,

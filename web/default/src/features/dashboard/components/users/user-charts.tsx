@@ -27,6 +27,7 @@ import { useTheme } from '@/context/theme-provider'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { getUserQuotaDataByUsers } from '@/features/dashboard/api'
+import { useAutoRefresh } from '@/features/dashboard/hooks/use-auto-refresh'
 import {
   TIME_GRANULARITY_OPTIONS,
   TIME_RANGE_PRESETS,
@@ -72,6 +73,7 @@ interface UserChartsProps {
 export function UserCharts(props: UserChartsProps) {
   const { t } = useTranslation()
   const { resolvedTheme } = useTheme()
+  const { refetchInterval } = useAutoRefresh()
   const [themeReady, setThemeReady] = useState(false)
   const themeManagerRef = useRef<
     (typeof import('@visactor/vchart'))['ThemeManager'] | null
@@ -139,6 +141,7 @@ export function UserCharts(props: UserChartsProps) {
     queryFn: () => getUserQuotaDataByUsers(timeRange),
     select: (res) => (res.success ? res.data : []),
     staleTime: 60_000,
+    refetchInterval: refetchInterval || undefined,
   })
 
   const chartData = useMemo(

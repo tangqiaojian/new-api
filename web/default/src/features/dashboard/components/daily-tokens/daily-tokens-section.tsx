@@ -22,6 +22,7 @@ import { VChart } from '@visactor/react-vchart'
 import { Hash, Loader2, ArrowLeftRight } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { getRollingDateRange } from '@/lib/time'
+import { useAutoRefresh } from '@/features/dashboard/hooks/use-auto-refresh'
 import { VCHART_OPTION } from '@/lib/vchart'
 import { useTheme } from '@/context/theme-provider'
 import { useAuthStore } from '@/stores/auth-store'
@@ -93,6 +94,7 @@ interface DailyTokensSectionProps {
 export function DailyTokensSection(props: DailyTokensSectionProps) {
   const { t, i18n } = useTranslation()
   const { resolvedTheme } = useTheme()
+  const { refetchInterval } = useAutoRefresh()
   const [themeReady, setThemeReady] = useState(false)
   const themeManagerRef = useRef<
     (typeof import('@visactor/vchart'))['ThemeManager'] | null
@@ -157,6 +159,7 @@ export function DailyTokensSection(props: DailyTokensSectionProps) {
         : getSelfDailyTokenData(timeRange),
     select: (res) => (res.success ? res.data : []),
     staleTime: 60_000,
+    refetchInterval: refetchInterval || undefined,
   })
 
   const chartData = useMemo(
