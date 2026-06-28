@@ -33,7 +33,7 @@ import { formatNumber, formatQuota } from '@/lib/format'
 import { computeTimeRange } from '@/lib/time'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/stores/auth-store'
-
+import { useAutoRefresh } from '@/features/dashboard/hooks/use-auto-refresh'
 import { StatCard } from '../ui/stat-card'
 
 const SUMMARY_SPARKLINE_BUCKETS = 12
@@ -140,6 +140,7 @@ export function SummaryCards() {
   const { t } = useTranslation()
   const user = useAuthStore((state) => state.auth.user)
   const { status, loading } = useStatus()
+  const { refetchInterval } = useAutoRefresh()
 
   const summaryTimeRange = useMemo(() => computeTimeRange(1), [])
   const remainQuota = Number(user?.quota ?? 0)
@@ -161,6 +162,7 @@ export function SummaryCards() {
         default_time: 'hour',
       }),
     staleTime: 60 * 1000,
+    refetchInterval: refetchInterval || undefined,
   })
 
   const summaryValues = useMemo(() => {

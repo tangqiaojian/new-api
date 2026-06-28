@@ -60,6 +60,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { getFlowQuotaDates } from '@/features/dashboard/api'
+import { useAutoRefresh } from '@/features/dashboard/hooks/use-auto-refresh'
 import {
   buildDashboardFlowData,
   buildFlowSankeySpec,
@@ -256,6 +257,7 @@ export function FlowCharts(props: FlowChartsProps) {
   const { resolvedTheme, themeReady } = useChartTheme()
   const chartInstanceRef = useRef<IVChart | null>(null)
   const user = useAuthStore((state) => state.auth.user)
+  const { refetchInterval } = useAutoRefresh()
   const isRoot = Boolean(user?.role && user.role >= ROLE.SUPER_ADMIN)
   const isAdmin = Boolean(user?.role && user.role >= ROLE.ADMIN)
   let flowRole: FlowRole = 'user'
@@ -339,6 +341,7 @@ export function FlowCharts(props: FlowChartsProps) {
     select: (res) =>
       requireSuccessfulFlowRows(res, t('Please try again later.')),
     staleTime: 60_000,
+    refetchInterval: refetchInterval || undefined,
   })
 
   const maskSensitive = props.sensitiveVisible === false

@@ -23,6 +23,7 @@ import { useTranslation } from 'react-i18next'
 
 import { Skeleton } from '@/components/ui/skeleton'
 import { getPerfMetricsSummary } from '@/features/performance-metrics/api'
+import { useAutoRefresh } from '@/features/dashboard/hooks/use-auto-refresh'
 import {
   formatLatency,
   formatThroughput,
@@ -84,11 +85,13 @@ function buildPerformanceSummary(rows: PerfModelSummary[]): PerformanceSummary {
 
 export function PerformanceOverview() {
   const { t } = useTranslation()
+  const { refetchInterval } = useAutoRefresh()
   const metricsQuery = useQuery({
     queryKey: ['perf-metrics-summary', PERFORMANCE_WINDOW_HOURS],
     queryFn: () => getPerfMetricsSummary(PERFORMANCE_WINDOW_HOURS),
     staleTime: 60 * 1000,
     retry: false,
+    refetchInterval: refetchInterval || undefined,
   })
 
   const models = useMemo(
