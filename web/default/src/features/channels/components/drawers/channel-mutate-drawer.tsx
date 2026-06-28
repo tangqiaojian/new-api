@@ -44,6 +44,7 @@ import {
   Settings,
   SlidersHorizontal,
   Wand2,
+  DollarSign,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -223,7 +224,9 @@ function hasAdvancedSettingsValues(values: ChannelFormValues): boolean {
     values.claude_beta_query ||
     values.upstream_model_update_check_enabled ||
     values.upstream_model_update_auto_sync_enabled ||
-    values.upstream_model_update_ignored_models?.trim()
+    values.upstream_model_update_ignored_models?.trim() ||
+    values.balance_query_url?.trim() ||
+    values.balance_query_json_path?.trim()
   )
 }
 
@@ -3468,6 +3471,58 @@ export function ChannelMutateDrawer({
                           </div>
                         </div>
                       )}
+
+                      {/* ── Balance Query Settings ── */}
+                      <div className='border-border/60 flex flex-col gap-3 border-y py-4'>
+                        <SubHeading
+                          title={t('Balance Query')}
+                          icon={<DollarSign className='h-3.5 w-3.5' />}
+                        />
+                        <FormField
+                          control={form.control}
+                          name='balance_query_url'
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>{t('Balance Query URL')}</FormLabel>
+                              <FormControl>
+                                <Input
+                                  placeholder={t(
+                                    'https://api.example.com/v1/user/balance'
+                                  )}
+                                  {...field}
+                                />
+                              </FormControl>
+                              <FormDescription>
+                                {t(
+                                  'Custom URL for querying provider balance. Uses channel key as Bearer auth.'
+                                )}
+                              </FormDescription>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          control={form.control}
+                          name='balance_query_json_path'
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>{t('Balance JSON Path')}</FormLabel>
+                              <FormControl>
+                                <Input
+                                  placeholder='data.balance'
+                                  {...field}
+                                />
+                              </FormControl>
+                              <FormDescription>
+                                {t(
+                                  'Dot-separated path to extract balance value from JSON response'
+                                )}
+                              </FormDescription>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      </div>
                     </div>
                   </ChannelAdvancedSection>
                 </>

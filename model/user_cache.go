@@ -15,13 +15,18 @@ import (
 
 // UserBase struct remains the same as it represents the cached data structure
 type UserBase struct {
-	Id       int    `json:"id"`
-	Group    string `json:"group"`
-	Email    string `json:"email"`
-	Quota    int    `json:"quota"`
-	Status   int    `json:"status"`
-	Username string `json:"username"`
-	Setting  string `json:"setting"`
+	Id                 int    `json:"id"`
+	Group              string `json:"group"`
+	Email              string `json:"email"`
+	Quota              int    `json:"quota"`
+	Status             int    `json:"status"`
+	Username           string `json:"username"`
+	Setting            string `json:"setting"`
+	WeeklyQuota        int    `json:"weekly_quota"`
+	WeeklyQuotaUsed    int    `json:"weekly_quota_used"`
+	WeeklyQuotaResetAt int64  `json:"weekly_quota_reset_at"`
+	RateLimitTotal     int    `json:"rate_limit_total"`
+	RateLimitSuccess   int    `json:"rate_limit_success"`
 }
 
 func (user *UserBase) WriteContext(c *gin.Context) {
@@ -31,6 +36,11 @@ func (user *UserBase) WriteContext(c *gin.Context) {
 	common.SetContextKey(c, constant.ContextKeyUserEmail, user.Email)
 	common.SetContextKey(c, constant.ContextKeyUserName, user.Username)
 	common.SetContextKey(c, constant.ContextKeyUserSetting, user.GetSetting())
+	common.SetContextKey(c, constant.ContextKeyUserWeeklyQuota, user.WeeklyQuota)
+	common.SetContextKey(c, constant.ContextKeyUserWeeklyQuotaUsed, user.WeeklyQuotaUsed)
+	common.SetContextKey(c, constant.ContextKeyUserWeeklyQuotaResetAt, user.WeeklyQuotaResetAt)
+	common.SetContextKey(c, constant.ContextKeyUserRateLimitTotal, user.RateLimitTotal)
+	common.SetContextKey(c, constant.ContextKeyUserRateLimitSuccess, user.RateLimitSuccess)
 }
 
 func (user *UserBase) GetSetting() dto.UserSetting {

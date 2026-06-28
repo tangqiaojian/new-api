@@ -57,6 +57,11 @@ export const userSchema = z.object({
   last_login_at: z.number().optional(),
   DeletedAt: z.any().nullable().optional(),
   remark: z.string().optional(),
+  weekly_quota: z.number().optional(),
+  weekly_quota_used: z.number().optional(),
+  weekly_quota_reset_at: z.number().optional(),
+  rate_limit_total: z.number().optional(),
+  rate_limit_success: z.number().optional(),
 })
 export type User = z.infer<typeof userSchema>
 
@@ -115,6 +120,12 @@ export type ManageUserAction =
   | 'disable'
   | 'delete'
   | 'add_quota'
+    | 'set_weekly_quota'
+    | 'set_rate_limit'
+
+export interface BatchDeleteParams {
+  ids: number[]
+}
 
 export type QuotaAdjustMode = 'add' | 'subtract' | 'override'
 

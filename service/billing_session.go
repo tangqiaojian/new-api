@@ -344,6 +344,21 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 		return nil, types.NewError(fmt.Errorf("relayInfo is nil"), types.ErrorCodeInvalidRequest, types.ErrOptionWithSkipRetry())
 	}
 
+	// 周额度预检查（钱包和订阅路径都需要检查）
+	if relayInfo.UserId > 0 {
+		limit, used, err := model.CheckAndResetWeeklyQuota(relayInfo.UserId)
+		if err != nil {
+			return nil, types.NewError(err, types.ErrorCodeQueryDataError, types.ErrOptionWithSkipRetry())
+		}
+		if limit > 0 && used+preConsumedQuota > limit {
+			return nil, types.NewErrorWithStatusCode(
+				fmt.Errorf("周额度不足, 本周已用: %s, 周额度上限: %s, 需要预扣费: %s",
+					logger.FormatQuota(used), logger.FormatQuota(limit), logger.FormatQuota(preConsumedQuota)),
+				types.ErrorCodeInsufficientUserQuota, http.StatusForbidden,
+				types.ErrOptionWithSkipRetry(), types.ErrOptionWithNoRecordErrorLog())
+		}
+	}
+
 	pref := common.NormalizeBillingPreference(relayInfo.UserSetting.BillingPreference)
 
 	// 钱包路径需要先检查用户额度

@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { Activity, BarChart3, WalletCards } from 'lucide-react'
+import { Activity, BarChart3, Timer, WalletCards } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { getUserAvatarFallback, getUserAvatarStyle } from '@/lib/avatar'
 import { formatCompactNumber, formatQuota } from '@/lib/format'
@@ -100,6 +100,20 @@ export function ProfileHeader({ profile, loading }: ProfileHeaderProps) {
       description: t('Total requests made'),
       icon: Activity,
     },
+    ...(profile.weekly_quota && profile.weekly_quota > 0
+      ? [
+          {
+            label: t('Weekly Quota'),
+            value: `${formatQuota(profile.weekly_quota_used || 0)} / ${formatQuota(profile.weekly_quota)}`,
+            description: profile.weekly_quota_reset_at
+              ? t('Resets at {{date}}', {
+                  date: new Date(profile.weekly_quota_reset_at * 1000).toLocaleDateString(),
+                })
+              : t('Resets every Monday'),
+            icon: Timer,
+          },
+        ]
+      : []),
   ]
 
   return (
@@ -151,7 +165,7 @@ export function ProfileHeader({ profile, loading }: ProfileHeaderProps) {
         </div>
       </CardContent>
       <div className='border-t'>
-        <div className='divide-border/60 grid grid-cols-3 divide-x'>
+        <div className={`divide-border/60 grid divide-x ${stats.length === 4 ? 'grid-cols-4' : 'grid-cols-3'}`}>
           {stats.map((item) => (
             <div key={item.label} className='min-w-0 px-3 py-3 sm:px-5 sm:py-4'>
               <div className='flex items-center gap-2'>

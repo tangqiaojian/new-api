@@ -16,8 +16,20 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { type Table } from '@tanstack/react-table'
+import { Power, PowerOff, Trash2 } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
+import { Button } from '@/components/ui/button'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 import { DataTableBulkActions as BulkActionsToolbar } from '@/components/data-table'
+import { Dialog } from '@/components/dialog'
+import { batchDeleteUsers, batchManageUsers } from '../api'
 import { type User } from '../types'
 
 interface DataTableBulkActionsProps {
@@ -25,9 +37,162 @@ interface DataTableBulkActionsProps {
 }
 
 export function DataTableBulkActions({ table }: DataTableBulkActionsProps) {
+  const { t } = useTranslation()
+  const queryClient = useQueryClient()
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [loading, setLoading] = useState(false)
+
+  const selectedRows = table.getFilteredSelectedRowModel().rows
+  const selectedIds = selectedRows.reduce<number[]>((ids, row) => {
+    const id = (row.original as User).id
+
+    if (typeof id === 'number') {
+      ids.push(id)
+    }
+
+    return ids
+  }, [])
+
+  const handleClearSelection = () => {
+    table.resetRowSelection()
+  }
+
+  const handleEnableAll = async () => {
+    setLoading(true)
+    try {
+      const result = await batchManageUsers(selectedIds, 'enable')
+      if (result.success) {
+        queryClient.invalidateQueries({ queryKey: ['users'] })
+        handleClearSelection()
+      }
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleDisableAll = async () => {
+    setLoading(true)
+    try {
+      const result = await batchManageUsers(selectedIds, 'disable')
+      if (result.success) {
+        queryClient.invalidateQueries({ queryKey: ['users'] })
+        handleClearSelection()
+      }
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleDeleteAll = async () => {
+    setLoading(true)
+    try {
+      const result = await batchDeleteUsers(selectedIds)
+      if (result.success) {
+        setShowDeleteConfirm(false)
+        queryClient.invalidateQueries({ queryKey: ['users'] })
+        handleClearSelection()
+      }
+    } finally {
+      setLoading(false)
+    }
+  }
+
   return (
-    <BulkActionsToolbar table={table} entityName='user'>
-      <></>
-    </BulkActionsToolbar>
+    <>
+      <BulkActionsToolbar table={table} entityName='user'>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                variant='outline'
+                size='icon'
+                onClick={handleEnableAll}
+                disabled={loading}
+                className='size-8'
+                aria-label={t('Enable selected users')}
+                title={t('Enable selected users')}
+              />
+            }
+          >
+            <Power />
+            <span className='sr-only'>{t('Enable selected users')}</span>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>{t('Enable selected users')}</p>
+          </TooltipContent>
+        </Tooltip>
+
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                variant='outline'
+                size='icon'
+                onClick={handleDisableAll}
+                disabled={loading}
+                className='size-8'
+                aria-label={t('Disable selected users')}
+                title={t('Disable selected users')}
+              />
+            }
+          >
+            <PowerOff />
+            <span className='sr-only'>{t('Disable selected users')}</span>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>{t('Disable selected users')}</p>
+          </TooltipContent>
+        </Tooltip>
+
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                variant='destructive'
+                size='icon'
+                onClick={() => setShowDeleteConfirm(true)}
+                disabled={loading}
+                className='size-8'
+                aria-label={t('Delete selected users')}
+                title={t('Delete selected users')}
+              />
+            }
+          >
+            <Trash2 />
+            <span className='sr-only'>{t('Delete selected users')}</span>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>{t('Delete selected users')}</p>
+          </TooltipContent>
+        </Tooltip>
+      </BulkActionsToolbar>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog
+        open={showDeleteConfirm}
+        onOpenChange={setShowDeleteConfirm}
+        title={t('Delete Users?')}
+        description={t(
+          'Are you sure you want to delete {{count}} selected users? This action cannot be undone.',
+          { count: selectedIds.length }
+        )}
+        contentHeight='auto'
+        footer={
+          <>
+            <Button
+              variant='outline'
+              onClick={() => setShowDeleteConfirm(false)}
+            >
+              {t('Cancel')}
+            </Button>
+            <Button variant='destructive' onClick={handleDeleteAll} disabled={loading}>
+              {t('Delete')}
+            </Button>
+          </>
+        }
+      >
+        {' '}
+      </Dialog>
+    </>
   )
 }

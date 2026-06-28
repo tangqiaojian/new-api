@@ -33,6 +33,37 @@ export interface QuotaDataItem {
   quota?: number
 }
 
+// Daily token usage statistics per user
+export interface DailyTokenDataItem {
+  user_id: number
+  username: string
+  date: string // YYYY-MM-DD format
+  prompt_tokens: number
+  completion_tokens: number
+  total_tokens: number
+  request_count: number
+  quota: number
+}
+
+// Daily token usage statistics per model
+export interface DailyModelTokenDataItem {
+  model_name: string
+  date: string
+  prompt_tokens: number
+  completion_tokens: number
+  total_tokens: number
+  request_count: number
+  quota: number
+}
+
+export interface DailyTokensFilters {
+  timeGranularity: TimeGranularity
+  selectedRange: number
+  topUserLimit: number
+}
+
+export type TokenMetricType = 'prompt' | 'completion' | 'total'
+
 export interface FlowQuotaDataItem {
   user_id?: number
   username?: string
@@ -249,6 +280,17 @@ export interface ProcessedChartData {
 export interface ProcessedUserChartData {
   spec_user_rank: VChartSpec
   spec_user_trend: VChartSpec
+}
+
+export interface ProcessedDailyTokensChartData {
+  spec_tokens_trend: VChartSpec
+  spec_tokens_rank: VChartSpec
+}
+
+export interface ProcessedDailyModelTokensChartData {
+  spec_model_trend: VChartSpec
+  spec_model_rank: VChartSpec
+  spec_model_request_count: VChartSpec
 }
 
 // ============================================================================

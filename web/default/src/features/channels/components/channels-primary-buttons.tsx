@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import {
   Plus,
@@ -29,8 +29,11 @@ import {
   SortAsc,
   RefreshCw,
   ArrowUpFromLine,
+  Download,
+  Upload,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -51,6 +54,7 @@ import {
   handleUpdateAllBalances,
 } from '../lib'
 import { useChannels } from './channels-provider'
+import { exportConfig, importConfig } from '../api'
 
 export function ChannelsPrimaryButtons() {
   const { t } = useTranslation()
@@ -65,6 +69,10 @@ export function ChannelsPrimaryButtons() {
   } = useChannels()
   const queryClient = useQueryClient()
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const [showImportDialog, setShowImportDialog] = useState(false)
+  const [exportLoading, setExportLoading] = useState(false)
+  const [importLoading, setImportLoading] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const handleTagModeToggle = (checked: boolean) => {
     localStorage.setItem('enable-tag-mode', String(checked))
@@ -74,6 +82,73 @@ export function ChannelsPrimaryButtons() {
   const handleIdSortToggle = (checked: boolean) => {
     localStorage.setItem('channels-id-sort', String(checked))
     setIdSort(checked)
+  }
+
+  const handleExport = async () => {
+    setExportLoading(true)
+    try {
+      const res = await exportConfig()
+      if (res.success && res.data) {
+        const blob = new Blob([JSON.stringify(res.data, null, 2)], {
+          type: 'application/json',
+        })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `new-api-config-${new Date().toISOString().slice(0, 10)}.json`
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+        URL.revokeObjectURL(url)
+        toast.success(
+          t(
+            'Exported {{count}} channels and pricing configuration',
+            { count: res.data.channels?.length ?? 0 }
+          )
+        )
+      } else {
+        toast.error(res.message || t('Export Failed'))
+      }
+    } catch (err) {
+      toast.error(String(err))
+    } finally {
+      setExportLoading(false)
+    }
+  }
+
+  const handleImportFile = async (file: File) => {
+    setImportLoading(true)
+    try {
+      const text = await file.text()
+      const data = JSON.parse(text)
+      if (!data.version || data.version !== 1) {
+        toast.error(t('Unsupported configuration file version'))
+        return
+      }
+      const res = await importConfig(data)
+      if (res.success) {
+        toast.success(
+          t(
+            'Imported {{channelCount}} channels and {{pricingCount}} pricing maps',
+            {
+              channelCount: res.data?.channel_count ?? 0,
+              pricingCount: res.data?.pricing_map_count ?? 0,
+            }
+          )
+        )
+        queryClient.invalidateQueries({ queryKey: ['channels'] })
+      } else {
+        toast.error(res.message || t('Import Failed'))
+      }
+    } catch (err) {
+      toast.error(
+        err instanceof SyntaxError
+          ? t('Invalid JSON file')
+          : String(err)
+      )
+    } finally {
+      setImportLoading(false)
+    }
   }
 
   return (
@@ -191,6 +266,31 @@ export function ChannelsPrimaryButtons() {
             <DropdownMenuSeparator />
 
             <DropdownMenuItem
+              onClick={handleExport}
+              disabled={exportLoading}
+            >
+              {t('Export Config')}
+              <DropdownMenuShortcut>
+                <Download className='h-4 w-4' />
+              </DropdownMenuShortcut>
+            </DropdownMenuItem>
+
+            <DropdownMenuItem
+              onSelect={(e) => {
+                e.preventDefault()
+                setShowImportDialog(true)
+              }}
+              disabled={importLoading}
+            >
+              {t('Import Config')}
+              <DropdownMenuShortcut>
+                <Upload className='h-4 w-4' />
+              </DropdownMenuShortcut>
+            </DropdownMenuItem>
+
+            <DropdownMenuSeparator />
+
+            <DropdownMenuItem
               onClick={() => {
                 handleFixAbilities(queryClient, (_result) => {
                   // eslint-disable-next-line no-console
@@ -222,6 +322,22 @@ export function ChannelsPrimaryButtons() {
         </DropdownMenu>
       </div>
 
+      {/* Hidden file input for import */}
+      <input
+        ref={fileInputRef}
+        type='file'
+        accept='.json'
+        className='hidden'
+        onChange={(e) => {
+          const file = e.target.files?.[0]
+          if (file) {
+            handleImportFile(file)
+          }
+          // Reset input so the same file can be re-selected
+          e.target.value = ''
+        }}
+      />
+
       <ConfirmDialog
         open={showDeleteDialog}
         onOpenChange={setShowDeleteDialog}
@@ -236,6 +352,20 @@ export function ChannelsPrimaryButtons() {
             console.log(`Deleted ${_count} channels`)
           })
           setShowDeleteDialog(false)
+        }}
+      />
+
+      <ConfirmDialog
+        open={showImportDialog}
+        onOpenChange={setShowImportDialog}
+        title={t('Import Configuration?')}
+        desc={t(
+          'This will import channels and pricing configuration from the selected file. Existing channels will not be affected, but pricing settings will be overwritten. This action cannot be undone.'
+        )}
+        destructive
+        handleConfirm={() => {
+          setShowImportDialog(false)
+          fileInputRef.current?.click()
         }}
       />
     </>

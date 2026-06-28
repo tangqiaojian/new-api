@@ -31,6 +31,21 @@ func ReturnPreConsumedQuota(c *gin.Context, relayInfo *relaycommon.RelayInfo) {
 // PreConsumeQuota checks if the user has enough quota to pre-consume.
 // It returns the pre-consumed quota if successful, or an error if not.
 func PreConsumeQuota(c *gin.Context, preConsumedQuota int, relayInfo *relaycommon.RelayInfo) *types.NewAPIError {
+	// 周额度预检查
+	if relayInfo.UserId > 0 {
+		limit, used, err := model.CheckAndResetWeeklyQuota(relayInfo.UserId)
+		if err != nil {
+			return types.NewError(err, types.ErrorCodeQueryDataError, types.ErrOptionWithSkipRetry())
+		}
+		if limit > 0 && used+preConsumedQuota > limit {
+			return types.NewErrorWithStatusCode(
+				fmt.Errorf("周额度不足, 本周已用: %s, 周额度上限: %s, 需要预扣费: %s",
+					logger.FormatQuota(used), logger.FormatQuota(limit), logger.FormatQuota(preConsumedQuota)),
+				types.ErrorCodeInsufficientUserQuota, http.StatusForbidden,
+				types.ErrOptionWithSkipRetry(), types.ErrOptionWithNoRecordErrorLog())
+		}
+	}
+
 	userQuota, err := model.GetUserQuota(relayInfo.UserId, false)
 	if err != nil {
 		return types.NewError(err, types.ErrorCodeQueryDataError, types.ErrOptionWithSkipRetry())
