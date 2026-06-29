@@ -16,7 +16,14 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { createContext, useContext, useState, useCallback } from 'react'
+import {
+  createContext,
+  useContext,
+  useState,
+  useCallback,
+  useEffect,
+  useRef,
+} from 'react'
 
 export const AUTO_REFRESH_OPTIONS = [
   { value: 15_000, labelKey: 'Every 15s' },
@@ -64,6 +71,10 @@ interface AutoRefreshContextValue {
   setSelectedInterval: (interval: AutoRefreshInterval) => void
   autoRefreshEnabled: boolean
   setAutoRefreshEnabled: (enabled: boolean) => void
+  /** Seconds remaining until next auto-refresh (0 when disabled or idle). */
+  countdown: number
+  /** Reset the countdown timer (call on manual refresh). */
+  resetCountdown: () => void
 }
 
 const AutoRefreshContext = createContext<AutoRefreshContextValue>({
@@ -72,6 +83,8 @@ const AutoRefreshContext = createContext<AutoRefreshContextValue>({
   setSelectedInterval: () => {},
   autoRefreshEnabled: false,
   setAutoRefreshEnabled: () => {},
+  countdown: 0,
+  resetCountdown: () => {},
 })
 
 export function useAutoRefresh() {
@@ -84,11 +97,54 @@ export function useAutoRefresh() {
 
 export { AutoRefreshContext }
 
+/**
+ * Live countdown hook. Recalculates `countdown` seconds each tick.
+ * Resets whenever `interval` changes, `enabled` toggles, or `resetKey` increments.
+ */
+function useAutoRefreshCountdown(
+  interval: number,
+  enabled: boolean,
+  resetKey: number
+): number {
+  const [countdown, setCountdown] = useState(() =>
+    enabled ? Math.floor(interval / 1000) : 0
+  )
+  const lastResetRef = useRef(Date.now())
+  const intervalSec = Math.floor(interval / 1000)
+
+  // Reset countdown when interval, enabled, or resetKey changes
+  useEffect(() => {
+    lastResetRef.current = Date.now()
+    setCountdown(enabled ? intervalSec : 0)
+  }, [interval, enabled, intervalSec, resetKey])
+
+  // Tick every 250ms
+  useEffect(() => {
+    if (!enabled) return
+
+    const timer = setInterval(() => {
+      const elapsed = Math.floor((Date.now() - lastResetRef.current) / 1000)
+      const remaining = Math.max(0, intervalSec - elapsed)
+      if (remaining <= 0) {
+        lastResetRef.current = Date.now()
+        setCountdown(intervalSec)
+      } else {
+        setCountdown(remaining)
+      }
+    }, 250)
+
+    return () => clearInterval(timer)
+  }, [enabled, intervalSec])
+
+  return countdown
+}
+
 export function useAutoRefreshState(): AutoRefreshContextValue {
   const [autoRefreshEnabled, setAutoRefreshEnabledState] =
     useState<boolean>(loadSavedEnabled)
   const [selectedInterval, setSelectedIntervalState] =
     useState<AutoRefreshInterval>(loadSavedInterval)
+  const [resetKey, setResetKey] = useState(0)
 
   const setAutoRefreshEnabled = useCallback((enabled: boolean) => {
     setAutoRefreshEnabledState(enabled)
@@ -108,7 +164,16 @@ export function useAutoRefreshState(): AutoRefreshContextValue {
     }
   }, [])
 
+  const resetCountdown = useCallback(() => {
+    setResetKey((k) => k + 1)
+  }, [])
+
   const refetchInterval = autoRefreshEnabled ? selectedInterval : 0
+  const countdown = useAutoRefreshCountdown(
+    selectedInterval,
+    autoRefreshEnabled,
+    resetKey
+  )
 
   return {
     refetchInterval,
@@ -116,5 +181,7 @@ export function useAutoRefreshState(): AutoRefreshContextValue {
     setSelectedInterval,
     autoRefreshEnabled,
     setAutoRefreshEnabled,
+    countdown,
+    resetCountdown,
   }
 }

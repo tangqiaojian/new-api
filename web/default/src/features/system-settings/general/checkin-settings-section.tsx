@@ -22,6 +22,7 @@ import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { z } from 'zod'
 
+import { getCurrencyLabel } from '@/lib/currency'
 import {
   Form,
   FormControl,
@@ -61,6 +62,7 @@ export function CheckinSettingsSection({
   }
 }) {
   const { t } = useTranslation()
+  const currencyLabel = getCurrencyLabel()
   const updateOption = useUpdateOption()
 
   const form = useForm<Values>({
@@ -157,6 +159,7 @@ export function CheckinSettingsSection({
                       <Input
                         type='number'
                         min={0}
+                        suffix={currencyLabel}
                         placeholder={t('1000')}
                         {...field}
                       />
@@ -179,6 +182,7 @@ export function CheckinSettingsSection({
                       <Input
                         type='number'
                         min={0}
+                        suffix={currencyLabel}
                         placeholder={t('10000')}
                         {...field}
                       />

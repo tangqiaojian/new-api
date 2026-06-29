@@ -22,6 +22,7 @@ import type { Resolver } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import * as z from 'zod'
 
+import { getCurrencyLabel } from '@/lib/currency'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import {
   Form,
@@ -82,6 +83,7 @@ export function QuotaSettingsSection({
 }: QuotaSettingsSectionProps) {
   const { t } = useTranslation()
   const updateOption = useUpdateOption()
+  const currencyLabel = getCurrencyLabel()
   const handleNumberChange =
     (onChange: (value: QuotaInputValue) => void) =>
     (event: ChangeEvent<HTMLInputElement>) => {
@@ -138,6 +140,7 @@ export function QuotaSettingsSection({
                   <FormControl>
                     <Input
                       type='number'
+                      suffix={currencyLabel}
                       value={field.value ?? ''}
                       onChange={handleNumberChange(field.onChange)}
                       name={field.name}
@@ -167,6 +170,7 @@ export function QuotaSettingsSection({
                   <FormControl>
                     <Input
                       type='number'
+                      suffix={currencyLabel}
                       value={field.value ?? ''}
                       onChange={handleNumberChange(field.onChange)}
                       name={field.name}
@@ -191,6 +195,7 @@ export function QuotaSettingsSection({
                   <FormControl>
                     <Input
                       type='number'
+                      suffix={currencyLabel}
                       value={field.value ?? ''}
                       onChange={handleNumberChange(field.onChange)}
                       name={field.name}
@@ -220,6 +225,7 @@ export function QuotaSettingsSection({
                   <FormControl>
                     <Input
                       type='number'
+                      suffix={currencyLabel}
                       value={field.value ?? ''}
                       onChange={handleNumberChange(field.onChange)}
                       name={field.name}

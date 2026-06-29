@@ -458,18 +458,19 @@ export function UsersMutateDrawer({
 	                    render={({ field }) => (
 	                      <FormItem>
 	                        <FormLabel>{t('Weekly Quota Limit (Tokens)')}</FormLabel>
-	                        <div className='flex gap-2'>
-	                          <FormControl>
-	                            <Input
-	                              type='number'
-	                              min={0}
-	                              step={1}
-	                              value={String(field.value || 0)}
-	                              onChange={(e) => {
-	                                field.onChange(parseInt(e.target.value) || 0)
-	                              }}
-	                              className='flex-1'
-	                            />
+		                        <div className='flex gap-2'>
+		                          <FormControl>
+		                            <Input
+		                              type='number'
+		                              min={0}
+		                              step={1}
+		                              suffix='Tokens'
+		                              value={String(field.value || 0)}
+		                              onChange={(e) => {
+		                                field.onChange(parseInt(e.target.value) || 0)
+		                              }}
+		                              className='flex-1'
+		                            />
 	                          </FormControl>
 	                          <Button
 	                            type='button'
@@ -520,32 +521,34 @@ export function UsersMutateDrawer({
 	                          <FormItem>
 	                            <FormLabel>{t('Total RPM')}</FormLabel>
 	                            <FormControl>
-	                              <Input
-	                                type='number'
-	                                min={0}
-	                                step={1}
-	                                value={String(field.value || 0)}
-	                                onChange={(e) => {
-	                                  field.onChange(parseInt(e.target.value) || 0)
-	                                }}
-	                              />
-	                            </FormControl>
-	                            <FormMessage />
-	                          </FormItem>
-	                        )}
-	                      />
-	                      <FormField
-	                        control={form.control}
-	                        name='rate_limit_success'
-	                        render={({ field }) => (
-	                          <FormItem>
-	                            <FormLabel>{t('Success RPM')}</FormLabel>
-	                            <FormControl>
-	                              <Input
-	                                type='number'
-	                                min={0}
-	                                step={1}
-	                                value={String(field.value || 0)}
+                              <Input
+                                type='number'
+                                min={0}
+                                step={1}
+                                suffix='RPM'
+                                value={String(field.value || 0)}
+                                onChange={(e) => {
+                                  field.onChange(parseInt(e.target.value) || 0)
+                                }}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name='rate_limit_success'
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>{t('Success RPM')}</FormLabel>
+                            <FormControl>
+                              <Input
+                                type='number'
+                                min={0}
+                                step={1}
+                                suffix='RPM'
+                                value={String(field.value || 0)}
 	                                onChange={(e) => {
 	                                  field.onChange(parseInt(e.target.value) || 0)
 	                                }}
