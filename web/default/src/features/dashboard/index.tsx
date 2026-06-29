@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { getRouteApi, useNavigate } from '@tanstack/react-router'
-import { Eye, EyeOff, RotateCw } from 'lucide-react'
+import { Eye, EyeOff, RotateCw, Check } from 'lucide-react'
 import { useState, useCallback, useMemo, lazy, Suspense } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQueryClient } from '@tanstack/react-query'
@@ -25,7 +25,9 @@ import { useQueryClient } from '@tanstack/react-query'
 import { SectionPageLayout } from '@/components/layout'
 import { FadeIn } from '@/components/page-transition'
 import { Button } from '@/components/ui/button'
+import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   Tooltip,
@@ -38,10 +40,7 @@ import {
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
+  DropdownMenuItem,
 } from '@/components/ui/dropdown-menu'
 import { ModelsChartPreferences } from './components/models/models-chart-preferences'
 import { ModelsFilter } from './components/models/models-filter-dialog'
@@ -200,7 +199,12 @@ const SECTION_META: Record<DashboardSectionId, { titleKey: string }> = {
 function DashboardAutoRefreshControls() {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
-  const { refetchInterval, setRefetchInterval } = useAutoRefreshState()
+  const {
+    selectedInterval,
+    setSelectedInterval,
+    autoRefreshEnabled,
+    setAutoRefreshEnabled,
+  } = useAutoRefreshState()
 
   const handleRefresh = useCallback(() => {
     void queryClient.invalidateQueries({ queryKey: ['dashboard'] })
@@ -208,7 +212,7 @@ function DashboardAutoRefreshControls() {
   }, [queryClient])
 
   return (
-    <div className='flex items-center gap-1'>
+    <div className='flex items-center gap-0.5'>
       <Tooltip>
         <TooltipTrigger
           render={
@@ -225,44 +229,58 @@ function DashboardAutoRefreshControls() {
         </TooltipTrigger>
         <TooltipContent>{t('Refresh')}</TooltipContent>
       </Tooltip>
-      <DropdownMenu>
-        <DropdownMenuTrigger
-          render={
-            <Button
-              variant='ghost'
-              size='sm'
-              className='text-muted-foreground hover:text-foreground h-8 gap-1.5 px-2'
-            />
-          }
+
+      <div className='mx-1 h-4 w-px bg-border' />
+
+      <div className='flex items-center gap-1.5'>
+        <Switch
+          checked={autoRefreshEnabled}
+          onCheckedChange={setAutoRefreshEnabled}
+          id='dashboard-auto-refresh-switch'
+        />
+        <Label
+          htmlFor='dashboard-auto-refresh-switch'
+          className='text-muted-foreground cursor-pointer text-xs font-normal'
         >
-          <span className='text-xs'>{t('Auto Refresh')}</span>
-          <span className='text-muted-foreground/60 text-xs'>
-            {refetchInterval === 0
-              ? t('Off')
-              : t(
-                  AUTO_REFRESH_OPTIONS.find(
-                    (o) => o.value === refetchInterval
-                  )?.labelKey ?? 'Off'
-                )}
-          </span>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align='end'>
-          <DropdownMenuLabel>{t('Auto Refresh')}</DropdownMenuLabel>
-          <DropdownMenuSeparator />
-          <DropdownMenuRadioGroup
-            value={String(refetchInterval)}
-            onValueChange={(val) =>
-              setRefetchInterval(Number(val) as AutoRefreshInterval)
+          {t('Auto Refresh')}
+        </Label>
+      </div>
+
+      {autoRefreshEnabled && (
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            render={
+              <Button
+                variant='ghost'
+                size='sm'
+                className='text-muted-foreground hover:text-foreground h-8 gap-1.5 px-2 text-xs'
+              />
             }
           >
+            {t(
+              AUTO_REFRESH_OPTIONS.find(
+                (o) => o.value === selectedInterval
+              )?.labelKey ?? 'Every 30s'
+            )}
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align='end'>
             {AUTO_REFRESH_OPTIONS.map((opt) => (
-              <DropdownMenuRadioItem key={opt.value} value={String(opt.value)}>
+              <DropdownMenuItem
+                key={opt.value}
+                onClick={() => setSelectedInterval(opt.value)}
+                className='flex items-center gap-2'
+              >
+                <span className='w-4'>
+                  {selectedInterval === opt.value && (
+                    <Check className='size-3.5' />
+                  )}
+                </span>
                 {t(opt.labelKey)}
-              </DropdownMenuRadioItem>
+              </DropdownMenuItem>
             ))}
-          </DropdownMenuRadioGroup>
-        </DropdownMenuContent>
-      </DropdownMenu>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
     </div>
   )
 }
@@ -275,7 +293,7 @@ export function Dashboard() {
   const activeSection = (params.section ??
     DASHBOARD_DEFAULT_SECTION) as DashboardSectionId
 
-  const { refetchInterval, setRefetchInterval } = useAutoRefreshState()
+  const autoRefresh = useAutoRefreshState()
 
   const [modelData, setModelData] = useState<QuotaDataItem[]>([])
   const [dataLoading, setDataLoading] = useState(false)
@@ -402,12 +420,12 @@ export function Dashboard() {
   const sectionActions = modelActions ?? flowActions
 
   return (
-    <AutoRefreshContext.Provider value={{ refetchInterval, setRefetchInterval }}>
+    <AutoRefreshContext.Provider value={autoRefresh}>
       <SectionPageLayout>
-        <div className='flex items-center gap-2'>
-          <SectionPageLayout.Title>{t(meta.titleKey)}</SectionPageLayout.Title>
+        <SectionPageLayout.Title>{t(meta.titleKey)}</SectionPageLayout.Title>
+        <SectionPageLayout.Actions>
           <DashboardAutoRefreshControls />
-        </div>
+        </SectionPageLayout.Actions>
         <SectionPageLayout.Content>
         <div className='space-y-3 sm:space-y-4'>
           {activeSection !== 'overview' && (

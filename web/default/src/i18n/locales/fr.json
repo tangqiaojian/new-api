@@ -493,6 +493,7 @@
         "Auto Group Chain": "Chaîne de groupes automatique",
         "Auto refresh": "Actualisation automatique",
         "Auto Refresh": "Actualisation automatique",
+        "Auto Refresh Interval": "Intervalle d'actualisation automatique",
         "Auto Sync Upstream Models": "Synchronisation automatique des modèles en amont",
         "Auto-disable rules": "Règles de désactivation automatique",
         "Auto-disable status codes": "Codes de statut de désactivation auto",

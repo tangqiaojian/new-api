@@ -2,7 +2,7 @@ package common
 
 import (
 	"crypto/tls"
-	//"os"
+	"os"
 	//"strconv"
 	"strings"
 	"sync"
@@ -72,8 +72,18 @@ var DefaultCollapseSidebar = false // default value of collapse sidebar
 
 // Any options with "Secret", "Token" in its key won't be return by GetOptions
 
-var SessionSecret = uuid.New().String()
-var CryptoSecret = uuid.New().String()
+var SessionSecret = func() string {
+	if s := os.Getenv("SESSION_SECRET"); s != "" {
+		return s
+	}
+	return uuid.New().String()
+}()
+var CryptoSecret = func() string {
+	if s := os.Getenv("CRYPTO_SECRET"); s != "" {
+		return s
+	}
+	return uuid.New().String()
+}()
 var SessionCookieSecure = false
 var SessionCookieTrustedURLs []string
 
