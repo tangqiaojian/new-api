@@ -71,6 +71,11 @@ const TOKEN_CHARTS: {
     labelKey: 'User Token Ranking',
     specKey: 'spec_tokens_rank',
   },
+  {
+    value: 'pie',
+    labelKey: 'User Token Distribution',
+    specKey: 'spec_tokens_pie',
+  },
 ]
 
 const TOP_USER_LIMIT_OPTIONS = [5, 10, 20, 50]

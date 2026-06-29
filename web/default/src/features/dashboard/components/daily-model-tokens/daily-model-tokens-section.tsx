@@ -76,6 +76,11 @@ const MODEL_CHARTS: {
     labelKey: 'Model Request Count Ranking',
     specKey: 'spec_model_request_count',
   },
+  {
+    value: 'pie',
+    labelKey: 'Model Token Distribution',
+    specKey: 'spec_model_pie',
+  },
 ]
 
 const TOP_MODEL_LIMIT_OPTIONS = [5, 10, 20, 50]
