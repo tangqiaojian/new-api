@@ -1034,6 +1034,20 @@ export function processDailyTokensChartData(
       color: { type: 'ordinal', range: TOKEN_COLORS },
       background: { fill: 'transparent' },
     },
+    spec_tokens_pie: {
+      type: 'pie',
+      data: [{ id: 'tokensPieData', values: [] }],
+      valueField: 'Tokens',
+      categoryField: 'User',
+      title: {
+        visible: true,
+        text: tt('User Token Distribution'),
+        subtext: tt('No data available'),
+      },
+      legends: { visible: true, orient: 'left' },
+      label: { visible: false },
+      background: { fill: 'transparent' },
+    },
   }
 
   if (!data || data.length === 0) return emptyResult
@@ -1228,6 +1242,36 @@ export function processDailyTokensChartData(
       background: { fill: 'transparent' },
       animation: true,
     },
+    spec_tokens_pie: {
+      type: 'pie',
+      data: [{ id: 'tokensPieData', values: rankValues }],
+      valueField: 'Tokens',
+      categoryField: 'User',
+      outerRadius: 0.8,
+      innerRadius: 0.5,
+      padAngle: 0.6,
+      title: {
+        visible: true,
+        text: tt('User Token Distribution'),
+        subtext: `${metricLabel} - ${tt('Total:')} ${formatInt(totalTokens)}`,
+      },
+      legends: { visible: true, orient: 'left' },
+      label: { visible: true },
+      color: { specified: userColorMap },
+      tooltip: {
+        mark: {
+          content: [
+            {
+              key: (datum: Record<string, unknown>) => datum?.User,
+              value: (datum: Record<string, unknown>) =>
+                formatInt(Number(datum?.Tokens) || 0),
+            },
+          ],
+        },
+      },
+      background: { fill: 'transparent' },
+      animation: true,
+    },
   }
 }
 
@@ -1311,6 +1355,20 @@ export function processDailyModelTokensChartData(
       },
       legends: { visible: false },
       color: { type: 'ordinal', range: TOKEN_COLORS },
+      background: { fill: 'transparent' },
+    },
+    spec_model_pie: {
+      type: 'pie',
+      data: [{ id: 'modelPieData', values: [] }],
+      valueField: 'Tokens',
+      categoryField: 'Model',
+      title: {
+        visible: true,
+        text: tt('Model Token Distribution'),
+        subtext: tt('No data available'),
+      },
+      legends: { visible: true, orient: 'left' },
+      label: { visible: false },
       background: { fill: 'transparent' },
     },
   }
@@ -1558,5 +1616,35 @@ export function processDailyModelTokensChartData(
         animation: true,
       }
     })(),
+    spec_model_pie: {
+      type: 'pie',
+      data: [{ id: 'modelPieData', values: rankValues }],
+      valueField: 'Tokens',
+      categoryField: 'Model',
+      outerRadius: 0.8,
+      innerRadius: 0.5,
+      padAngle: 0.6,
+      title: {
+        visible: true,
+        text: tt('Model Token Distribution'),
+        subtext: `${metricLabel} - ${tt('Total:')} ${formatInt(totalTokens)}`,
+      },
+      legends: { visible: true, orient: 'left' },
+      label: { visible: true },
+      color: { specified: modelColorMap },
+      tooltip: {
+        mark: {
+          content: [
+            {
+              key: (datum: Record<string, unknown>) => datum?.Model,
+              value: (datum: Record<string, unknown>) =>
+                formatInt(Number(datum?.Tokens) || 0),
+            },
+          ],
+        },
+      },
+      background: { fill: 'transparent' },
+      animation: true,
+    },
   }
 }

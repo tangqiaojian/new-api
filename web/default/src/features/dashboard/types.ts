@@ -285,12 +285,14 @@ export interface ProcessedUserChartData {
 export interface ProcessedDailyTokensChartData {
   spec_tokens_trend: VChartSpec
   spec_tokens_rank: VChartSpec
+  spec_tokens_pie: VChartSpec
 }
 
 export interface ProcessedDailyModelTokensChartData {
   spec_model_trend: VChartSpec
   spec_model_rank: VChartSpec
   spec_model_request_count: VChartSpec
+  spec_model_pie: VChartSpec
 }
 
 // ============================================================================
