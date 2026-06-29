@@ -203,12 +203,15 @@ function DashboardAutoRefreshControls() {
     setSelectedInterval,
     autoRefreshEnabled,
     setAutoRefreshEnabled,
+    countdown,
+    resetCountdown,
   } = useAutoRefreshState()
 
   const handleRefresh = useCallback(() => {
     void queryClient.invalidateQueries({ queryKey: ['dashboard'] })
     void queryClient.invalidateQueries({ queryKey: ['perf-metrics-summary'] })
-  }, [queryClient])
+    resetCountdown()
+  }, [queryClient, resetCountdown])
 
   return (
     <div className='flex items-center gap-0.5'>
@@ -228,6 +231,12 @@ function DashboardAutoRefreshControls() {
         </TooltipTrigger>
         <TooltipContent>{t('Refresh')}</TooltipContent>
       </Tooltip>
+
+      {autoRefreshEnabled && (
+        <span className='text-muted-foreground/60 tabular-nums text-[10px] min-w-[2ch] text-center'>
+          {countdown}
+        </span>
+      )}
 
       <div className='mx-1 h-4 w-px bg-border' />
 

@@ -20,6 +20,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Bell, Loader2, Mail, Server, Webhook } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
+import { getCurrencyLabel } from '@/lib/currency'
 import { ROLE } from '@/lib/roles'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -64,6 +65,7 @@ interface NotificationTabProps {
 
 export function NotificationTab({ profile, onUpdate }: NotificationTabProps) {
   const { t } = useTranslation()
+  const currencyLabel = getCurrencyLabel()
   const isAdmin = (profile?.role ?? 0) >= ROLE.ADMIN
   const [loading, setLoading] = useState(false)
   const [settings, setSettings] = useState<UserSettings>({
@@ -174,6 +176,7 @@ export function NotificationTab({ profile, onUpdate }: NotificationTabProps) {
         <Input
           id='threshold'
           type='number'
+          suffix={currencyLabel}
           className='h-9'
           value={settings.quota_warning_threshold}
           onChange={(e) =>
