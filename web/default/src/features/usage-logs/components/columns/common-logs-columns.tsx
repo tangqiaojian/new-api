@@ -792,6 +792,7 @@ export function useCommonLogsColumns(isAdmin: boolean, isSuperAdmin: boolean): C
 
         const quotaStr = formatLogQuota(quota)
         const quotaDisplay = splitQuotaDisplay(quotaStr)
+        const totalTokens = log.prompt_tokens + log.completion_tokens
 
         return (
           <div className='flex flex-col gap-0.5'>
@@ -801,6 +802,11 @@ export function useCommonLogsColumns(isAdmin: boolean, isSuperAdmin: boolean): C
               )}
               <span>{quotaDisplay.amount}</span>
             </span>
+            {totalTokens > 0 && (
+              <span className='text-muted-foreground/60 pl-0.5 text-[10px] font-medium tabular-nums'>
+                {totalTokens.toLocaleString()} tokens
+              </span>
+            )}
           </div>
         )
       },
