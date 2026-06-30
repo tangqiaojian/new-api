@@ -721,10 +721,9 @@ export function processUserChartData(
     spec_user_rank: {
       type: 'bar',
       data: [{ id: 'userRankData', values: [] }],
-      xField: 'rawQuota',
-      yField: 'User',
+      xField: 'User',
+      yField: 'rawQuota',
       seriesField: 'User',
-      direction: 'horizontal',
       title: {
         visible: true,
         text: tt('User Consumption Ranking'),
@@ -820,10 +819,9 @@ export function processUserChartData(
     spec_user_rank: {
       type: 'bar',
       data: [{ id: 'userRankData', values: rankValues }],
-      xField: 'rawQuota',
-      yField: 'User',
+      xField: 'User',
+      yField: 'rawQuota',
       seriesField: 'User',
-      direction: 'horizontal',
       title: {
         visible: true,
         text: tt('User Consumption Ranking'),
@@ -835,13 +833,13 @@ export function processUserChartData(
       },
       label: {
         visible: true,
-        position: 'outside',
+        position: 'top',
         formatMethod: (value: number) => formatVal(value),
         style: { fontSize: 11 },
       },
       axes: [
-        { orient: 'left', type: 'band' },
-        { orient: 'bottom', type: 'linear', visible: false },
+        { orient: 'bottom', type: 'band' },
+        { orient: 'left', type: 'linear' },
       ],
       tooltip: {
         mark: {
@@ -1021,10 +1019,9 @@ export function processDailyTokensChartData(
     spec_tokens_rank: {
       type: 'bar',
       data: [{ id: 'tokensRankData', values: [] }],
-      xField: 'Tokens',
-      yField: 'User',
+      xField: 'User',
+      yField: 'Tokens',
       seriesField: 'User',
-      direction: 'horizontal',
       title: {
         visible: true,
         text: tt('User Token Ranking'),
@@ -1204,10 +1201,9 @@ export function processDailyTokensChartData(
     spec_tokens_rank: {
       type: 'bar',
       data: [{ id: 'tokensRankData', values: rankValues }],
-      xField: 'Tokens',
-      yField: 'User',
+      xField: 'User',
+      yField: 'Tokens',
       seriesField: 'User',
-      direction: 'horizontal',
       title: {
         visible: true,
         text: tt('User Token Ranking'),
@@ -1219,13 +1215,13 @@ export function processDailyTokensChartData(
       },
       label: {
         visible: true,
-        position: 'outside',
+        position: 'top',
         formatMethod: (value: number) => formatInt(value),
         style: { fontSize: 11 },
       },
       axes: [
-        { orient: 'left', type: 'band' },
-        { orient: 'bottom', type: 'linear', visible: false },
+        { orient: 'bottom', type: 'band' },
+        { orient: 'left', type: 'linear' },
       ],
       tooltip: {
         mark: {
@@ -1328,10 +1324,9 @@ export function processDailyModelTokensChartData(
     spec_model_rank: {
       type: 'bar',
       data: [{ id: 'modelRankData', values: [] }],
-      xField: 'Tokens',
-      yField: 'Model',
+      xField: 'Model',
+      yField: 'Tokens',
       seriesField: 'Model',
-      direction: 'horizontal',
       title: {
         visible: true,
         text: tt('Model Token Ranking'),
@@ -1344,10 +1339,9 @@ export function processDailyModelTokensChartData(
     spec_model_request_count: {
       type: 'bar',
       data: [{ id: 'modelRequestCountData', values: [] }],
-      xField: 'Requests',
-      yField: 'Model',
+      xField: 'Model',
+      yField: 'Requests',
       seriesField: 'Model',
-      direction: 'horizontal',
       title: {
         visible: true,
         text: tt('Model Request Count Ranking'),
@@ -1530,10 +1524,9 @@ export function processDailyModelTokensChartData(
     spec_model_rank: {
       type: 'bar',
       data: [{ id: 'modelRankData', values: rankValues }],
-      xField: 'Tokens',
-      yField: 'Model',
+      xField: 'Model',
+      yField: 'Tokens',
       seriesField: 'Model',
-      direction: 'horizontal',
       title: {
         visible: true,
         text: tt('Model Token Ranking'),
@@ -1545,13 +1538,13 @@ export function processDailyModelTokensChartData(
       },
       label: {
         visible: true,
-        position: 'outside',
+        position: 'top',
         formatMethod: (value: number) => formatInt(value),
         style: { fontSize: 11 },
       },
       axes: [
-        { orient: 'left', type: 'band' },
-        { orient: 'bottom', type: 'linear', visible: false },
+        { orient: 'bottom', type: 'band' },
+        { orient: 'left', type: 'linear' },
       ],
       tooltip: {
         mark: {
@@ -1577,10 +1570,9 @@ export function processDailyModelTokensChartData(
       return {
         type: 'bar',
         data: [{ id: 'modelRequestCountData', values: requestRankValues }],
-        xField: 'Requests',
-        yField: 'Model',
+        xField: 'Model',
+        yField: 'Requests',
         seriesField: 'Model',
-        direction: 'horizontal',
         title: {
           visible: true,
           text: tt('Model Request Count Ranking'),
@@ -1592,13 +1584,13 @@ export function processDailyModelTokensChartData(
         },
         label: {
           visible: true,
-          position: 'outside',
+          position: 'top',
           formatMethod: (value: number) => formatInt(value),
           style: { fontSize: 11 },
         },
         axes: [
-          { orient: 'left', type: 'band' },
-          { orient: 'bottom', type: 'linear', visible: false },
+          { orient: 'bottom', type: 'band' },
+          { orient: 'left', type: 'linear' },
         ],
         tooltip: {
           mark: {
