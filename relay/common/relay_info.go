@@ -115,6 +115,7 @@ type RelayInfo struct {
 	IsFirstRequest         bool
 	AudioUsage             bool
 	ReasoningEffort        string
+	APIReasoningEffort     string
 	UserSetting            dto.UserSetting
 	UserEmail              string
 	UserQuota              int
@@ -431,6 +432,37 @@ func GenRelayInfoOpenAI(c *gin.Context, request dto.Request) *RelayInfo {
 	return info
 }
 
+func extractAPIReasoningEffort(request dto.Request) string {
+	switch req := request.(type) {
+	case *dto.GeneralOpenAIRequest:
+		if req == nil {
+			return ""
+		}
+		if effort := strings.TrimSpace(req.ReasoningEffort); effort != "" {
+			return effort
+		}
+		if len(req.Reasoning) > 0 {
+			effort := strings.TrimSpace(gjson.GetBytes(req.Reasoning, "effort").String())
+			if effort != "" {
+				return effort
+			}
+		}
+	case *dto.OpenAIResponsesRequest:
+		if req == nil {
+			return ""
+		}
+		if req.Reasoning != nil {
+			return strings.TrimSpace(req.Reasoning.Effort)
+		}
+	case *dto.ClaudeRequest:
+		if req == nil {
+			return ""
+		}
+		return strings.TrimSpace(req.GetEfforts())
+	}
+	return ""
+}
+
 func genBaseRelayInfo(c *gin.Context, request dto.Request) *RelayInfo {
 
 	//channelType := common.GetContextKeyInt(c, constant.ContextKeyChannelType)
@@ -461,6 +493,7 @@ func genBaseRelayInfo(c *gin.Context, request dto.Request) *RelayInfo {
 	if reqId == "" {
 		reqId = common.NewRequestId()
 	}
+	apiReasoningEffort := extractAPIReasoningEffort(request)
 	info := &RelayInfo{
 		Request: request,
 
@@ -478,14 +511,14 @@ func genBaseRelayInfo(c *gin.Context, request dto.Request) *RelayInfo {
 		TokenUnlimited: common.GetContextKeyBool(c, constant.ContextKeyTokenUnlimited),
 		TokenGroup:     tokenGroup,
 
-		isFirstResponse: true,
-		RelayMode:       relayconstant.Path2RelayMode(c.Request.URL.Path),
-		RequestURLPath:  c.Request.URL.String(),
-		RequestHeaders:  cloneRequestHeaders(c),
-		IsStream:        isStream,
-
-		StartTime:         startTime,
-		FirstResponseTime: startTime.Add(-time.Second),
+		isFirstResponse:    true,
+		RelayMode:          relayconstant.Path2RelayMode(c.Request.URL.Path),
+		RequestURLPath:     c.Request.URL.String(),
+		RequestHeaders:     cloneRequestHeaders(c),
+		IsStream:           isStream,
+		APIReasoningEffort: apiReasoningEffort,
+		StartTime:          startTime,
+		FirstResponseTime:  startTime.Add(-time.Second),
 		ThinkingContentInfo: ThinkingContentInfo{
 			IsFirstThinkingContent:  true,
 			SendLastThinkingContent: false,

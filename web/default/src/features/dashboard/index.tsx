@@ -50,7 +50,6 @@ import {
   AUTO_REFRESH_OPTIONS,
   useAutoRefreshState,
 } from './hooks/use-auto-refresh'
-import type { AutoRefreshInterval } from './hooks/use-auto-refresh'
 import {
   buildDefaultDashboardFilters,
   getDefaultDays,
