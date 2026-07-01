@@ -113,6 +113,16 @@ func assignDisplayLogIds(logs []*Log, startIdx int) {
 	}
 }
 
+func stripSuperAdminOnlyLogFields(otherMap map[string]interface{}, userRole int) {
+	if otherMap == nil || userRole >= common.RoleRootUser {
+		return
+	}
+	delete(otherMap, "request_headers")
+	delete(otherMap, "request_body")
+	delete(otherMap, "is_model_mapped")
+	delete(otherMap, "upstream_model_name")
+}
+
 func formatUserLogs(logs []*Log, startIdx int, userRole int) {
 	for i := range logs {
 		logs[i].ChannelName = ""
@@ -125,19 +135,15 @@ func formatUserLogs(logs []*Log, startIdx int, userRole int) {
 			delete(otherMap, "audit_info")
 			// delete(otherMap, "reject_reason")
 			delete(otherMap, "stream_status")
-			// Non-super-admin users must not see request debug info.
-			if userRole < common.RoleRootUser {
-				delete(otherMap, "request_headers")
-				delete(otherMap, "request_body")
-			}
+			stripSuperAdminOnlyLogFields(otherMap, userRole)
 		}
 		logs[i].Other = common.MapToJsonStr(otherMap)
 	}
 	assignDisplayLogIds(logs, startIdx)
 }
 
-// FilterSuperAdminFields removes super-admin-only fields (request_headers,
-// request_body) from logs when the requesting user is not a super admin.
+// FilterSuperAdminFields removes super-admin-only fields from logs when the
+// requesting user is not a super admin.
 func FilterSuperAdminFields(logs []*Log, userRole int) {
 	if userRole >= common.RoleRootUser {
 		return
@@ -145,10 +151,7 @@ func FilterSuperAdminFields(logs []*Log, userRole int) {
 	for i := range logs {
 		var otherMap map[string]interface{}
 		otherMap, _ = common.StrToMap(logs[i].Other)
-		if otherMap != nil {
-			delete(otherMap, "request_headers")
-			delete(otherMap, "request_body")
-		}
+		stripSuperAdminOnlyLogFields(otherMap, userRole)
 		logs[i].Other = common.MapToJsonStr(otherMap)
 	}
 }

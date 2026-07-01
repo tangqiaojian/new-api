@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useForm } from 'react-hook-form'
+import { useForm, type Resolver } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import * as z from 'zod'
@@ -151,7 +151,11 @@ export function LogSettingsSection({
   const { t } = useTranslation()
   const updateOption = useUpdateOption()
   const form = useForm<LogSettingsFormValues>({
-    resolver: zodResolver(logSettingsSchema),
+    resolver: zodResolver(logSettingsSchema) as Resolver<
+      LogSettingsFormValues,
+      unknown,
+      LogSettingsFormValues
+    >,
     defaultValues: {
       LogConsumeEnabled: defaultEnabled,
       LogRequestDebugEnabled: defaultDebugEnabled,

@@ -232,7 +232,10 @@ func PostWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, mod
 		logger.LogError(ctx, "error settling billing: "+err.Error())
 	}
 
-	logModel := modelName
+	logModel := relayInfo.OriginModelName
+	if logModel == "" {
+		logModel = modelName
+	}
 	if extraContent != "" {
 		logContent += ", " + extraContent
 	}
