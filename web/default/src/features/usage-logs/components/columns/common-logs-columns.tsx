@@ -294,6 +294,7 @@ function buildTypeDetailSegments(
 
 export function useCommonLogsColumns(isAdmin: boolean, isSuperAdmin: boolean): ColumnDef<UsageLog>[] {
   const { t } = useTranslation()
+  const { includeCache } = useUsageLogsContext()
   const columns: ColumnDef<UsageLog>[] = [
     {
       accessorKey: 'created_at',
@@ -735,8 +736,6 @@ export function useCommonLogsColumns(isAdmin: boolean, isSuperAdmin: boolean): C
         const log = row.original
         if (!isDisplayableLogType(log.type)) return null
 
-        const { includeCache } = useUsageLogsContext()
-
         const other = parseLogOther(log.other)
 
         const promptTokens = log.prompt_tokens || 0
@@ -790,8 +789,6 @@ export function useCommonLogsColumns(isAdmin: boolean, isSuperAdmin: boolean): C
       cell: ({ row }) => {
         const log = row.original
         if (!isDisplayableLogType(log.type)) return null
-
-        const { includeCache } = useUsageLogsContext()
 
         const quota = row.getValue('quota') as number
         const other = parseLogOther(log.other)
