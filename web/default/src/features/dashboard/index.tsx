@@ -196,7 +196,13 @@ const SECTION_META: Record<DashboardSectionId, { titleKey: string }> = {
   },
 }
 
-function DashboardAutoRefreshControls() {
+function DashboardAutoRefreshControls({
+  includeCache,
+  onIncludeCacheChange,
+}: {
+  includeCache: boolean
+  onIncludeCacheChange: (value: boolean) => void
+}) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
   // Must read shared context — a second useAutoRefreshState() would be
@@ -254,6 +260,22 @@ function DashboardAutoRefreshControls() {
           className='text-muted-foreground cursor-pointer text-xs font-normal'
         >
           {t('Auto Refresh')}
+        </Label>
+      </div>
+
+      <div className='mx-1 h-4 w-px bg-border' />
+
+      <div className='flex items-center gap-1.5'>
+        <Switch
+          checked={includeCache}
+          onCheckedChange={onIncludeCacheChange}
+          id='dashboard-include-cache-switch'
+        />
+        <Label
+          htmlFor='dashboard-include-cache-switch'
+          className='text-muted-foreground cursor-pointer text-xs font-normal'
+        >
+          {t('Include cache')}
         </Label>
       </div>
 
@@ -324,6 +346,7 @@ export function Dashboard() {
     }
   )
   const [flowSensitiveVisible, setFlowSensitiveVisible] = useState(true)
+  const [includeCache, setIncludeCache] = useState(false)
   const [dailyTokensFilters, setDailyTokensFilters] =
     useState<DailyTokensFilters>(() => ({
       timeGranularity: 'day',
@@ -447,7 +470,10 @@ export function Dashboard() {
       <SectionPageLayout>
         <SectionPageLayout.Title>{t(meta.titleKey)}</SectionPageLayout.Title>
         <SectionPageLayout.Actions>
-          <DashboardAutoRefreshControls />
+          <DashboardAutoRefreshControls
+            includeCache={includeCache}
+            onIncludeCacheChange={setIncludeCache}
+          />
         </SectionPageLayout.Actions>
         <SectionPageLayout.Content>
         <div className='space-y-3 sm:space-y-4'>
@@ -481,6 +507,7 @@ export function Dashboard() {
                   <LazyLogStatCards
                     filters={modelFilters}
                     onDataUpdate={handleDataUpdate}
+                    includeCache={includeCache}
                   />
                 </Suspense>
               </FadeIn>
@@ -545,6 +572,7 @@ export function Dashboard() {
                 <LazyDailyTokensSection
                   filters={dailyTokensFilters}
                   onFiltersChange={setDailyTokensFilters}
+                  includeCache={includeCache}
                 />
               </Suspense>
             </FadeIn>
@@ -555,6 +583,7 @@ export function Dashboard() {
                 <LazyDailyModelTokensSection
                   filters={dailyTokensFilters}
                   onFiltersChange={setDailyTokensFilters}
+                  includeCache={includeCache}
                 />
               </Suspense>
             </FadeIn>

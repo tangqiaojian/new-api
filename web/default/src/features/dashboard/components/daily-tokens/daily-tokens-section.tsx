@@ -94,6 +94,7 @@ const PAGE_SIZE = 20
 interface DailyTokensSectionProps {
   filters: DailyTokensFilters
   onFiltersChange: (filters: DailyTokensFilters) => void
+  includeCache?: boolean
 }
 
 export function DailyTokensSection(props: DailyTokensSectionProps) {
@@ -157,11 +158,11 @@ export function DailyTokensSection(props: DailyTokensSectionProps) {
   }, [resolvedTheme])
 
   const { data: dailyTokenData, isLoading } = useQuery({
-    queryKey: ['dashboard', 'daily-tokens', timeRange, isAdmin],
+    queryKey: ['dashboard', 'daily-tokens', timeRange, isAdmin, props.includeCache],
     queryFn: () =>
       isAdmin
-        ? getDailyTokenData(timeRange)
-        : getSelfDailyTokenData(timeRange),
+        ? getDailyTokenData({ ...timeRange, include_cache: props.includeCache })
+        : getSelfDailyTokenData({ ...timeRange, include_cache: props.includeCache }),
     select: (res) => (res.success ? res.data : []),
     staleTime: 60_000,
     refetchInterval: refetchInterval || undefined,
@@ -179,6 +180,15 @@ export function DailyTokensSection(props: DailyTokensSectionProps) {
       ),
     [dailyTokenData, isLoading, t, metricType, topUserLimit, compactMode, locale]
   )
+
+  // Data fingerprint so VChart remounts when the underlying data changes
+  // (react-vchart does not reliably re-render on spec prop changes alone).
+  const dataFingerprint = useMemo(() => {
+    const items = dailyTokenData ?? []
+    let sum = 0
+    for (const item of items) sum += item.total_tokens
+    return `${items.length}-${sum}`
+  }, [dailyTokenData])
 
   // Table data with pagination
   const tableData = useMemo(() => {
@@ -306,7 +316,7 @@ export function DailyTokensSection(props: DailyTokensSectionProps) {
                   themeReady &&
                   spec && (
                     <VChart
-                      key={`daily-tokens-${chart.value}-${topUserLimit}-${metricType}-${resolvedTheme}-${compactMode}`}
+                      key={`daily-tokens-${chart.value}-${topUserLimit}-${metricType}-${resolvedTheme}-${compactMode}-${dataFingerprint}`}
                       spec={{
                         ...spec,
                         theme: resolvedTheme === 'dark' ? 'dark' : 'light',

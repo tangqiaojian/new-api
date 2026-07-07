@@ -656,6 +656,7 @@
         "By requests": "按请求数",
         "By tokens": "按 Token",
         "Cache": "缓存",
+        "Include cache": "含缓存统计",
         "Cache create (1h) price": "1 小时缓存写入价格",
         "Cache create price": "缓存写入价格",
         "Cache Creation": "缓存创建",
@@ -1533,6 +1534,8 @@
         "Enable Passkey": "启用 Passkey",
         "Enable Performance Monitoring": "启用性能监控",
         "Enable rate limiting": "启用速率限制",
+        "Enable Reasoning Split": "启用思考内容分离",
+        "Separate reasoning content from main content. MiniMax only — when disabled, reasoning is embedded in content with  thinking/ response tags": "将思考内容从正文中分离。仅 MiniMax 有效 — 关闭时思考内容嵌入在正文中（ thinking/ response 标签格式）",
         "Enable Request Passthrough": "启用请求透传",
         "Enable selected channels": "启用选定的渠道",
         "Enable selected models": "启用选定的模型",
@@ -4991,12 +4994,13 @@
         "Zhipu": "智谱",
         "Zhipu V4": "智谱 V4",
         "Zoom": "缩放",
-        "{{count}} tokens": "{{count}} Token",
-        "Deleted {{count}} users": "已删除 {{count}} 个用户",
-        "Disabled {{count}} users": "已禁用 {{count}} 个用户",
-        "Enabled {{count}} users": "已启用 {{count}} 个用户",
-        "Failed to delete users": "删除用户失败",
-        "Failed to disable users": "禁用用户失败",
-        "Failed to enable users": "启用用户失败"
+        "Channel Statistics": "渠道商统计",
+        "Channel Name": "渠道商名称",
+        "Cached Tokens": "缓存 Token",
+        "Avg First Byte": "平均首字节",
+        "Avg Speed": "平均速度",
+        "Cache Hit Ratio": "缓存命中率",
+        "Success Rate": "成功率",
+        "Top Channels": "Top 渠道商"
     }
 }

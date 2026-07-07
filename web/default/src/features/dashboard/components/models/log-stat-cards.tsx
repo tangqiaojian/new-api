@@ -42,6 +42,7 @@ import { toIntlLocale } from '@/i18n/languages'
 interface LogStatCardsProps {
   filters?: DashboardFilters
   onDataUpdate?: (data: QuotaDataItem[], loading: boolean) => void
+  includeCache?: boolean
 }
 
 const MAX_INLINE_STAT_CHARS = 9
@@ -90,8 +91,13 @@ export function LogStatCards(props: LogStatCardsProps) {
       'log-stats',
       buildQueryParams(timeRange, filters),
       isAdmin,
+      props.includeCache,
     ],
-    queryFn: () => getUserQuotaDates(buildQueryParams(timeRange, filters), isAdmin),
+    queryFn: () =>
+      getUserQuotaDates(
+        { ...buildQueryParams(timeRange, filters), include_cache: props.includeCache },
+        isAdmin
+      ),
     staleTime: 60_000,
     refetchInterval: refetchInterval || undefined,
   })

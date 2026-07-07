@@ -325,6 +325,7 @@ export interface GetLogStatsParams {
   group?: string
   request_id?: string
   upstream_request_id?: string
+  include_cache?: boolean
 }
 
 export interface GetLogStatsResponse {

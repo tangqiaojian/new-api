@@ -12,6 +12,7 @@ type DailyTokenData struct {
 	PromptTokens     int    `json:"prompt_tokens"`
 	CompletionTokens int    `json:"completion_tokens"`
 	TotalTokens      int    `json:"total_tokens"`
+	CachedTokens     int    `json:"cached_tokens"`
 	RequestCount     int    `json:"request_count"`
 	Quota            int    `json:"quota"`
 }
@@ -23,6 +24,7 @@ type DailyModelTokenData struct {
 	PromptTokens     int    `json:"prompt_tokens"`
 	CompletionTokens int    `json:"completion_tokens"`
 	TotalTokens      int    `json:"total_tokens"`
+	CachedTokens     int    `json:"cached_tokens"`
 	RequestCount     int    `json:"request_count"`
 	Quota            int    `json:"quota"`
 }
@@ -48,32 +50,47 @@ func dailyTokenDateExpression() string {
 
 // dailyTokenSelectColumns builds the SELECT clause for daily token aggregation.
 // The date column is aliased to "date" so it maps to DailyTokenData.Date.
-func dailyTokenSelectColumns(dateExpr string) string {
+// When includeCache is true, total_tokens adds cached_tokens (extracted from the
+// `other` JSON) on top of prompt_tokens + completion_tokens.
+func dailyTokenSelectColumns(dateExpr string, includeCache bool) string {
+	totalTokensExpr := "COALESCE(SUM(prompt_tokens), 0) + COALESCE(SUM(completion_tokens), 0)"
+	if includeCache {
+		totalTokensExpr += " + " + logCacheTokensSumExpr()
+	}
 	return "user_id, username, " + dateExpr + " as date, " +
 		"COALESCE(SUM(prompt_tokens), 0) as prompt_tokens, " +
 		"COALESCE(SUM(completion_tokens), 0) as completion_tokens, " +
-		"COALESCE(SUM(prompt_tokens), 0) + COALESCE(SUM(completion_tokens), 0) as total_tokens, " +
+		totalTokensExpr + " as total_tokens, " +
+		logCacheTokensSumExpr() + " as cached_tokens, " +
 		"COUNT(*) as request_count, " +
 		"COALESCE(SUM(quota), 0) as quota"
 }
 
 // dailyModelTokenSelectColumns builds the SELECT clause for daily model token aggregation.
-func dailyModelTokenSelectColumns(dateExpr string) string {
+// When includeCache is true, total_tokens adds cached_tokens (extracted from the
+// `other` JSON) on top of prompt_tokens + completion_tokens.
+func dailyModelTokenSelectColumns(dateExpr string, includeCache bool) string {
+	totalTokensExpr := "COALESCE(SUM(prompt_tokens), 0) + COALESCE(SUM(completion_tokens), 0)"
+	if includeCache {
+		totalTokensExpr += " + " + logCacheTokensSumExpr()
+	}
 	return "model_name, " + dateExpr + " as date, " +
 		"COALESCE(SUM(prompt_tokens), 0) as prompt_tokens, " +
 		"COALESCE(SUM(completion_tokens), 0) as completion_tokens, " +
-		"COALESCE(SUM(prompt_tokens), 0) + COALESCE(SUM(completion_tokens), 0) as total_tokens, " +
+		totalTokensExpr + " as total_tokens, " +
+		logCacheTokensSumExpr() + " as cached_tokens, " +
 		"COUNT(*) as request_count, " +
 		"COALESCE(SUM(quota), 0) as quota"
 }
 
 // GetDailyTokenDataByUserId returns daily token usage for a specific user.
-func GetDailyTokenDataByUserId(userId int, startTime int64, endTime int64) ([]*DailyTokenData, error) {
+// When includeCache is true, cached_tokens are included in total_tokens.
+func GetDailyTokenDataByUserId(userId int, startTime int64, endTime int64, includeCache bool) ([]*DailyTokenData, error) {
 	var data []*DailyTokenData
 	dateExpr := dailyTokenDateExpression()
 
 	err := LOG_DB.Table("logs").
-		Select(dailyTokenSelectColumns(dateExpr)).
+		Select(dailyTokenSelectColumns(dateExpr, includeCache)).
 		Where("user_id = ? AND type = ? AND created_at >= ? AND created_at <= ?", userId, LogTypeConsume, startTime, endTime).
 		Group("user_id, username, " + dateExpr).
 		Order("date DESC").
@@ -84,12 +101,13 @@ func GetDailyTokenDataByUserId(userId int, startTime int64, endTime int64) ([]*D
 
 // GetAllDailyTokenData returns daily token usage for all users (admin only).
 // When username is non-empty, results are filtered to that user.
-func GetAllDailyTokenData(startTime int64, endTime int64, username string) ([]*DailyTokenData, error) {
+// When includeCache is true, cached_tokens are included in total_tokens.
+func GetAllDailyTokenData(startTime int64, endTime int64, username string, includeCache bool) ([]*DailyTokenData, error) {
 	var data []*DailyTokenData
 	dateExpr := dailyTokenDateExpression()
 
 	query := LOG_DB.Table("logs").
-		Select(dailyTokenSelectColumns(dateExpr)).
+		Select(dailyTokenSelectColumns(dateExpr, includeCache)).
 		Where("type = ? AND created_at >= ? AND created_at <= ?", LogTypeConsume, startTime, endTime)
 
 	if username != "" {
@@ -105,12 +123,13 @@ func GetAllDailyTokenData(startTime int64, endTime int64, username string) ([]*D
 }
 
 // GetDailyModelTokenData returns daily token usage grouped by model for a specific user.
-func GetDailyModelTokenDataByUserId(userId int, startTime int64, endTime int64) ([]*DailyModelTokenData, error) {
+// When includeCache is true, cached_tokens are included in total_tokens.
+func GetDailyModelTokenDataByUserId(userId int, startTime int64, endTime int64, includeCache bool) ([]*DailyModelTokenData, error) {
 	var data []*DailyModelTokenData
 	dateExpr := dailyTokenDateExpression()
 
 	err := LOG_DB.Table("logs").
-		Select(dailyModelTokenSelectColumns(dateExpr)).
+		Select(dailyModelTokenSelectColumns(dateExpr, includeCache)).
 		Where("user_id = ? AND type = ? AND created_at >= ? AND created_at <= ?", userId, LogTypeConsume, startTime, endTime).
 		Group("model_name, " + dateExpr).
 		Order("date DESC, total_tokens DESC").
@@ -120,12 +139,13 @@ func GetDailyModelTokenDataByUserId(userId int, startTime int64, endTime int64) 
 }
 
 // GetAllDailyModelTokenData returns daily token usage grouped by model for all users (admin only).
-func GetAllDailyModelTokenData(startTime int64, endTime int64) ([]*DailyModelTokenData, error) {
+// When includeCache is true, cached_tokens are included in total_tokens.
+func GetAllDailyModelTokenData(startTime int64, endTime int64, includeCache bool) ([]*DailyModelTokenData, error) {
 	var data []*DailyModelTokenData
 	dateExpr := dailyTokenDateExpression()
 
 	err := LOG_DB.Table("logs").
-		Select(dailyModelTokenSelectColumns(dateExpr)).
+		Select(dailyModelTokenSelectColumns(dateExpr, includeCache)).
 		Where("type = ? AND created_at >= ? AND created_at <= ?", LogTypeConsume, startTime, endTime).
 		Group("model_name, " + dateExpr).
 		Order("date DESC, total_tokens DESC").

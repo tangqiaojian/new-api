@@ -52,10 +52,10 @@ export function CommonLogsStats() {
   const { t } = useTranslation()
   const isAdmin = useIsAdmin()
   const searchParams = route.useSearch()
-  const { sensitiveVisible } = useUsageLogsContext()
+  const { sensitiveVisible, includeCache } = useUsageLogsContext()
 
   const { data: stats, isLoading } = useQuery({
-    queryKey: ['usage-logs-stats', isAdmin, searchParams],
+    queryKey: ['usage-logs-stats', isAdmin, searchParams, includeCache],
     queryFn: async () => {
       const params = buildApiParams({
         page: 1,
@@ -66,8 +66,8 @@ export function CommonLogsStats() {
       })
 
       const result = isAdmin
-        ? await getLogStats(params)
-        : await getUserLogStats(params)
+        ? await getLogStats({ ...params, include_cache: includeCache })
+        : await getUserLogStats({ ...params, include_cache: includeCache })
 
       return result.success
         ? result.data || DEFAULT_LOG_STATS

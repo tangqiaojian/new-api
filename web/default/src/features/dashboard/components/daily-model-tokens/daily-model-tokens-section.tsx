@@ -99,6 +99,7 @@ const PAGE_SIZE = 20
 interface DailyModelTokensSectionProps {
   filters: DailyTokensFilters
   onFiltersChange: (filters: DailyTokensFilters) => void
+  includeCache?: boolean
 }
 
 export function DailyModelTokensSection(props: DailyModelTokensSectionProps) {
@@ -160,11 +161,11 @@ export function DailyModelTokensSection(props: DailyModelTokensSectionProps) {
   }, [resolvedTheme])
 
   const { data: dailyModelTokenData, isLoading } = useQuery({
-    queryKey: ['dashboard', 'daily-model-tokens', timeRange, isAdmin],
+    queryKey: ['dashboard', 'daily-model-tokens', timeRange, isAdmin, props.includeCache],
     queryFn: () =>
       isAdmin
-        ? getDailyModelTokenData(timeRange)
-        : getSelfDailyModelTokenData(timeRange),
+        ? getDailyModelTokenData({ ...timeRange, include_cache: props.includeCache })
+        : getSelfDailyModelTokenData({ ...timeRange, include_cache: props.includeCache }),
     select: (res) => (res.success ? res.data : []),
     staleTime: 60_000,
     refetchInterval: refetchInterval || undefined,
@@ -182,6 +183,15 @@ export function DailyModelTokensSection(props: DailyModelTokensSectionProps) {
       ),
     [dailyModelTokenData, isLoading, t, metricType, topUserLimit, compactMode, locale]
   )
+
+  // Data fingerprint so VChart remounts when the underlying data changes
+  // (react-vchart does not reliably re-render on spec prop changes alone).
+  const dataFingerprint = useMemo(() => {
+    const items = dailyModelTokenData ?? []
+    let sum = 0
+    for (const item of items) sum += item.total_tokens
+    return `${items.length}-${sum}`
+  }, [dailyModelTokenData])
 
   const tableData = useMemo(() => dailyModelTokenData ?? [], [dailyModelTokenData])
   const totalPages = Math.ceil(tableData.length / PAGE_SIZE)
@@ -273,7 +283,7 @@ export function DailyModelTokensSection(props: DailyModelTokensSectionProps) {
                 ) : (
                   themeReady && spec && (
                     <VChart
-                      key={`daily-model-tokens-${chart.value}-${topUserLimit}-${metricType}-${resolvedTheme}-${compactMode}`}
+                      key={`daily-model-tokens-${chart.value}-${topUserLimit}-${metricType}-${resolvedTheme}-${compactMode}-${dataFingerprint}`}
                       spec={{ ...spec, theme: resolvedTheme === 'dark' ? 'dark' : 'light', background: 'transparent' }}
                       option={VCHART_OPTION}
                     />

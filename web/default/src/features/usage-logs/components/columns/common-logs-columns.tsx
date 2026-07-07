@@ -735,6 +735,8 @@ export function useCommonLogsColumns(isAdmin: boolean, isSuperAdmin: boolean): C
         const log = row.original
         if (!isDisplayableLogType(log.type)) return null
 
+        const { includeCache } = useUsageLogsContext()
+
         const other = parseLogOther(log.other)
 
         const promptTokens = log.prompt_tokens || 0
@@ -751,10 +753,16 @@ export function useCommonLogsColumns(isAdmin: boolean, isSuperAdmin: boolean): C
           ? cacheWrite5m + cacheWrite1h
           : other?.cache_creation_tokens || 0
 
+        // When includeCache is on, fold cache-read tokens into the prompt figure
+        // so the main number matches the upstream provider's dashboard total.
+        const displayPromptTokens = includeCache
+          ? promptTokens + cacheReadTokens
+          : promptTokens
+
         return (
           <div className='flex flex-col gap-0.5'>
             <span className='font-mono text-xs font-medium tabular-nums'>
-              {promptTokens.toLocaleString()} /{' '}
+              {displayPromptTokens.toLocaleString()} /{' '}
               {completionTokens.toLocaleString()}
             </span>
             {(cacheReadTokens > 0 || cacheWriteTokens > 0) && (
@@ -782,6 +790,8 @@ export function useCommonLogsColumns(isAdmin: boolean, isSuperAdmin: boolean): C
       cell: ({ row }) => {
         const log = row.original
         if (!isDisplayableLogType(log.type)) return null
+
+        const { includeCache } = useUsageLogsContext()
 
         const quota = row.getValue('quota') as number
         const other = parseLogOther(log.other)
@@ -814,7 +824,10 @@ export function useCommonLogsColumns(isAdmin: boolean, isSuperAdmin: boolean): C
 
         const quotaStr = formatLogQuota(quota)
         const quotaDisplay = splitQuotaDisplay(quotaStr)
-        const totalTokens = log.prompt_tokens + log.completion_tokens
+        const cacheReadTokens = other?.cache_tokens || 0
+        const totalTokens = includeCache
+          ? log.prompt_tokens + log.completion_tokens + cacheReadTokens
+          : log.prompt_tokens + log.completion_tokens
 
         return (
           <div className='flex flex-col gap-0.5'>

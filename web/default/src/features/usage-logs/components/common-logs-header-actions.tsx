@@ -20,6 +20,8 @@ import { Eye, EyeOff } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
+import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
 import {
   Tooltip,
   TooltipContent,
@@ -32,17 +34,35 @@ import { useUsageLogsContext } from './usage-logs-provider'
 /**
  * Page-header actions for the Common Logs view: live usage stats plus a
  * toggle for masking sensitive values (token names, usernames, group names,
- * and the quota figure shown in stats). Both controls live in the page
- * header so the toolbar below stays focused on filter inputs and form
- * actions only.
+ * and the quota figure shown in stats), and a toggle for including cache-read
+ * tokens in the displayed totals. Both controls live in the page header so
+ * the toolbar below stays focused on filter inputs and form actions only.
  */
 export function CommonLogsHeaderActions() {
   const { t } = useTranslation()
-  const { sensitiveVisible, setSensitiveVisible } = useUsageLogsContext()
+  const {
+    sensitiveVisible,
+    setSensitiveVisible,
+    includeCache,
+    setIncludeCache,
+  } = useUsageLogsContext()
 
   return (
     <div className='flex flex-wrap items-center gap-2'>
       <CommonLogsStats />
+      <div className='flex items-center gap-1.5'>
+        <Switch
+          checked={includeCache}
+          onCheckedChange={setIncludeCache}
+          id='usage-logs-include-cache-switch'
+        />
+        <Label
+          htmlFor='usage-logs-include-cache-switch'
+          className='text-muted-foreground cursor-pointer text-xs font-normal'
+        >
+          {t('Include cache')}
+        </Label>
+      </div>
       <Tooltip>
         <TooltipTrigger
           render={

@@ -42,6 +42,7 @@ export async function getUserQuotaDates(
     end_timestamp: number
     default_time?: string
     username?: string
+    include_cache?: boolean
   },
   isAdmin = false
 ) {
@@ -60,6 +61,7 @@ export async function getUserQuotaDates(
 export async function getUserQuotaDataByUsers(params: {
   start_timestamp: number
   end_timestamp: number
+  include_cache?: boolean
 }) {
   const res = await api.get<{ success: boolean; data: QuotaDataItem[] }>(
     '/api/data/users',
@@ -103,6 +105,7 @@ export async function getDailyTokenData(params: {
   start_timestamp: number
   end_timestamp: number
   username?: string
+  include_cache?: boolean
 }) {
   const res = await api.get<{ success: boolean; data: DailyTokenDataItem[] }>(
     '/api/data/daily-tokens',
@@ -115,6 +118,7 @@ export async function getDailyTokenData(params: {
 export async function getSelfDailyTokenData(params: {
   start_timestamp: number
   end_timestamp: number
+  include_cache?: boolean
 }) {
   const res = await api.get<{ success: boolean; data: DailyTokenDataItem[] }>(
     '/api/data/daily-tokens/self',
@@ -131,6 +135,7 @@ export async function getSelfDailyTokenData(params: {
 export async function getDailyModelTokenData(params: {
   start_timestamp: number
   end_timestamp: number
+  include_cache?: boolean
 }) {
   const res = await api.get<{
     success: boolean
@@ -143,6 +148,7 @@ export async function getDailyModelTokenData(params: {
 export async function getSelfDailyModelTokenData(params: {
   start_timestamp: number
   end_timestamp: number
+  include_cache?: boolean
 }) {
   const res = await api.get<{
     success: boolean

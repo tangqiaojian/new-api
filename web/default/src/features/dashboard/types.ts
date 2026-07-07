@@ -41,6 +41,7 @@ export interface DailyTokenDataItem {
   prompt_tokens: number
   completion_tokens: number
   total_tokens: number
+  cached_tokens: number
   request_count: number
   quota: number
 }
@@ -52,6 +53,7 @@ export interface DailyModelTokenDataItem {
   prompt_tokens: number
   completion_tokens: number
   total_tokens: number
+  cached_tokens: number
   request_count: number
   quota: number
 }

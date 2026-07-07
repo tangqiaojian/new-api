@@ -656,6 +656,7 @@
         "By requests": "By requests",
         "By tokens": "By tokens",
         "Cache": "Cache",
+        "Include cache": "Include cache",
         "Cache create (1h) price": "Cache create (1h) price",
         "Cache create price": "Cache create price",
         "Cache Creation": "Cache Creation",
@@ -1533,6 +1534,8 @@
         "Enable Passkey": "Enable Passkey",
         "Enable Performance Monitoring": "Enable Performance Monitoring",
         "Enable rate limiting": "Enable rate limiting",
+        "Enable Reasoning Split": "Enable Reasoning Split",
+        "Separate reasoning content from main content. MiniMax only — when disabled, reasoning is embedded in content with  thinking/ response tags": "Separate reasoning content from main content. MiniMax only — when disabled, reasoning is embedded in content with  thinking/ response tags",
         "Enable Request Passthrough": "Enable Request Passthrough",
         "Enable selected channels": "Enable selected channels",
         "Enable selected models": "Enable selected models",
@@ -4991,12 +4994,13 @@
         "Zhipu": "Zhipu",
         "Zhipu V4": "Zhipu V4",
         "Zoom": "Zoom",
-        "{{count}} tokens": "{{count}} tokens",
-        "Deleted {{count}} users": "Deleted {{count}} users",
-        "Disabled {{count}} users": "Disabled {{count}} users",
-        "Enabled {{count}} users": "Enabled {{count}} users",
-        "Failed to delete users": "Failed to delete users",
-        "Failed to disable users": "Failed to disable users",
-        "Failed to enable users": "Failed to enable users"
+        "Channel Statistics": "Channel Statistics",
+        "Channel Name": "Channel Name",
+        "Cached Tokens": "Cached Tokens",
+        "Avg First Byte": "Avg First Byte",
+        "Avg Speed": "Avg Speed",
+        "Cache Hit Ratio": "Cache Hit Ratio",
+        "Success Rate": "Success Rate",
+        "Top Channels": "Top Channels"
     }
 }
