@@ -5001,6 +5001,10 @@
         "Avg Speed": "平均速度",
         "Cache Hit Ratio": "缓存命中率",
         "Success Rate": "成功率",
-        "Top Channels": "Top 渠道商"
+        "Top Channels": "Top 渠道商",
+        "Across all channels": "所有渠道合计",
+        "Across {{channel}}": "{{channel}} 统计",
+        "All channels": "全部渠道",
+        "Filter by channel": "按渠道筛选"
     }
 }

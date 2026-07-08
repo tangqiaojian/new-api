@@ -24,6 +24,7 @@ import type {
   UptimeGroupResult,
   DailyTokenDataItem,
   DailyModelTokenDataItem,
+  ChannelModelStatsItem,
 } from './types'
 
 // ============================================================================
@@ -154,5 +155,36 @@ export async function getSelfDailyModelTokenData(params: {
     success: boolean
     data: DailyModelTokenDataItem[]
   }>('/api/data/daily-model-tokens/self', { params })
+  return res.data
+}
+
+// ----------------------------------------------------------------------------
+// Channel + Model Statistics
+// ----------------------------------------------------------------------------
+
+// Get channel+model aggregated statistics for all users (admin only)
+export async function getChannelModelStats(params: {
+  start_timestamp: number
+  end_timestamp: number
+  username?: string
+  include_cache?: boolean
+}) {
+  const res = await api.get<{
+    success: boolean
+    data: ChannelModelStatsItem[]
+  }>('/api/data/channel-stats', { params })
+  return res.data
+}
+
+// Get channel+model aggregated statistics for current user
+export async function getSelfChannelModelStats(params: {
+  start_timestamp: number
+  end_timestamp: number
+  include_cache?: boolean
+}) {
+  const res = await api.get<{
+    success: boolean
+    data: ChannelModelStatsItem[]
+  }>('/api/data/channel-stats/self', { params })
   return res.data
 }

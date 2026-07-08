@@ -70,6 +70,7 @@ import {
   type QuotaDataItem,
   type UserChartsFilters,
   type DailyTokensFilters,
+  type ChannelStatsFilters,
 } from './types'
 
 const route = getRouteApi('/_authenticated/dashboard/$section')
@@ -119,6 +120,12 @@ const LazyDailyTokensSection = lazy(() =>
 const LazyDailyModelTokensSection = lazy(() =>
   import('./components/daily-model-tokens/daily-model-tokens-section').then((m) => ({
     default: m.DailyModelTokensSection,
+  }))
+)
+
+const LazyChannelStatsSection = lazy(() =>
+  import('./components/channel-stats/channel-stats-section').then((m) => ({
+    default: m.ChannelStatsSection,
   }))
 )
 
@@ -190,6 +197,9 @@ const SECTION_META: Record<DashboardSectionId, { titleKey: string }> = {
   },
   'daily-model-tokens': {
     titleKey: 'Daily Model Token Usage',
+  },
+  'channel-stats': {
+    titleKey: 'Channel Statistics',
   },
   users: {
     titleKey: 'User Analytics',
@@ -352,6 +362,13 @@ export function Dashboard() {
       timeGranularity: 'day',
       selectedRange: 7,
       topUserLimit: 10,
+    }))
+
+  const [channelStatsFilters, setChannelStatsFilters] =
+    useState<ChannelStatsFilters>(() => ({
+      timeGranularity: 'day',
+      selectedRange: 1,
+      topLimit: 10,
     }))
 
   const handleFilterChange = useCallback((filters: DashboardFilters) => {
@@ -583,6 +600,17 @@ export function Dashboard() {
                 <LazyDailyModelTokensSection
                   filters={dailyTokensFilters}
                   onFiltersChange={setDailyTokensFilters}
+                  includeCache={includeCache}
+                />
+              </Suspense>
+            </FadeIn>
+          )}
+          {activeSection === 'channel-stats' && (
+            <FadeIn>
+              <Suspense fallback={<ModelChartsFallback />}>
+                <LazyChannelStatsSection
+                  filters={channelStatsFilters}
+                  onFiltersChange={setChannelStatsFilters}
                   includeCache={includeCache}
                 />
               </Suspense>

@@ -50,6 +50,11 @@ const DASHBOARD_SECTIONS = [
     build: () => null,
   },
   {
+    id: 'channel-stats',
+    titleKey: 'Channel Statistics',
+    build: () => null,
+  },
+  {
     id: 'users',
     titleKey: 'User Analytics',
     adminOnly: true,

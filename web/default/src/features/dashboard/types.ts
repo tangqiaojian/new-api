@@ -297,6 +297,28 @@ export interface ProcessedDailyModelTokensChartData {
   spec_model_pie: VChartSpec
 }
 
+export interface ChannelModelStatsItem {
+  channel_id: number
+  channel_name: string
+  model_name: string
+  request_count: number
+  prompt_tokens: number
+  completion_tokens: number
+  cached_tokens: number
+  avg_first_byte_ms: number
+  avg_speed_tok_per_s: number
+  cache_hit_ratio: number
+  success_rate: number
+  total_tokens: number
+  quota: number
+}
+
+export interface ChannelStatsFilters {
+  timeGranularity: TimeGranularity
+  selectedRange: number
+  topLimit: number
+}
+
 // ============================================================================
 // Announcement Types
 // ============================================================================
