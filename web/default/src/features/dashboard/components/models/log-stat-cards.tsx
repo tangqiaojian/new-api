@@ -102,7 +102,10 @@ export function LogStatCards(props: LogStatCardsProps) {
     refetchInterval: refetchInterval || undefined,
   })
 
-  const data = quotaQuery.data?.data ?? []
+  const data = useMemo(
+    () => quotaQuery.data?.data ?? [],
+    [quotaQuery.data?.data]
+  )
   const loading = quotaQuery.isLoading
   const error = quotaQuery.isError
 
@@ -111,7 +114,12 @@ export function LogStatCards(props: LogStatCardsProps) {
     [data]
   )
 
-  // Notify parent of data changes
+  // Notify parent of data changes.
+  // NOTE: `data` is memoized on quotaQuery.data?.data so its reference is stable
+  // across re-renders while the query result is unchanged. Without this, the
+  // `?? []` fallback would create a fresh array every render (when data is
+  // undefined during refetch), causing this effect to fire in a loop and
+  // trigger React error #185 (Maximum update depth exceeded).
   useEffect(() => {
     onDataUpdate?.(data, loading)
   }, [data, loading, onDataUpdate])
