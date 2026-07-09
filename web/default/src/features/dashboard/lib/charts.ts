@@ -839,7 +839,11 @@ export function processUserChartData(
         style: { fontSize: 11 },
       },
       axes: [
-        { orient: 'bottom', type: 'band' },
+        {
+          orient: 'bottom',
+          type: 'band',
+          label: { autoRotate: true, autoLimit: true, style: { fontSize: 10 } },
+        },
         { orient: 'left', type: 'linear' },
       ],
       tooltip: {
@@ -1221,7 +1225,11 @@ export function processDailyTokensChartData(
         style: { fontSize: 11 },
       },
       axes: [
-        { orient: 'bottom', type: 'band' },
+        {
+          orient: 'bottom',
+          type: 'band',
+          label: { autoRotate: true, autoLimit: true, style: { fontSize: 10 } },
+        },
         { orient: 'left', type: 'linear' },
       ],
       tooltip: {
@@ -1544,7 +1552,11 @@ export function processDailyModelTokensChartData(
         style: { fontSize: 11 },
       },
       axes: [
-        { orient: 'bottom', type: 'band' },
+        {
+          orient: 'bottom',
+          type: 'band',
+          label: { autoRotate: true, autoLimit: true, style: { fontSize: 10 } },
+        },
         { orient: 'left', type: 'linear' },
       ],
       tooltip: {
@@ -1590,7 +1602,15 @@ export function processDailyModelTokensChartData(
           style: { fontSize: 11 },
         },
         axes: [
-          { orient: 'bottom', type: 'band' },
+          {
+            orient: 'bottom',
+            type: 'band',
+            label: {
+              autoRotate: true,
+              autoLimit: true,
+              style: { fontSize: 10 },
+            },
+          },
           { orient: 'left', type: 'linear' },
         ],
         tooltip: {

@@ -16,9 +16,9 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { useState, useCallback, useMemo, useEffect, lazy, Suspense } from 'react'
 import { getRouteApi, useNavigate } from '@tanstack/react-router'
 import { Eye, EyeOff, RotateCw, Check } from 'lucide-react'
-import { useState, useCallback, useMemo, lazy, Suspense } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQueryClient } from '@tanstack/react-query'
 
@@ -49,6 +49,7 @@ import { DEFAULT_TIME_GRANULARITY } from './constants'
 import {
   AutoRefreshContext,
   AUTO_REFRESH_OPTIONS,
+  useAutoRefreshControls,
   useAutoRefreshState,
 } from './hooks/use-auto-refresh'
 import {
@@ -198,6 +199,8 @@ const SECTION_META: Record<DashboardSectionId, { titleKey: string }> = {
 function DashboardAutoRefreshControls() {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
+  // Must read shared context — a second useAutoRefreshState() would be
+  // disconnected from the Provider and never drive chart refetchInterval.
   const {
     selectedInterval,
     setSelectedInterval,
@@ -205,7 +208,7 @@ function DashboardAutoRefreshControls() {
     setAutoRefreshEnabled,
     countdown,
     resetCountdown,
-  } = useAutoRefreshState()
+  } = useAutoRefreshControls()
 
   const handleRefresh = useCallback(() => {
     void queryClient.invalidateQueries({ queryKey: ['dashboard'] })
@@ -362,6 +365,18 @@ export function Dashboard() {
       ),
     [isAdmin]
   )
+
+  // Non-admins may deep-link to /dashboard/users; redirect away.
+  useEffect(() => {
+    if (activeSection === 'users' && !isAdmin) {
+      void navigate({
+        to: '/dashboard/$section',
+        params: { section: DASHBOARD_DEFAULT_SECTION },
+        replace: true,
+      })
+    }
+  }, [activeSection, isAdmin, navigate])
+
   const handleSectionChange = useCallback(
     (section: string) => {
       void navigate({
@@ -504,7 +519,7 @@ export function Dashboard() {
               </FadeIn>
             </>
           )}
-          {activeSection === 'users' && (
+          {activeSection === 'users' && isAdmin && (
             <FadeIn>
               <Suspense fallback={<ModelChartsFallback />}>
                 <LazyUserCharts

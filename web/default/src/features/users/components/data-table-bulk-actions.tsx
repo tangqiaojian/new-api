@@ -21,6 +21,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { type Table } from '@tanstack/react-table'
 import { Power, PowerOff, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import {
   Tooltip,
@@ -58,40 +59,68 @@ export function DataTableBulkActions({ table }: DataTableBulkActionsProps) {
   }
 
   const handleEnableAll = async () => {
+    if (selectedIds.length === 0) return
     setLoading(true)
     try {
       const result = await batchManageUsers(selectedIds, 'enable')
       if (result.success) {
-        queryClient.invalidateQueries({ queryKey: ['users'] })
+        toast.success(
+          t('Enabled {{count}} users', { count: selectedIds.length })
+        )
+        void queryClient.invalidateQueries({ queryKey: ['users'] })
         handleClearSelection()
+      } else {
+        toast.error(result.message || t('Failed to enable users'))
       }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : t('Failed to enable users'))
     } finally {
       setLoading(false)
     }
   }
 
   const handleDisableAll = async () => {
+    if (selectedIds.length === 0) return
     setLoading(true)
     try {
       const result = await batchManageUsers(selectedIds, 'disable')
       if (result.success) {
-        queryClient.invalidateQueries({ queryKey: ['users'] })
+        toast.success(
+          t('Disabled {{count}} users', { count: selectedIds.length })
+        )
+        void queryClient.invalidateQueries({ queryKey: ['users'] })
         handleClearSelection()
+      } else {
+        toast.error(result.message || t('Failed to disable users'))
       }
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : t('Failed to disable users')
+      )
     } finally {
       setLoading(false)
     }
   }
 
   const handleDeleteAll = async () => {
+    if (selectedIds.length === 0) return
     setLoading(true)
     try {
       const result = await batchDeleteUsers(selectedIds)
       if (result.success) {
+        toast.success(
+          t('Deleted {{count}} users', { count: selectedIds.length })
+        )
         setShowDeleteConfirm(false)
-        queryClient.invalidateQueries({ queryKey: ['users'] })
+        void queryClient.invalidateQueries({ queryKey: ['users'] })
         handleClearSelection()
+      } else {
+        toast.error(result.message || t('Failed to delete users'))
       }
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : t('Failed to delete users')
+      )
     } finally {
       setLoading(false)
     }
@@ -185,7 +214,11 @@ export function DataTableBulkActions({ table }: DataTableBulkActionsProps) {
             >
               {t('Cancel')}
             </Button>
-            <Button variant='destructive' onClick={handleDeleteAll} disabled={loading}>
+            <Button
+              variant='destructive'
+              onClick={handleDeleteAll}
+              disabled={loading}
+            >
               {t('Delete')}
             </Button>
           </>

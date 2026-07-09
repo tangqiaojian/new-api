@@ -730,7 +730,7 @@ export function useCommonLogsColumns(isAdmin: boolean, isSuperAdmin: boolean): C
 
     {
       accessorKey: 'prompt_tokens',
-      header: 'Tokens',
+      header: t('Tokens'),
       cell: ({ row }) => {
         const log = row.original
         if (!isDisplayableLogType(log.type)) return null
@@ -826,7 +826,9 @@ export function useCommonLogsColumns(isAdmin: boolean, isSuperAdmin: boolean): C
             </span>
             {totalTokens > 0 && (
               <span className='text-muted-foreground/60 pl-0.5 text-[10px] font-medium tabular-nums'>
-                {totalTokens.toLocaleString()} tokens
+                {t('{{count}} tokens', {
+                  count: totalTokens.toLocaleString(),
+                })}
               </span>
             )}
           </div>

@@ -4990,6 +4990,13 @@
         "Zero retention": "Zero retention",
         "Zhipu": "Zhipu",
         "Zhipu V4": "Zhipu V4",
-        "Zoom": "Zoom"
+        "Zoom": "Zoom",
+        "{{count}} tokens": "{{count}} tokens",
+        "Deleted {{count}} users": "Deleted {{count}} users",
+        "Disabled {{count}} users": "Disabled {{count}} users",
+        "Enabled {{count}} users": "Enabled {{count}} users",
+        "Failed to delete users": "Failed to delete users",
+        "Failed to disable users": "Failed to disable users",
+        "Failed to enable users": "Failed to enable users"
     }
 }
