@@ -63,7 +63,7 @@ function loadSavedEnabled(): boolean {
   return false
 }
 
-interface AutoRefreshContextValue {
+export interface AutoRefreshContextValue {
   /** Effective refetch interval (0 when disabled). */
   refetchInterval: number
   /** Selected interval (ignored when disabled). */
@@ -77,16 +77,9 @@ interface AutoRefreshContextValue {
   resetCountdown: () => void
 }
 
-const AutoRefreshContext = createContext<AutoRefreshContextValue>({
-  refetchInterval: 0,
-  selectedInterval: 30_000,
-  setSelectedInterval: () => {},
-  autoRefreshEnabled: false,
-  setAutoRefreshEnabled: () => {},
-  countdown: 0,
-  resetCountdown: () => {},
-})
+const AutoRefreshContext = createContext<AutoRefreshContextValue | null>(null)
 
+/** Refetch interval for dashboard data queries. */
 export function useAutoRefresh() {
   const ctx = useContext(AutoRefreshContext)
   if (ctx == null) {
@@ -95,11 +88,26 @@ export function useAutoRefresh() {
   return { refetchInterval: ctx.refetchInterval }
 }
 
+/** Full auto-refresh controls (switch, interval, countdown). */
+export function useAutoRefreshControls(): AutoRefreshContextValue {
+  const ctx = useContext(AutoRefreshContext)
+  if (ctx == null) {
+    throw new Error(
+      'useAutoRefreshControls must be used within AutoRefreshProvider'
+    )
+  }
+  return ctx
+}
+
 export { AutoRefreshContext }
 
 /**
  * Live countdown hook. Recalculates `countdown` seconds each tick.
  * Resets whenever `interval` changes, `enabled` toggles, or `resetKey` increments.
+ *
+ * Uses a single epoch (`lastResetRef`) so the displayed countdown stays aligned
+ * with the wall-clock interval that React Query's `refetchInterval` follows
+ * after the same enable/reset moment.
  */
 function useAutoRefreshCountdown(
   interval: number,
@@ -118,27 +126,34 @@ function useAutoRefreshCountdown(
     setCountdown(enabled ? intervalSec : 0)
   }, [interval, enabled, intervalSec, resetKey])
 
-  // Tick every 250ms
+  // Tick every 250ms; cycle the epoch when a full interval elapses so the
+  // next period matches a fresh React Query poll window.
   useEffect(() => {
     if (!enabled) return
 
     const timer = setInterval(() => {
-      const elapsed = Math.floor((Date.now() - lastResetRef.current) / 1000)
-      const remaining = Math.max(0, intervalSec - elapsed)
-      if (remaining <= 0) {
-        lastResetRef.current = Date.now()
+      const elapsedMs = Date.now() - lastResetRef.current
+      if (elapsedMs >= interval) {
+        // Align to interval boundaries to reduce drift vs refetchInterval.
+        const cycles = Math.floor(elapsedMs / interval)
+        lastResetRef.current += cycles * interval
         setCountdown(intervalSec)
-      } else {
-        setCountdown(remaining)
+        return
       }
+      const remaining = Math.max(
+        0,
+        intervalSec - Math.floor(elapsedMs / 1000)
+      )
+      setCountdown(remaining)
     }, 250)
 
     return () => clearInterval(timer)
-  }, [enabled, intervalSec])
+  }, [enabled, interval, intervalSec])
 
   return countdown
 }
 
+/** Create auto-refresh state for the dashboard provider (call once per page). */
 export function useAutoRefreshState(): AutoRefreshContextValue {
   const [autoRefreshEnabled, setAutoRefreshEnabledState] =
     useState<boolean>(loadSavedEnabled)

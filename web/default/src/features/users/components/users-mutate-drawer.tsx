@@ -422,14 +422,13 @@ export function UsersMutateDrawer({
 	                    name='weekly_quota'
 	                    render={({ field }) => (
 	                      <FormItem>
-	                        <FormLabel>{t('Weekly Quota Limit (Tokens)')}</FormLabel>
+	                        <FormLabel>{t('Weekly Quota Limit')}</FormLabel>
 		                        <div className='flex gap-2'>
 		                          <FormControl>
 		                            <Input
 		                              type='number'
 		                              min={0}
 		                              step={1}
-		                              suffix='Tokens'
 		                              value={String(field.value || 0)}
 		                              onChange={(e) => {
 		                                field.onChange(parseInt(e.target.value) || 0)
