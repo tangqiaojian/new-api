@@ -4,10 +4,10 @@
 
 # New API
 
-🍥 **新一代大模型网关与AI资产管理系统**
+🍥 **新一代大模型网关与 AI 资产管理系统**
 
 <p align="center">
-  简体中文 |
+  <strong>简体中文</strong> |
   <a href="./README.zh_TW.md">繁體中文</a> |
   <a href="./README.md">English</a> |
   <a href="./README.fr.md">Français</a> |
@@ -144,16 +144,16 @@ docker run --name new-api -d --restart always \
   calciumion/new-api:latest
 ```
 
-> **💡 提示：** `-v ./data:/data` 会将数据保存在当前目录的 `data` 文件夹中，你也可以改为绝对路径如 `-v /your/custom/path:/data`
+> **💡 提示：** `-v ./data:/data` 会将数据保存在当前目录的 `data` 文件夹中，你也可以改为绝对路径，例如 `-v /your/custom/path:/data`
 
 </details>
 
 ---
 
-🎉 部署完成后，访问 `http://localhost:3000` 即可使用！
+🎉 部署完成后，访问 `http://localhost:3000` 即可开始使用！
 
 > [!WARNING]
-> 将本项目作为面向公众的生成式 AI 服务或 API 转售服务运营时，使用者应先完成备案、内容安全、实名、日志留存、税务、支付和上游授权等合规义务。
+> 将本项目作为面向公众的生成式 AI 服务或 API 转售服务运营时，使用者应先完成备案、许可、内容安全、实名、日志留存、税务、支付和上游授权等合规义务。
 
 📖 更多部署方式请参考 [部署指南](https://docs.newapi.pro/zh/docs/installation)
 
@@ -188,7 +188,7 @@ docker run --name new-api -d --restart always \
 | 特性 | 说明 |
 |------|------|
 | 🎨 全新 UI | 现代化的用户界面设计 |
-| 🌍 多语言 | 支持中文、英文、法语、日语 |
+| 🌍 多语言 | 支持简体中文、繁体中文、英文、法语、日语 |
 | 🔄 数据兼容 | 完全兼容原版 One API 数据库 |
 | 📈 数据看板 | 可视化控制台与统计分析 |
 | 🔒 权限管理 | 令牌分组、模型限制、用户管理 |
@@ -206,7 +206,7 @@ docker run --name new-api -d --restart always \
 - 🤖 LinuxDO 授权登录
 - 📱 Telegram 授权登录
 - 🔑 OIDC 统一认证
-- 🔍 Key 查询使用额度（配合 [new-api-key-tool](https://github.com/Calcium-Ion/new-api-key-tool)）
+- 🔍 Key 额度查询（配合 [new-api-key-tool](https://github.com/Calcium-Ion/new-api-key-tool)）
 
 ### 🚀 高级功能
 
@@ -229,18 +229,18 @@ docker run --name new-api -d --restart always \
 - 🚧 **OpenAI Compatible ⇄ OpenAI Responses** - 开发中
 - 🔄 **思考转内容功能**
 
-**Reasoning Effort 支持：**
+**Reasoning Effort（推理强度）支持：**
 
 <details>
 <summary>查看详细配置</summary>
 
 **OpenAI 系列模型：**
-- `o3-mini-high` - High reasoning effort
-- `o3-mini-medium` - Medium reasoning effort
-- `o3-mini-low` - Low reasoning effort
-- `gpt-5-high` - High reasoning effort
-- `gpt-5-medium` - Medium reasoning effort
-- `gpt-5-low` - Low reasoning effort
+- `o3-mini-high` - 高强度推理
+- `o3-mini-medium` - 中等强度推理
+- `o3-mini-low` - 低强度推理
+- `gpt-5-high` - 高强度推理
+- `gpt-5-medium` - 中等强度推理
+- `gpt-5-low` - 低强度推理
 
 **Claude 思考模型：**
 - `claude-3-7-sonnet-20250219-thinking` - 启用思考模式
@@ -249,8 +249,8 @@ docker run --name new-api -d --restart always \
 - `gemini-2.5-flash-thinking` - 启用思考模式
 - `gemini-2.5-flash-nothinking` - 禁用思考模式
 - `gemini-2.5-pro-thinking` - 启用思考模式
-- `gemini-2.5-pro-thinking-128` - 启用思考模式，并设置思考预算为128tokens
-- 也可以直接在 Gemini 模型名称后追加 `-low` / `-medium` / `-high` 来控制思考力度（无需再设置思考预算后缀）
+- `gemini-2.5-pro-thinking-128` - 启用思考模式，并设置思考预算为 128 tokens
+- 也可以直接在 Gemini 模型名称后追加 `-low` / `-medium` / `-high` 来控制推理强度（无需再设置思考预算后缀）
 
 </details>
 
@@ -301,7 +301,7 @@ docker run --name new-api -d --restart always \
 
 | 组件 | 要求 |
 |------|------|
-| **本地数据库** | SQLite（Docker 需挂载 `/data` 目录）|
+| **本地数据库** | SQLite（Docker 需挂载 `/data` 目录） |
 | **远程数据库** | MySQL ≥ 5.7.8 或 PostgreSQL ≥ 9.6 |
 | **容器引擎** | Docker / Docker Compose |
 
@@ -310,24 +310,25 @@ docker run --name new-api -d --restart always \
 <details>
 <summary>常用环境变量配置</summary>
 
-| 变量名 | 说明                                                           | 默认值 |
-|--------|--------------------------------------------------------------|--------|
-| `SESSION_SECRET` | 会话密钥（多机部署必须）                                                 | - |
-| `CRYPTO_SECRET` | 加密密钥（Redis 必须）                                               | - |
-| `SQL_DSN` | 数据库连接字符串                                                     | - |
-| `REDIS_CONN_STRING` | Redis 连接字符串                                                  | - |
-| `STREAMING_TIMEOUT` | 流式超时时间（秒）                                                    | `300` |
-| `STREAM_SCANNER_MAX_BUFFER_MB` | 流式扫描器单行最大缓冲（MB），图像生成等超大 `data:` 片段（如 4K 图片 base64）需适当调大 | `64` |
-| `MAX_REQUEST_BODY_MB` | 请求体最大大小（MB，**解压后**计；防止超大请求/zip bomb 导致内存暴涨），超过将返回 `413` | `32` |
-| `AZURE_DEFAULT_API_VERSION` | Azure API 版本                                                 | `2025-04-01-preview` |
-| `ERROR_LOG_ENABLED` | 错误日志开关                                                       | `false` |
-| `PYROSCOPE_URL` | Pyroscope 服务地址                                            | - |
-| `PYROSCOPE_APP_NAME` | Pyroscope 应用名                                        | `new-api` |
-| `PYROSCOPE_BASIC_AUTH_USER` | Pyroscope Basic Auth 用户名                        | - |
-| `PYROSCOPE_BASIC_AUTH_PASSWORD` | Pyroscope Basic Auth 密码                  | - |
-| `PYROSCOPE_MUTEX_RATE` | Pyroscope mutex 采样率                               | `5` |
-| `PYROSCOPE_BLOCK_RATE` | Pyroscope block 采样率                               | `5` |
-| `HOSTNAME` | Pyroscope 标签里的主机名                                          | `new-api` |
+| 变量名 | 说明 | 默认值 |
+|--------|------|--------|
+| `SESSION_SECRET` | 会话密钥（多机部署必须） | - |
+| `CRYPTO_SECRET` | 加密密钥（使用 Redis 时必须） | - |
+| `SQL_DSN` | 数据库连接字符串 | - |
+| `REDIS_CONN_STRING` | Redis 连接字符串 | - |
+| `RELAY_IDLE_CONN_TIMEOUT` | 中继 HTTP 客户端空闲 keep-alive 超时（秒）。默认遵循 Go 标准库行为；设为 `0` 可关闭 | `90` |
+| `STREAMING_TIMEOUT` | 流式超时时间（秒） | `300` |
+| `STREAM_SCANNER_MAX_BUFFER_MB` | 流式扫描器单行最大缓冲（MB）；上游返回超大图像 / base64 载荷时可适当调大 | `64` |
+| `MAX_REQUEST_BODY_MB` | 请求体最大大小（MB，**解压后**计；防止超大请求 / zip bomb 导致内存暴涨），超过将返回 `413` | `32` |
+| `AZURE_DEFAULT_API_VERSION` | Azure API 版本 | `2025-04-01-preview` |
+| `ERROR_LOG_ENABLED` | 错误日志开关 | `false` |
+| `PYROSCOPE_URL` | Pyroscope 服务地址 | - |
+| `PYROSCOPE_APP_NAME` | Pyroscope 应用名 | `new-api` |
+| `PYROSCOPE_BASIC_AUTH_USER` | Pyroscope Basic Auth 用户名 | - |
+| `PYROSCOPE_BASIC_AUTH_PASSWORD` | Pyroscope Basic Auth 密码 | - |
+| `PYROSCOPE_MUTEX_RATE` | Pyroscope mutex 采样率 | `5` |
+| `PYROSCOPE_BLOCK_RATE` | Pyroscope block 采样率 | `5` |
+| `HOSTNAME` | Pyroscope 标签中的主机名 | `new-api` |
 
 📖 **完整配置：** [环境变量文档](https://docs.newapi.pro/zh/docs/installation/config-maintenance/environment-variables)
 
@@ -376,7 +377,7 @@ docker run --name new-api -d --restart always \
 
 > **💡 路径说明：**
 > - `./data:/data` - 相对路径，数据保存在当前目录的 data 文件夹
-> - 也可使用绝对路径，如：`/your/custom/path:/data`
+> - 也可使用绝对路径，例如：`/your/custom/path:/data`
 
 </details>
 
@@ -450,6 +451,10 @@ docker run --name new-api -d --restart always \
 ## 📜 许可证
 
 本项目采用 [GNU Affero 通用公共许可证 v3.0 (AGPLv3)](./LICENSE) 授权。
+
+依据 AGPLv3 第 7 条，本项目适用附加条款。修改版本必须在适当的法律声明中，以及用户界面中任何显著的关于、法律、页脚或署名位置，保留作者署名声明：`Frontend design and development by New API contributors.`
+
+提供用户界面的修改版本还必须保留指向原项目的可见链接：<https://github.com/QuantumNous/new-api>。
 
 本项目为开源项目，在 [One API](https://github.com/songquanpeng/one-api)（MIT 许可证）的基础上进行二次开发。
 
