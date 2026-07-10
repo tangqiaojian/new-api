@@ -691,6 +691,21 @@ export function DetailsDialog(props: DetailsDialogProps) {
               }
             />
           )}
+
+          {/* Reasoning effort — placed below Response Time */}
+          {other?.api_reasoning_effort && (
+            <DetailRow
+              label={t('API Reasoning Effort')}
+              value={<ReasoningEffortBadge effort={other.api_reasoning_effort} />}
+            />
+          )}
+          {other?.reasoning_effort &&
+            other.reasoning_effort !== other.api_reasoning_effort && (
+              <DetailRow
+                label={t('Reasoning Effort')}
+                value={<ReasoningEffortBadge effort={other.reasoning_effort} />}
+              />
+            )}
         </div>
 
         {/* Request conversion (admin only, not for refund) */}
@@ -961,21 +976,6 @@ export function DetailsDialog(props: DetailsDialogProps) {
             )}
           </DetailSection>
         )}
-
-        {/* Reasoning effort */}
-        {other?.api_reasoning_effort && (
-          <DetailRow
-            label={t('API Reasoning Effort')}
-            value={<ReasoningEffortBadge effort={other.api_reasoning_effort} />}
-          />
-        )}
-        {other?.reasoning_effort &&
-          other.reasoning_effort !== other.api_reasoning_effort && (
-            <DetailRow
-              label={t('Reasoning Effort')}
-              value={<ReasoningEffortBadge effort={other.reasoning_effort} />}
-            />
-          )}
 
         {/* System prompt override */}
         {other?.is_system_prompt_overwritten && (
