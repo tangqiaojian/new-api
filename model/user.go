@@ -895,6 +895,17 @@ func (user *UserBase) GetGroups() []string {
 	return parseUserGroups(user.Groups, user.Group)
 }
 
+// HasExplicitGroups 报告用户是否被显式分配了多分组（Groups 字段非空）。
+// 用于区分"严格白名单"与"回退到单组"两种语义。
+func (user *User) HasExplicitGroups() bool {
+	return strings.TrimSpace(user.Groups) != ""
+}
+
+// HasExplicitGroups 报告缓存中的用户是否被显式分配了多分组。
+func (user *UserBase) HasExplicitGroups() bool {
+	return strings.TrimSpace(user.Groups) != ""
+}
+
 // parseUserGroups 把逗号分隔的 groups 字符串解析为去重后的分组切片。
 // 若解析结果为空，则回退到单个 fallbackGroup。
 func parseUserGroups(groups string, fallbackGroup string) []string {

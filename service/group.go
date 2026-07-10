@@ -41,31 +41,33 @@ func GetUserUsableGroups(userGroup string) map[string]string {
 	return groupsCopy
 }
 
-// GetUserUsableGroupsByGroups 计算用户拥有多个分组时可用的分组集合。
-// 对每个分组分别计算其可用分组，再取并集。
-// 这样「+:/-:」特殊规则会叠加应用到同一个结果集合上：
-// 任一分组添加的组都会保留，只有当某分组的「-:」规则且该组不在最终结果中时才会移除。
-// 由于多分组语义下「移除」可能产生歧义，这里采用「先全部添加，最后统一移除」的策略，
-// 即先收集所有「+:/直接添加」，再统一应用所有「-:」，避免先加后删的顺序问题。
-func GetUserUsableGroupsByGroups(userGroups []string) map[string]string {
-	if len(userGroups) == 0 {
+// GetUserUsableGroupsByUser 从用户缓存解析其可用分组集合。
+// 语义：
+//   - 若用户被显式分配了多分组（Groups 字段非空），采用【严格白名单】：只能使用被分配
+//     的分组及其各自「+:」规则追加的分组，不再继承全局 UserUsableGroups 中未分配的分组。
+//   - 否则回退到原单组行为（GetUserUsableGroups），保持向后兼容。
+func GetUserUsableGroupsByUser(user *model.UserBase) map[string]string {
+	if user == nil {
 		return setting.GetUserUsableGroupsCopy()
 	}
-	if len(userGroups) == 1 {
-		return GetUserUsableGroups(userGroups[0])
+	// 未显式分配多分组：回退到原单组逻辑，保持老用户行为不变
+	if !user.HasExplicitGroups() {
+		return GetUserUsableGroups(user.Group)
 	}
+	return getUserUsableGroupsStrict(user.GetGroups())
+}
 
-	result := setting.GetUserUsableGroupsCopy()
-	// 收集所有需要移除的分组，最后统一移除，避免顺序依赖
+// getUserUsableGroupsStrict 实现严格白名单：用户只能使用被显式分配的分组，
+// 再叠加这些分组各自的「+:/-:」特殊规则。不继承全局 UserUsableGroups 中未分配的分组。
+func getUserUsableGroupsStrict(userGroups []string) map[string]string {
+	result := make(map[string]string)
 	removals := make(map[string]bool)
 	for _, userGroup := range userGroups {
 		if userGroup == "" {
 			continue
 		}
-		// 用户自身的分组一定可用
-		if _, ok := result[userGroup]; !ok {
-			result[userGroup] = "用户分组"
-		}
+		// 被分配的分组本身一定可用
+		result[userGroup] = setting.GetUsableGroupDescription(userGroup)
 		specialSettings, b := ratio_setting.GetGroupRatioSetting().GroupSpecialUsableGroup.Get(userGroup)
 		if !b {
 			continue
@@ -80,7 +82,7 @@ func GetUserUsableGroupsByGroups(userGroups []string) map[string]string {
 			}
 		}
 	}
-	// 统一应用移除：仅当被移除的组不在用户显式拥有的分组中时才移除
+	// 统一应用移除：被「-:」移除的组若不在用户显式拥有的分组中，则移除
 	owned := make(map[string]bool, len(userGroups))
 	for _, g := range userGroups {
 		owned[g] = true
@@ -91,14 +93,6 @@ func GetUserUsableGroupsByGroups(userGroups []string) map[string]string {
 		}
 	}
 	return result
-}
-
-// GetUserUsableGroupsByUser 从用户缓存解析其拥有的多个分组，返回可用分组集合。
-func GetUserUsableGroupsByUser(user *model.UserBase) map[string]string {
-	if user == nil {
-		return setting.GetUserUsableGroupsCopy()
-	}
-	return GetUserUsableGroupsByGroups(user.GetGroups())
 }
 
 func GroupInUserUsableGroups(userGroup, groupName string) bool {
@@ -134,8 +128,9 @@ func GetUserAutoGroupByUser(user *model.UserBase) []string {
 }
 
 // GetUserAutoGroupByGroups 基于用户拥有的多个分组切片，计算 auto 分组（按全局顺序合并去重）。
+// 注意：此函数假设调用方已确认用户被显式分配了多分组，因此采用严格白名单。
 func GetUserAutoGroupByGroups(userGroups []string) []string {
-	usable := GetUserUsableGroupsByGroups(userGroups)
+	usable := getUserUsableGroupsStrict(userGroups)
 	autoGroups := make([]string, 0)
 	seen := make(map[string]bool)
 	for _, group := range setting.GetAutoGroups() {
@@ -171,10 +166,13 @@ func GetUserAutoGroupFromCtx(c *gin.Context) []string {
 }
 
 // GetUserUsableGroupsFromCtx 从请求上下文读取用户的多个分组，计算其可用分组集合。
+// 当 ContextKeyUserGroups 存在（用户被显式分配了多分组）时走严格白名单；
+// 否则回退到单组行为。
 func GetUserUsableGroupsFromCtx(c *gin.Context) map[string]string {
 	if val, ok := common.GetContextKey(c, constant.ContextKeyUserGroups); ok {
 		if groups, ok := val.([]string); ok && len(groups) > 0 {
-			return GetUserUsableGroupsByGroups(groups)
+			// 显式分配：严格白名单
+			return getUserUsableGroupsStrict(groups)
 		}
 	}
 	userGroup := common.GetContextKeyString(c, constant.ContextKeyUserGroup)

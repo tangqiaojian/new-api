@@ -32,7 +32,11 @@ type UserBase struct {
 
 func (user *UserBase) WriteContext(c *gin.Context) {
 	common.SetContextKey(c, constant.ContextKeyUserGroup, user.Group)
-	common.SetContextKey(c, constant.ContextKeyUserGroups, user.GetGroups())
+	// 仅当用户被显式分配了多分组时才写入多分组上下文。
+	// 这样下游可通过该 key 是否存在来判断走严格白名单还是回退到单组语义。
+	if user.HasExplicitGroups() {
+		common.SetContextKey(c, constant.ContextKeyUserGroups, user.GetGroups())
+	}
 	common.SetContextKey(c, constant.ContextKeyUserQuota, user.Quota)
 	common.SetContextKey(c, constant.ContextKeyUserStatus, user.Status)
 	common.SetContextKey(c, constant.ContextKeyUserEmail, user.Email)
