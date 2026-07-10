@@ -3,9 +3,13 @@ package service
 import (
 	"strings"
 
+	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
+
+	"github.com/gin-gonic/gin"
 )
 
 func GetUserUsableGroups(userGroup string) map[string]string {
@@ -126,7 +130,12 @@ func GetUserAutoGroupByUser(user *model.UserBase) []string {
 	if user == nil {
 		return nil
 	}
-	usable := GetUserUsableGroupsByUser(user)
+	return GetUserAutoGroupByGroups(user.GetGroups())
+}
+
+// GetUserAutoGroupByGroups 基于用户拥有的多个分组切片，计算 auto 分组（按全局顺序合并去重）。
+func GetUserAutoGroupByGroups(userGroups []string) []string {
+	usable := GetUserUsableGroupsByGroups(userGroups)
 	autoGroups := make([]string, 0)
 	seen := make(map[string]bool)
 	for _, group := range setting.GetAutoGroups() {
@@ -147,4 +156,42 @@ func GetUserGroupRatio(userGroup, group string) float64 {
 		return ratio
 	}
 	return ratio_setting.GetGroupRatio(group)
+}
+
+// GetUserAutoGroupFromCtx 从请求上下文读取用户的多个分组，计算其 auto 分组。
+// 优先用多分组上下文（支持多分组用户），回退到单分组上下文（兼容旧逻辑）。
+func GetUserAutoGroupFromCtx(c *gin.Context) []string {
+	if val, ok := common.GetContextKey(c, constant.ContextKeyUserGroups); ok {
+		if groups, ok := val.([]string); ok && len(groups) > 0 {
+			return GetUserAutoGroupByGroups(groups)
+		}
+	}
+	userGroup := common.GetContextKeyString(c, constant.ContextKeyUserGroup)
+	return GetUserAutoGroup(userGroup)
+}
+
+// GetUserUsableGroupsFromCtx 从请求上下文读取用户的多个分组，计算其可用分组集合。
+func GetUserUsableGroupsFromCtx(c *gin.Context) map[string]string {
+	if val, ok := common.GetContextKey(c, constant.ContextKeyUserGroups); ok {
+		if groups, ok := val.([]string); ok && len(groups) > 0 {
+			return GetUserUsableGroupsByGroups(groups)
+		}
+	}
+	userGroup := common.GetContextKeyString(c, constant.ContextKeyUserGroup)
+	return GetUserUsableGroups(userGroup)
+}
+
+// GetUserGroupsFromCtx 从请求上下文读取用户拥有的多个分组切片。
+// 优先用多分组上下文，回退到单分组上下文。
+func GetUserGroupsFromCtx(c *gin.Context) []string {
+	if val, ok := common.GetContextKey(c, constant.ContextKeyUserGroups); ok {
+		if groups, ok := val.([]string); ok && len(groups) > 0 {
+			return groups
+		}
+	}
+	userGroup := common.GetContextKeyString(c, constant.ContextKeyUserGroup)
+	if userGroup != "" {
+		return []string{userGroup}
+	}
+	return nil
 }

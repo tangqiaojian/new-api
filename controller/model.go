@@ -177,31 +177,44 @@ type modelListGroups struct {
 
 func getModelListGroups(c *gin.Context) (modelListGroups, error) {
 	tokenGroup := common.GetContextKeyString(c, constant.ContextKeyTokenGroup)
+	// 用户拥有的多个分组（多分组用户支持）；若上下文无多分组则回退到单分组
+	userGroups := service.GetUserGroupsFromCtx(c)
 	userGroup := common.GetContextKeyString(c, constant.ContextKeyUserGroup)
-	if userGroup == "" && (tokenGroup == "" || tokenGroup == "auto") {
-		var err error
-		userGroup, err = model.GetUserGroup(c.GetInt("id"), false)
-		if err != nil {
-			return modelListGroups{}, err
+	if len(userGroups) == 0 {
+		if userGroup == "" && (tokenGroup == "" || tokenGroup == "auto") {
+			var err error
+			userGroup, err = model.GetUserGroup(c.GetInt("id"), false)
+			if err != nil {
+				return modelListGroups{}, err
+			}
 		}
+		if userGroup != "" {
+			userGroups = []string{userGroup}
+		}
+	} else if userGroup == "" && len(userGroups) > 0 {
+		userGroup = userGroups[0]
 	}
 
 	if tokenGroup == "auto" {
 		return modelListGroups{
 			userGroup:   userGroup,
 			tokenGroup:  tokenGroup,
-			ownerGroups: service.GetUserAutoGroup(userGroup),
+			ownerGroups: service.GetUserAutoGroupByGroups(userGroups),
 		}, nil
 	}
 
-	group := userGroup
+	// 非 auto：token 指定了具体分组则只用该分组，否则用用户拥有的所有分组
 	if tokenGroup != "" {
-		group = tokenGroup
+		return modelListGroups{
+			userGroup:   userGroup,
+			tokenGroup:  tokenGroup,
+			ownerGroups: []string{tokenGroup},
+		}, nil
 	}
 	return modelListGroups{
 		userGroup:   userGroup,
 		tokenGroup:  tokenGroup,
-		ownerGroups: []string{group},
+		ownerGroups: userGroups,
 	}, nil
 }
 
@@ -256,7 +269,15 @@ func ListModels(c *gin.Context, modelType int) {
 				}
 			}
 		} else {
-			models = model.GetGroupEnabledModels(ownerGroups[0])
+			// 非 auto：遍历所有 ownerGroups 取模型并集（支持多分组用户）
+			for _, ownerGroup := range ownerGroups {
+				groupModels := model.GetGroupEnabledModels(ownerGroup)
+				for _, g := range groupModels {
+					if !common.StringsContains(models, g) {
+						models = append(models, g)
+					}
+				}
+			}
 		}
 		for _, modelName := range models {
 			if !acceptUnsetRatioModel {
