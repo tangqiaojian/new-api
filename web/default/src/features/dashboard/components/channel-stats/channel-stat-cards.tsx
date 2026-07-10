@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
+import { toIntlLocale } from '@/i18n/languages'
 import { ArrowDownToLine, ArrowUpFromLine, Database, Hash } from 'lucide-react'
 import { formatCompactNumber, formatNumber } from '@/lib/format'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -37,7 +38,7 @@ function formatStatNumber(value: number, locale: Intl.LocalesArgument, compact: 
 
 export function ChannelStatCards(props: ChannelStatCardsProps) {
   const { t, i18n } = useTranslation()
-  const locale = i18n.resolvedLanguage || 'en'
+  const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
   const compact = props.compact ?? true
   const data = props.data ?? []
   const subtitle = props.channelName

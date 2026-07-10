@@ -21,6 +21,7 @@ import { useQuery } from '@tanstack/react-query'
 import { VChart } from '@visactor/react-vchart'
 import { Hash, Loader2, ArrowLeftRight } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { toIntlLocale } from '@/i18n/languages'
 import { getRollingDateRange } from '@/lib/time'
 import { useAutoRefresh } from '@/features/dashboard/hooks/use-auto-refresh'
 import { VCHART_OPTION } from '@/lib/vchart'
@@ -117,7 +118,7 @@ export function DailyTokensSection(props: DailyTokensSectionProps) {
   const [metricType, setMetricType] = useState<TokenMetricType>('total')
   const [currentPage, setCurrentPage] = useState(1)
 
-  const locale = i18n.resolvedLanguage || 'en'
+  const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
 
   const timeRange = useMemo(() => {
     const { start, end } = getRollingDateRange(selectedRange)

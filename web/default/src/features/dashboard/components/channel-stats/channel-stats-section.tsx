@@ -20,6 +20,7 @@ import { useMemo, useState, useCallback } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Hash, Loader2, ArrowLeftRight, ArrowUpDown } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { toIntlLocale } from '@/i18n/languages'
 import { getRollingDateRange } from '@/lib/time'
 import { useAutoRefresh } from '@/features/dashboard/hooks/use-auto-refresh'
 import { useAuthStore } from '@/stores/auth-store'
@@ -99,7 +100,7 @@ export function ChannelStatsSection(props: ChannelStatsSectionProps) {
   const [sortField, setSortField] = useState<SortField>('request_count')
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
 
-  const locale = i18n.resolvedLanguage || 'en'
+  const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
 
   const timeRange = useMemo(() => {
     const { start, end } = getRollingDateRange(selectedRange)
