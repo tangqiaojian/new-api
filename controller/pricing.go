@@ -42,26 +42,43 @@ func GetPricing(c *gin.Context) {
 		groupRatio[s] = f
 	}
 	var group string
+	var user *model.UserBase
 	if exists {
-		user, err := model.GetUserCache(userId.(int))
-		if err == nil {
+		var err error
+		user, err = model.GetUserCache(userId.(int))
+		if err == nil && user != nil {
 			group = user.Group
+			// 用户拥有的多个分组：对每个分组应用其 group-group 倍率覆盖，取最低倍率
 			for g := range groupRatio {
-				ratio, ok := ratio_setting.GetGroupGroupRatio(group, g)
-				if ok {
-					groupRatio[g] = ratio
+				bestRatio := groupRatio[g]
+				for _, ug := range user.GetGroups() {
+					if ratio, ok := ratio_setting.GetGroupGroupRatio(ug, g); ok {
+						if bestRatio == 0 || ratio < bestRatio {
+							bestRatio = ratio
+						}
+					}
 				}
+				groupRatio[g] = bestRatio
 			}
 		}
 	}
 
 	usableGroup = service.GetUserUsableGroups(group)
+	if user != nil {
+		usableGroup = service.GetUserUsableGroupsByUser(user)
+	}
 	pricing = filterPricingByUsableGroups(pricing, usableGroup)
 	// check groupRatio contains usableGroup
 	for group := range ratio_setting.GetGroupRatioCopy() {
 		if _, ok := usableGroup[group]; !ok {
 			delete(groupRatio, group)
 		}
+	}
+
+	autoGroups := service.GetUserAutoGroup(group)
+	if user != nil {
+		// 多分组用户：对其拥有的分组分别取自动分组，合并去重
+		autoGroups = service.GetUserAutoGroupByUser(user)
 	}
 
 	c.JSON(200, gin.H{
@@ -71,7 +88,7 @@ func GetPricing(c *gin.Context) {
 		"group_ratio":        groupRatio,
 		"usable_group":       usableGroup,
 		"supported_endpoint": model.GetSupportedEndpointMap(),
-		"auto_groups":        service.GetUserAutoGroup(group),
+		"auto_groups":        autoGroups,
 		"pricing_version":    "a42d372ccf0b5dd13ecf71203521f9d2",
 	})
 }

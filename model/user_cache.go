@@ -17,6 +17,7 @@ import (
 type UserBase struct {
 	Id                 int    `json:"id"`
 	Group              string `json:"group"`
+	Groups             string `json:"groups"`
 	Email              string `json:"email"`
 	Quota              int    `json:"quota"`
 	Status             int    `json:"status"`
@@ -118,6 +119,7 @@ func GetUserCache(userId int) (userCache *UserBase, err error) {
 	userCache = &UserBase{
 		Id:       user.Id,
 		Group:    user.Group,
+		Groups:   user.Groups,
 		Quota:    user.Quota,
 		Status:   user.Status,
 		Username: user.Username,
@@ -222,6 +224,18 @@ func updateUserGroupCache(userId int, group string) error {
 
 func UpdateUserGroupCache(userId int, group string) error {
 	return updateUserGroupCache(userId, group)
+}
+
+func updateUserGroupsCache(userId int, groups string) error {
+	if !common.RedisEnabled {
+		return nil
+	}
+	return common.RedisHSetField(getUserCacheKey(userId), "Groups", groups)
+}
+
+// UpdateUserGroupsCache updates the multi-group cache field for a user.
+func UpdateUserGroupsCache(userId int, groups string) error {
+	return updateUserGroupsCache(userId, groups)
 }
 
 func updateUserNameCache(userId int, username string) error {

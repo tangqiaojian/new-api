@@ -228,6 +228,23 @@ export function useUsersColumns(): ColumnDef<User>[] {
       header: t('Group'),
       cell: ({ row }) => {
         const group = row.getValue('group') as string
+        // 多分组：优先展示 groups 字段（逗号分隔），否则回退到单个 group
+        const groupsStr = (row.original.groups as string | undefined) ?? ''
+        const groups = groupsStr
+          .split(',')
+          .map((g) => g.trim())
+          .filter(Boolean)
+        if (groups.length > 0) {
+          return (
+            <BadgeCell>
+              <div className='flex max-w-full flex-wrap gap-1'>
+                {groups.map((g) => (
+                  <GroupBadge key={g} group={g} />
+                ))}
+              </div>
+            </BadgeCell>
+          )
+        }
         return (
           <BadgeCell>
             <GroupBadge group={group} />
@@ -236,8 +253,9 @@ export function useUsersColumns(): ColumnDef<User>[] {
       },
       filterFn: (row, id, value) => {
         const group = String(row.getValue(id) || t('User Group')).toLowerCase()
+        const groupsStr = String(row.original.groups || '').toLowerCase()
         const searchValue = String(value).toLowerCase()
-        return group.includes(searchValue)
+        return group.includes(searchValue) || groupsStr.includes(searchValue)
       },
       size: 140,
     },

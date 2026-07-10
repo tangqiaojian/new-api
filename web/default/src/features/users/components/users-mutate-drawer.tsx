@@ -37,6 +37,7 @@ import {
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { MultiSelect } from '@/components/multi-select'
 import {
   Select,
   SelectContent,
@@ -324,35 +325,27 @@ export function UsersMutateDrawer({
 
                   <FormField
                     control={form.control}
-                    name='group'
+                    name='groups'
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>{t('Group')}</FormLabel>
-                        <Select
-                          items={[
-                            ...groups.map((group) => ({
-                              value: group,
+                        <FormLabel>{t('Groups')}</FormLabel>
+                        <FormControl>
+                          <MultiSelect
+                            options={groups.map((group) => ({
                               label: group,
-                            })),
-                          ]}
-                          onValueChange={field.onChange}
-                          value={field.value}
-                        >
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder={t('Select a group')} />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent alignItemWithTrigger={false}>
-                            <SelectGroup>
-                              {groups.map((group) => (
-                                <SelectItem key={group} value={group}>
-                                  {group}
-                                </SelectItem>
-                              ))}
-                            </SelectGroup>
-                          </SelectContent>
-                        </Select>
+                              value: group,
+                            }))}
+                            selected={field.value ?? []}
+                            onChange={field.onChange}
+                            allowCreate
+                            placeholder={t('Select groups')}
+                          />
+                        </FormControl>
+                        <FormDescription>
+                          {t(
+                            'Assign one or more groups. The user can only use models from these groups.'
+                          )}
+                        </FormDescription>
                         <FormMessage />
                       </FormItem>
                     )}

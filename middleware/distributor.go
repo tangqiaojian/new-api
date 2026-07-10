@@ -92,7 +92,13 @@ func Distribute() func(c *gin.Context) {
 						return
 					}
 					if playgroundRequest.Group != "" {
-						if !service.GroupInUserUsableGroups(usingGroup, playgroundRequest.Group) && playgroundRequest.Group != usingGroup {
+						// 用户可能被分配多个分组，计算其完整可用分组集合后校验
+						userId := c.GetInt("id")
+						usableGroups := map[string]string{usingGroup: ""}
+						if userCache, cacheErr := model.GetUserCache(userId); cacheErr == nil && userCache != nil {
+							usableGroups = service.GetUserUsableGroupsByUser(userCache)
+						}
+						if _, ok := usableGroups[playgroundRequest.Group]; !ok && playgroundRequest.Group != usingGroup {
 							abortWithOpenAiMessage(c, http.StatusForbidden, i18n.T(c, i18n.MsgDistributorGroupAccessDenied))
 							return
 						}

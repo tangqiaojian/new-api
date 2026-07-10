@@ -35,6 +35,7 @@ export const userFormSchema = z.object({
   rate_limit_total: z.number().min(0).optional(),
   rate_limit_success: z.number().min(0).optional(),
   group: z.string().optional(),
+  groups: z.array(z.string()).optional(),
   remark: z.string().optional(),
 })
 
@@ -54,6 +55,7 @@ export const USER_FORM_DEFAULT_VALUES: UserFormValues = {
   rate_limit_total: 0,
   rate_limit_success: 0,
   group: DEFAULT_GROUP,
+  groups: [DEFAULT_GROUP],
   remark: '',
 }
 
@@ -80,6 +82,9 @@ export function transformFormDataToPayload(
   } else {
     // For update: quota is adjusted atomically via /api/user/manage, not sent here
     payload.group = data.group
+    // 多分组：逗号分隔后发给后端；为空时发送空串以清除
+    const groups = (data.groups ?? []).filter((g) => g !== '')
+    payload.groups = groups.length > 0 ? groups.join(',') : ''
     payload.remark = data.remark || undefined
     payload.id = userId
   }
@@ -101,6 +106,14 @@ export function transformUserToFormDefaults(user: User): UserFormValues {
     rate_limit_total: user.rate_limit_total || 0,
     rate_limit_success: user.rate_limit_success || 0,
     group: user.group || DEFAULT_GROUP,
+    // 解析多分组：优先用 groups（逗号分隔），否则回退到单个 group
+    groups:
+      user.groups && user.groups.trim() !== ''
+        ? user.groups
+            .split(',')
+            .map((g) => g.trim())
+            .filter((g) => g !== '')
+        : [user.group || DEFAULT_GROUP],
     remark: user.remark || '',
   }
 }
