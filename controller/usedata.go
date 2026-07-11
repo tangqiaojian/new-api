@@ -136,7 +136,8 @@ func GetAllDailyTokenData(c *gin.Context) {
 		return
 	}
 	username := c.Query("username")
-	data, err := model.GetAllDailyTokenData(startTimestamp, endTimestamp, username)
+	includeCache := c.Query("include_cache") != "false"
+	data, err := model.GetAllDailyTokenData(startTimestamp, endTimestamp, username, includeCache)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -161,7 +162,8 @@ func GetUserDailyTokenData(c *gin.Context) {
 		})
 		return
 	}
-	data, err := model.GetDailyTokenDataByUserId(userId, startTimestamp, endTimestamp)
+	includeCache := c.Query("include_cache") != "false"
+	data, err := model.GetDailyTokenDataByUserId(userId, startTimestamp, endTimestamp, includeCache)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -178,7 +180,7 @@ func GetAllDailyModelTokenData(c *gin.Context) {
 	if !ok {
 		return
 	}
-	data, err := model.GetAllDailyModelTokenData(startTimestamp, endTimestamp)
+	data, err := model.GetAllDailyModelTokenData(startTimestamp, endTimestamp, c.Query("include_cache") != "false")
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -203,7 +205,7 @@ func GetUserDailyModelTokenData(c *gin.Context) {
 		})
 		return
 	}
-	data, err := model.GetDailyModelTokenDataByUserId(userId, startTimestamp, endTimestamp)
+	data, err := model.GetDailyModelTokenDataByUserId(userId, startTimestamp, endTimestamp, c.Query("include_cache") != "false")
 	if err != nil {
 		common.ApiError(c, err)
 		return

@@ -916,20 +916,28 @@ export function DetailsDialog(props: DetailsDialogProps) {
           </DetailSection>
         )}
 
-        {/* Reasoning effort */}
-        {other?.api_reasoning_effort && (
-          <DetailRow
-            label={t('API Reasoning Effort')}
-            value={<ReasoningEffortBadge effort={other.api_reasoning_effort} />}
-          />
-        )}
-        {other?.reasoning_effort &&
-          other.reasoning_effort !== other.api_reasoning_effort && (
-            <DetailRow
-              label={t('Reasoning Effort')}
-              value={<ReasoningEffortBadge effort={other.reasoning_effort} />}
-            />
-          )}
+        {/* Reasoning effort — always show; display "None" when absent */}
+        <DetailRow
+          label={t('API Reasoning Effort')}
+          value={
+            other?.api_reasoning_effort ? (
+              <ReasoningEffortBadge effort={other.api_reasoning_effort} />
+            ) : (
+              <span className='text-muted-foreground'>{t('None')}</span>
+            )
+          }
+        />
+        <DetailRow
+          label={t('Reasoning Effort')}
+          value={
+            other?.reasoning_effort &&
+            other.reasoning_effort !== other.api_reasoning_effort ? (
+              <ReasoningEffortBadge effort={other.reasoning_effort} />
+            ) : (
+              <span className='text-muted-foreground'>{t('None')}</span>
+            )
+          }
+        />
 
         {/* System prompt override */}
         {other?.is_system_prompt_overwritten && (

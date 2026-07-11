@@ -102,10 +102,11 @@ export async function getDailyTokenData(params: {
   start_timestamp: number
   end_timestamp: number
   username?: string
+  include_cache?: boolean
 }) {
   const res = await api.get<{ success: boolean; data: DailyTokenDataItem[] }>(
     '/api/data/daily-tokens',
-    { params }
+    { params: { ...params, include_cache: params.include_cache !== false } }
   )
   return res.data
 }
@@ -114,10 +115,11 @@ export async function getDailyTokenData(params: {
 export async function getSelfDailyTokenData(params: {
   start_timestamp: number
   end_timestamp: number
+  include_cache?: boolean
 }) {
   const res = await api.get<{ success: boolean; data: DailyTokenDataItem[] }>(
     '/api/data/daily-tokens/self',
-    { params }
+    { params: { ...params, include_cache: params.include_cache !== false } }
   )
   return res.data
 }
@@ -130,11 +132,14 @@ export async function getSelfDailyTokenData(params: {
 export async function getDailyModelTokenData(params: {
   start_timestamp: number
   end_timestamp: number
+  include_cache?: boolean
 }) {
   const res = await api.get<{
     success: boolean
     data: DailyModelTokenDataItem[]
-  }>('/api/data/daily-model-tokens', { params })
+  }>('/api/data/daily-model-tokens', {
+    params: { ...params, include_cache: params.include_cache !== false },
+  })
   return res.data
 }
 
@@ -142,11 +147,14 @@ export async function getDailyModelTokenData(params: {
 export async function getSelfDailyModelTokenData(params: {
   start_timestamp: number
   end_timestamp: number
+  include_cache?: boolean
 }) {
   const res = await api.get<{
     success: boolean
     data: DailyModelTokenDataItem[]
-  }>('/api/data/daily-model-tokens/self', { params })
+  }>('/api/data/daily-model-tokens/self', {
+    params: { ...params, include_cache: params.include_cache !== false },
+  })
   return res.data
 }
 
