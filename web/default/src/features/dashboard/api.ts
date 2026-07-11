@@ -149,3 +149,48 @@ export async function getSelfDailyModelTokenData(params: {
   }>('/api/data/daily-model-tokens/self', { params })
   return res.data
 }
+
+// ----------------------------------------------------------------------------
+// Channel Statistics
+// ----------------------------------------------------------------------------
+
+export interface ChannelStatsItem {
+  channel_id: number
+  channel_name: string
+  request_count: number
+  success_count: number
+  error_count: number
+  success_rate: number
+  avg_use_time: number
+  avg_first_byte: number
+  total_tokens: number
+  cached_tokens: number
+  cache_hit_ratio: number
+  used_quota: number
+}
+
+export interface ChannelStatsSummary {
+  total_requests: number
+  total_success: number
+  total_errors: number
+  overall_success_rate: number
+  avg_use_time: number
+  avg_first_byte: number
+  total_tokens: number
+  total_cached_tokens: number
+  overall_cache_hit_ratio: number
+  total_used_quota: number
+  top_channels: ChannelStatsItem[]
+  all_channels: ChannelStatsItem[]
+}
+
+export async function getChannelStats(params: {
+  start_timestamp: number
+  end_timestamp: number
+}) {
+  const res = await api.get<{
+    success: boolean
+    data: ChannelStatsSummary
+  }>('/api/data/channel-stats', { params })
+  return res.data
+}

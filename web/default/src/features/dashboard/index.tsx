@@ -121,6 +121,12 @@ const LazyDailyModelTokensSection = lazy(() =>
   }))
 )
 
+const LazyChannelStatsSection = lazy(() =>
+  import('./components/channel-stats/channel-stats-section').then((m) => ({
+    default: m.ChannelStatsSection,
+  }))
+)
+
 function LogStatCardsFallback() {
   return (
     <div className='overflow-hidden rounded-lg border'>
@@ -555,6 +561,16 @@ export function Dashboard() {
             <FadeIn>
               <Suspense fallback={<ModelChartsFallback />}>
                 <LazyDailyModelTokensSection
+                  filters={dailyTokensFilters}
+                  onFiltersChange={setDailyTokensFilters}
+                />
+              </Suspense>
+            </FadeIn>
+          )}
+          {activeSection === 'channel-stats' && (
+            <FadeIn>
+              <Suspense fallback={<ModelChartsFallback />}>
+                <LazyChannelStatsSection
                   filters={dailyTokensFilters}
                   onFiltersChange={setDailyTokensFilters}
                 />
