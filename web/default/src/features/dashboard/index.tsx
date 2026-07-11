@@ -190,6 +190,9 @@ const SECTION_META: Record<DashboardSectionId, { titleKey: string }> = {
   'daily-model-tokens': {
     titleKey: 'Daily Model Token Usage',
   },
+  'channel-stats': {
+    titleKey: 'Channel Statistics',
+  },
   users: {
     titleKey: 'User Analytics',
   },
