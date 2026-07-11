@@ -2231,6 +2231,7 @@
     "Incidents": "Инциденты",
     "Include Group": "Включить группу",
     "Include Model": "Включить модель",
+    "Include cache": "Include cache",
     "Include Rule Name": "Включить имя правила",
     "Includes request rules": "Включает правила запросов",
     "Including failed requests, 0 = unlimited": "Включая неудачные запросы, 0 = без ограничений",

@@ -2231,6 +2231,7 @@
     "Incidents": "インシデント",
     "Include Group": "グループを含む",
     "Include Model": "モデルを含む",
+    "Include cache": "Include cache",
     "Include Rule Name": "ルール名を含む",
     "Includes request rules": "リクエストルールを含む",
     "Including failed requests, 0 = unlimited": "失敗したリクエストを含む、0 = 無制限",

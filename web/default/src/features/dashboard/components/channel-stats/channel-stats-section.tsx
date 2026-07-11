@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
   Activity,
@@ -31,6 +31,8 @@ import { useAutoRefresh } from '@/features/dashboard/hooks/use-auto-refresh'
 import { formatCompactNumber, formatPercent } from '@/lib/format'
 import { formatQuotaWithCurrency } from '@/lib/currency'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Switch } from '@/components/ui/switch'
+import { Label } from '@/components/ui/label'
 import {
   Table,
   TableBody,
@@ -56,6 +58,7 @@ export function ChannelStatsSection({
 }: ChannelStatsSectionProps) {
   const { t } = useTranslation()
   const autoRefresh = useAutoRefresh()
+  const [includeCache, setIncludeCache] = useState(true)
 
   const { startTimestamp, endTimestamp } = useMemo(() => {
     const now = Math.floor(Date.now() / 1000)
@@ -67,11 +70,18 @@ export function ChannelStatsSection({
   }, [filters.selectedRange])
 
   const { data, isLoading, isError } = useQuery({
-    queryKey: ['dashboard', 'channel-stats', startTimestamp, endTimestamp],
+    queryKey: [
+      'dashboard',
+      'channel-stats',
+      startTimestamp,
+      endTimestamp,
+      includeCache,
+    ],
     queryFn: () =>
       getChannelStats({
         start_timestamp: startTimestamp,
         end_timestamp: endTimestamp,
+        include_cache: includeCache,
       }),
     refetchInterval: autoRefresh.refetchInterval || false,
     staleTime: 30 * 1000,
@@ -83,23 +93,38 @@ export function ChannelStatsSection({
 
   return (
     <div className='space-y-3 sm:space-y-4'>
-      {/* 时间范围选择 */}
-      <div className='flex flex-wrap items-center gap-1.5 sm:gap-2'>
-        {TIME_RANGE_PRESETS.map((preset) => (
-          <button
-            key={preset.days}
-            onClick={() =>
-              onFiltersChange({ ...filters, selectedRange: preset.days })
-            }
-            className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
-              filters.selectedRange === preset.days
-                ? 'bg-primary text-primary-foreground'
-                : 'bg-muted hover:bg-muted/80 text-muted-foreground'
-            }`}
+      {/* 时间范围选择 + 缓存开关 */}
+      <div className='flex flex-wrap items-center justify-between gap-1.5 sm:gap-2'>
+        <div className='flex flex-wrap items-center gap-1.5 sm:gap-2'>
+          {TIME_RANGE_PRESETS.map((preset) => (
+            <button
+              key={preset.days}
+              onClick={() =>
+                onFiltersChange({ ...filters, selectedRange: preset.days })
+              }
+              className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                filters.selectedRange === preset.days
+                  ? 'bg-primary text-primary-foreground'
+                  : 'bg-muted hover:bg-muted/80 text-muted-foreground'
+              }`}
+            >
+              {t(preset.label)}
+            </button>
+          ))}
+        </div>
+        <div className='flex items-center gap-2'>
+          <Switch
+            id='channel-stats-include-cache'
+            checked={includeCache}
+            onCheckedChange={setIncludeCache}
+          />
+          <Label
+            htmlFor='channel-stats-include-cache'
+            className='text-muted-foreground cursor-pointer text-xs font-normal'
           >
-            {t(preset.label)}
-          </button>
-        ))}
+            {t('Include cache')}
+          </Label>
+        </div>
       </div>
 
       {/* 汇总卡片 */}

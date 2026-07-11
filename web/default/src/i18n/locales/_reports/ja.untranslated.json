@@ -30,6 +30,7 @@
   "Import Failed": "Import Failed",
   "Import Successful": "Import Successful",
   "Imported {{channelCount}} channels and {{pricingCount}} pricing maps": "Imported {{channelCount}} channels and {{pricingCount}} pricing maps",
+  "Include cache": "Include cache",
   "Invalid JSON file": "Invalid JSON file",
   "Model Request Count Ranking": "Model Request Count Ranking",
   "Model Token Ranking": "Model Token Ranking",

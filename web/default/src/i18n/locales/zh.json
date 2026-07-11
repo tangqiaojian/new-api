@@ -2231,6 +2231,7 @@
     "Incidents": "事件",
     "Include Group": "包含分组",
     "Include Model": "包含模型",
+    "Include cache": "含缓存",
     "Include Rule Name": "包含规则名",
     "Includes request rules": "包含请求规则",
     "Including failed requests, 0 = unlimited": "包括失败的请求，0 = 无限制",

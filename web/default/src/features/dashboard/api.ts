@@ -187,10 +187,16 @@ export interface ChannelStatsSummary {
 export async function getChannelStats(params: {
   start_timestamp: number
   end_timestamp: number
+  include_cache?: boolean
 }) {
   const res = await api.get<{
     success: boolean
     data: ChannelStatsSummary
-  }>('/api/data/channel-stats', { params })
+  }>('/api/data/channel-stats', {
+    params: {
+      ...params,
+      include_cache: params.include_cache !== false,
+    },
+  })
   return res.data
 }

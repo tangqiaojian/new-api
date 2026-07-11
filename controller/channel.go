@@ -168,6 +168,28 @@ func GetAllChannels(c *gin.Context) {
 		clearChannelInfo(datum)
 	}
 
+	// 批量填充渠道缓存命中率（最近 7 天）
+	if len(channelData) > 0 {
+		channelIDs := make([]int, 0, len(channelData))
+		for _, ch := range channelData {
+			if ch != nil && ch.Id > 0 {
+				channelIDs = append(channelIDs, ch.Id)
+			}
+		}
+		if len(channelIDs) > 0 {
+			cacheRatios, err := model.GetChannelCacheHitRatios(channelIDs, 7)
+			if err != nil {
+				common.SysLog("failed to get channel cache hit ratios: " + err.Error())
+			} else {
+				for _, ch := range channelData {
+					if ch != nil {
+						ch.CacheHitRatio = cacheRatios[ch.Id]
+					}
+				}
+			}
+		}
+	}
+
 	countQuery := buildChannelListQuery(groupFilter, statusFilter, -1)
 	var results []struct {
 		Type  int64

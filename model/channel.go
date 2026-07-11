@@ -57,6 +57,9 @@ type Channel struct {
 
 	// cache info
 	Keys []string `json:"-" gorm:"-"`
+
+	// 渠道缓存命中率（非持久化，从日志聚合计算）
+	CacheHitRatio float64 `json:"cache_hit_ratio" gorm:"-"`
 }
 
 type ChannelInfo struct {

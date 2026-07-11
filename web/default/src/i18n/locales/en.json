@@ -2231,6 +2231,7 @@
     "Incidents": "Incidents",
     "Include Group": "Include Group",
     "Include Model": "Include Model",
+    "Include cache": "Include cache",
     "Include Rule Name": "Include Rule Name",
     "Includes request rules": "Includes request rules",
     "Including failed requests, 0 = unlimited": "Including failed requests, 0 = unlimited",

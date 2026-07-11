@@ -235,7 +235,9 @@ func GetChannelStats(c *gin.Context) {
 		})
 		return
 	}
-	data, err := model.GetChannelStats(startTimestamp, endTimestamp)
+	// include_cache: 默认 true（含缓存）。传 "false" 时不含缓存 token。
+	includeCache := c.Query("include_cache") != "false"
+	data, err := model.GetChannelStats(startTimestamp, endTimestamp, includeCache)
 	if err != nil {
 		common.ApiError(c, err)
 		return

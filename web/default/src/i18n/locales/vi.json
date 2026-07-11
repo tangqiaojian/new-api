@@ -2231,6 +2231,7 @@
     "Incidents": "Sự cố",
     "Include Group": "Bao gồm nhóm",
     "Include Model": "Bao gồm mô hình",
+    "Include cache": "Include cache",
     "Include Rule Name": "Bao gồm tên quy tắc",
     "Includes request rules": "Bao gồm quy tắc yêu cầu",
     "Including failed requests, 0 = unlimited": "Bao gồm các yêu cầu thất bại, 0 = không giới hạn",

@@ -2231,6 +2231,7 @@
     "Incidents": "Incidents",
     "Include Group": "Inclure le groupe",
     "Include Model": "Inclure le modèle",
+    "Include cache": "Include cache",
     "Include Rule Name": "Inclure le nom de la règle",
     "Includes request rules": "Inclut des règles de requête",
     "Including failed requests, 0 = unlimited": "Y compris les requêtes échouées, 0 = illimité",
