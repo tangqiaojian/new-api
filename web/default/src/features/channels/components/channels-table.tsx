@@ -60,7 +60,7 @@ import { DataTableBulkActions } from './data-table-bulk-actions'
 
 const route = getRouteApi('/_authenticated/channels/')
 const CHANNELS_COLUMN_VISIBILITY_STORAGE_KEY =
-  'channels:column-visibility'
+  'channels:column-visibility-v2'
 const CHANNELS_VIEW_MODE_STORAGE_KEY = 'channels:view-mode'
 
 const CHANNEL_SORTABLE_COLUMNS = new Set<ChannelSortBy>([
