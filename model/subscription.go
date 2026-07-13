@@ -1068,6 +1068,100 @@ func AdminDeleteUserSubscription(userSubscriptionId int) (string, error) {
 	return "", nil
 }
 
+// AdminUserSubscriptionDetail is a user subscription joined with the owning
+// user's username and the plan's title for admin listing views.
+type AdminUserSubscriptionDetail struct {
+	UserSubscription
+	Username  string `json:"username"`
+	PlanTitle string `json:"plan_title"`
+}
+
+// AdminListAllUserSubscriptions returns all user subscriptions joined with the
+// owning username and plan title, with pagination and an optional username
+// filter. When username is empty all subscriptions are returned.
+func AdminListAllUserSubscriptions(page, pageSize int, username string) ([]AdminUserSubscriptionDetail, int64, error) {
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 {
+		pageSize = 10
+	}
+	if pageSize > 100 {
+		pageSize = 100
+	}
+	var details []AdminUserSubscriptionDetail
+	var total int64
+
+	query := DB.Model(&UserSubscription{}).
+		Joins("left join users on users.id = user_subscriptions.user_id").
+		Joins("left join subscription_plans on subscription_plans.id = user_subscriptions.plan_id")
+	if username = strings.TrimSpace(username); username != "" {
+		query = query.Where("users.username LIKE ?", "%"+username+"%")
+	}
+
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	if err := query.
+		Select("user_subscriptions.*, users.username as username, subscription_plans.title as plan_title").
+		Order("user_subscriptions.id desc").
+		Limit(pageSize).
+		Offset((page - 1) * pageSize).
+		Find(&details).Error; err != nil {
+		return nil, 0, err
+	}
+	return details, total, nil
+}
+
+// AdminAdjustUserSubscription adds quota to a user's subscription.
+// amountDelta > 0 increases AmountTotal, tokenDelta > 0 increases TokensTotal.
+// Both deltas may be 0 (no-op); negative values are rejected.
+func AdminAdjustUserSubscription(userSubscriptionId int, amountDelta int64, tokenDelta int64) error {
+	if userSubscriptionId <= 0 {
+		return errors.New("invalid userSubscriptionId")
+	}
+	if amountDelta < 0 || tokenDelta < 0 {
+		return errors.New("deltas must be non-negative")
+	}
+	if amountDelta == 0 && tokenDelta == 0 {
+		return nil
+	}
+	updates := map[string]interface{}{
+		"updated_at": common.GetTimestamp(),
+	}
+	if amountDelta > 0 {
+		updates["amount_total"] = gorm.Expr("amount_total + ?", amountDelta)
+	}
+	if tokenDelta > 0 {
+		updates["tokens_total"] = gorm.Expr("tokens_total + ?", tokenDelta)
+	}
+	return DB.Model(&UserSubscription{}).
+		Where("id = ?", userSubscriptionId).
+		Updates(updates).Error
+}
+
+// AdminResetSingleUserSubscription resets a single user subscription's usage
+// (AmountUsed=0, TokensUsed=0) and recalculates the next reset times using the
+// plan's reset period.
+func AdminResetSingleUserSubscription(userSubscriptionId int) error {
+	if userSubscriptionId <= 0 {
+		return errors.New("invalid userSubscriptionId")
+	}
+	return DB.Transaction(func(tx *gorm.DB) error {
+		var sub UserSubscription
+		if err := lockForUpdate(tx).
+			Where("id = ?", userSubscriptionId).First(&sub).Error; err != nil {
+			return err
+		}
+		plan, err := getSubscriptionPlanByIdTx(tx, sub.PlanId)
+		if err != nil {
+			return err
+		}
+		now := GetDBTimestamp()
+		return resetUserSubscriptionTx(tx, &sub, plan, now, true)
+	})
+}
+
 func resetUserSubscriptionTx(tx *gorm.DB, sub *UserSubscription, plan *SubscriptionPlan, now int64, advanceResetTime bool) error {
 	if tx == nil || sub == nil || plan == nil {
 		return errors.New("invalid reset args")
@@ -1393,8 +1487,21 @@ func maybeResetUserSubscriptionTokensWithPlanTx(tx *gorm.DB, sub *UserSubscripti
 	if tokenPeriod == SubscriptionResetNever {
 		return nil
 	}
-	// Not yet due.
+	// Not yet due. But verify the next reset time matches the current plan's
+	// token reset period — if the plan was updated after subscription creation,
+	// the stored token_next_reset_time may be stale (computed from the old period).
 	if sub.TokenNextResetTime > 0 && sub.TokenNextResetTime > now {
+		// Recalculate what the next reset should be based on the current plan
+		expectedBase := sub.TokenLastResetTime
+		if expectedBase <= 0 {
+			expectedBase = sub.StartTime
+		}
+		expectedNext := calcNextTokenResetTime(time.Unix(expectedBase, 0), plan, sub.EndTime)
+		if expectedNext > 0 && expectedNext != sub.TokenNextResetTime {
+			// Plan's token reset period changed since last calculation — update
+			sub.TokenNextResetTime = expectedNext
+			return tx.Save(sub).Error
+		}
 		return nil
 	}
 	baseUnix := sub.TokenLastResetTime

@@ -30,6 +30,7 @@ import type {
   SubscriptionPayResponse,
   SubscriptionPayRequest,
   SelfSubscriptionData,
+  AdminUserSubscriptionList,
 } from './types'
 
 // ============================================================================
@@ -126,6 +127,43 @@ export async function resetPlanSubscriptions(
   const res = await api.post(
     `/api/subscription/admin/plans/${planId}/subscriptions/reset`,
     data
+  )
+  return res.data
+}
+
+// ============================================================================
+// Admin All-User Subscription Management
+// ============================================================================
+
+export async function adminListAllSubscriptions(params: {
+  p?: number
+  size?: number
+  username?: string
+}): Promise<ApiResponse<AdminUserSubscriptionList>> {
+  const res = await api.get('/api/subscription/admin/all', { params })
+  return res.data
+}
+
+export async function adminAdjustSubscription(
+  id: number,
+  amountDelta: number,
+  tokenDelta: number
+): Promise<ApiResponse> {
+  const res = await api.post(
+    `/api/subscription/admin/user_subscriptions/${id}/adjust`,
+    {
+      amount_delta: amountDelta,
+      token_delta: tokenDelta,
+    }
+  )
+  return res.data
+}
+
+export async function adminResetSubscription(
+  id: number
+): Promise<ApiResponse> {
+  const res = await api.post(
+    `/api/subscription/admin/user_subscriptions/${id}/reset`
   )
   return res.data
 }

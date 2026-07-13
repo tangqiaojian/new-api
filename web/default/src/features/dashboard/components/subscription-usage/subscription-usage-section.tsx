@@ -542,7 +542,7 @@ export function SubscriptionUsageSection(props: SubscriptionUsageSectionProps) {
                   <span className='text-sm font-medium'>{t('Plan')} #{sub.plan_id}</span>
                   <span className='text-xs text-muted-foreground'>{daysLeft} {t('days remaining')}</span>
                 </div>
-                {sub.amount_total > 0 && (
+                {sub.amount_total > 0 ? (
                   <div className='space-y-1'>
                     <div className='flex justify-between text-xs text-muted-foreground'>
                       <span>{t('Quota')}</span>
@@ -552,8 +552,13 @@ export function SubscriptionUsageSection(props: SubscriptionUsageSectionProps) {
                       <div className='h-full bg-primary rounded-full' style={{ width: `${amountPercent}%` }} />
                     </div>
                   </div>
+                ) : (
+                  <div className='flex justify-between text-xs text-muted-foreground'>
+                    <span>{t('Quota')}</span>
+                    <span>{t('Unlimited')}</span>
+                  </div>
                 )}
-                {(sub.tokens_total ?? 0) > 0 && (
+                {(sub.tokens_total ?? 0) > 0 ? (
                   <div className='space-y-1'>
                     <div className='flex justify-between text-xs text-muted-foreground'>
                       <span>{t('Total Tokens')}</span>
@@ -562,6 +567,11 @@ export function SubscriptionUsageSection(props: SubscriptionUsageSectionProps) {
                     <div className='h-1.5 rounded-full bg-muted overflow-hidden'>
                       <div className='h-full bg-blue-500 rounded-full' style={{ width: `${tokensPercent}%` }} />
                     </div>
+                  </div>
+                ) : (
+                  <div className='flex justify-between text-xs text-muted-foreground'>
+                    <span>{t('Total Tokens')}</span>
+                    <span>{t('Unlimited')}</span>
                   </div>
                 )}
                 {(sub.next_reset_time ?? 0) > 0 && (

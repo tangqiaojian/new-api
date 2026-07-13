@@ -17,10 +17,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { Info } from 'lucide-react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { SectionPageLayout } from '@/components/layout'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
 import { SubscriptionsDialogs } from './components/subscriptions-dialogs'
 import { SubscriptionsPrimaryButtons } from './components/subscriptions-primary-buttons'
@@ -29,10 +31,12 @@ import {
   useSubscriptions,
 } from './components/subscriptions-provider'
 import { SubscriptionsTable } from './components/subscriptions-table'
+import { UserSubscriptionsPanel } from './components/user-subscriptions-panel'
 
 function SubscriptionsContent() {
   const { t } = useTranslation()
   const { complianceConfirmed } = useSubscriptions()
+  const [activeTab, setActiveTab] = useState<string>('plans')
 
   return (
     <>
@@ -54,20 +58,45 @@ function SubscriptionsContent() {
           </div>
         </SectionPageLayout.Actions>
         <SectionPageLayout.Content>
-          <div className='flex h-full min-h-0 flex-col gap-4'>
-            {!complianceConfirmed ? (
-              <Alert variant='destructive' className='shrink-0'>
-                <AlertDescription>
-                  {t(
-                    'Subscription plan creation and changes are locked until the administrator confirms compliance terms in Payment Gateway settings.'
-                  )}
-                </AlertDescription>
-              </Alert>
-            ) : null}
-            <div className='min-h-0 flex-1'>
-              <SubscriptionsTable />
-            </div>
-          </div>
+          <Tabs
+            value={activeTab}
+            onValueChange={(value) => setActiveTab(value as string)}
+            className='flex h-full min-h-0 flex-col gap-3'
+          >
+            <TabsList className='self-start'>
+              <TabsTrigger value='plans'>
+                {t('Subscription Plans')}
+              </TabsTrigger>
+              <TabsTrigger value='user-subscriptions'>
+                {t('User Subscriptions')}
+              </TabsTrigger>
+            </TabsList>
+            <TabsContent
+              value='plans'
+              className='min-h-0 flex-1 outline-none'
+            >
+              <div className='flex h-full min-h-0 flex-col gap-4'>
+                {!complianceConfirmed ? (
+                  <Alert variant='destructive' className='shrink-0'>
+                    <AlertDescription>
+                      {t(
+                        'Subscription plan creation and changes are locked until the administrator confirms compliance terms in Payment Gateway settings.'
+                      )}
+                    </AlertDescription>
+                  </Alert>
+                ) : null}
+                <div className='min-h-0 flex-1'>
+                  <SubscriptionsTable />
+                </div>
+              </div>
+            </TabsContent>
+            <TabsContent
+              value='user-subscriptions'
+              className='min-h-0 flex-1 outline-none'
+            >
+              <UserSubscriptionsPanel />
+            </TabsContent>
+          </Tabs>
         </SectionPageLayout.Content>
       </SectionPageLayout>
 

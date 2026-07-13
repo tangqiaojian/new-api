@@ -157,3 +157,31 @@ export type SubscriptionsDialogType =
   | 'update'
   | 'toggle-status'
   | 'reset-subscriptions'
+
+// ============================================================================
+// Admin All-User Subscription Management
+// ============================================================================
+
+export interface AdminUserSubscriptionItem {
+  id: number
+  user_id: number
+  username: string
+  plan_id: number
+  plan_title: string
+  amount_total: number
+  amount_used: number
+  tokens_total: number
+  tokens_used: number
+  status: string
+  start_time: number
+  end_time: number
+  next_reset_time: number
+  token_next_reset_time: number
+}
+
+export interface AdminUserSubscriptionList {
+  items: AdminUserSubscriptionItem[]
+  total: number
+  page: number
+  page_size: number
+}

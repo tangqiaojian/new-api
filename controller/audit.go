@@ -49,6 +49,8 @@ var auditContentTemplates = map[string]string{
 
 	"subscription.plan_reset":      "Reset active subscriptions for plan ${plan_id}",
 	"subscription.user_plan_reset": "Reset active plan ${plan_id} subscriptions for user ${target_user_id}",
+	"subscription.adjust":          "Adjusted subscription ${user_subscription_id} quota (amount +${amount_delta}, tokens +${token_delta})",
+	"subscription.single_reset":    "Reset subscription ${user_subscription_id} usage",
 }
 
 // auditContentEN 按 action 模板渲染英文兜底文本；未登记的 action 退回 action 本身。

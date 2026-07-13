@@ -574,3 +574,75 @@ func AdminDeleteUserSubscription(c *gin.Context) {
 	}
 	common.ApiSuccess(c, nil)
 }
+
+// ---- Admin: all-subscriptions listing & per-subscription management ----
+
+// AdminListAllSubscriptions lists all user subscriptions joined with the owning
+// username and plan title, with pagination and an optional username filter.
+func AdminListAllSubscriptions(c *gin.Context) {
+	pageInfo := common.GetPageQuery(c)
+	username := c.Query("username")
+	details, total, err := model.AdminListAllUserSubscriptions(pageInfo.GetPage(), pageInfo.GetPageSize(), username)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	pageInfo.SetTotal(int(total))
+	pageInfo.SetItems(details)
+	common.ApiSuccess(c, pageInfo)
+}
+
+type AdminAdjustSubscriptionRequest struct {
+	AmountDelta int64 `json:"amount_delta"`
+	TokenDelta  int64 `json:"token_delta"`
+}
+
+// AdminAdjustSubscription adds quota (amount and/or tokens) to a single user
+// subscription.
+func AdminAdjustSubscription(c *gin.Context) {
+	if !requirePaymentCompliance(c) {
+		return
+	}
+	subId, _ := strconv.Atoi(c.Param("id"))
+	if subId <= 0 {
+		common.ApiErrorMsg(c, "无效的订阅ID")
+		return
+	}
+	var req AdminAdjustSubscriptionRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ApiErrorMsg(c, "参数错误")
+		return
+	}
+	if req.AmountDelta < 0 || req.TokenDelta < 0 {
+		common.ApiErrorMsg(c, "额度调整值不能为负数")
+		return
+	}
+	if err := model.AdminAdjustUserSubscription(subId, req.AmountDelta, req.TokenDelta); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	recordManageAudit(c, "subscription.adjust", map[string]interface{}{
+		"user_subscription_id": subId,
+		"amount_delta":         req.AmountDelta,
+		"token_delta":          req.TokenDelta,
+	})
+	common.ApiSuccess(c, nil)
+}
+
+// AdminResetSingleSubscription resets a single user subscription's usage and
+// recalculates its next reset times.
+func AdminResetSingleSubscription(c *gin.Context) {
+	subId, _ := strconv.Atoi(c.Param("id"))
+	if subId <= 0 {
+		common.ApiErrorMsg(c, "无效的订阅ID")
+		return
+	}
+	if err := model.AdminResetSingleUserSubscription(subId); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	recordManageAudit(c, "subscription.single_reset", map[string]interface{}{
+		"user_subscription_id": subId,
+	})
+	common.ApiSuccess(c, nil)
+}
