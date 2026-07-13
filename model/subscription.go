@@ -1824,8 +1824,10 @@ func PostConsumeUserSubscriptionDelta(userSubscriptionId int, delta int64, token
 		if newUsed < 0 {
 			newUsed = 0
 		}
+		// Clamp to AmountTotal instead of erroring, so users can use their
+		// full quota without being rejected at the last request.
 		if sub.AmountTotal > 0 && newUsed > sub.AmountTotal {
-			return fmt.Errorf("subscription used exceeds total, used=%d total=%d", newUsed, sub.AmountTotal)
+			newUsed = sub.AmountTotal
 		}
 		sub.AmountUsed = newUsed
 		// Adjust token usage (independent from quota amount)

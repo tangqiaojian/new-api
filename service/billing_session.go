@@ -459,11 +459,12 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 		if subConsume <= 0 {
 			subConsume = 1
 		}
-		// Estimate token consumption for pre-consumption: prompt estimate + a
-		// reasonable completion ceiling. Falls back to 0 (no token check) when no
-		// estimate is available; the post-consume settle path still reconciles the
-		// actual token usage regardless.
-		tokenAmount := estimateSubscriptionTokens(relayInfo)
+		// Token pre-consumption is disabled during pre-consume to avoid
+		// rejecting requests when the estimate exceeds remaining tokens but
+		// actual usage would fit. The actual token usage is deducted during
+		// the post-consume settle path, so the subscription still tracks
+		// real consumption accurately.
+		tokenAmount := int64(0)
 		// API key binding: when the token has a bound plan id, restrict candidate
 		// subscriptions to that plan.
 		boundPlanId := relayInfo.TokenBoundPlanId
