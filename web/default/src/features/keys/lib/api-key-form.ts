@@ -40,6 +40,7 @@ export function getApiKeyFormSchema(t: TFunction) {
       group: z.string().optional(),
       cross_group_retry: z.boolean().optional(),
       tokenCount: z.number().min(1).optional(),
+      bound_subscription_plan_id: z.number(),
     })
     .superRefine((data, ctx) => {
       if (data.unlimited_quota) {
@@ -75,6 +76,7 @@ export const API_KEY_FORM_DEFAULT_VALUES: ApiKeyFormValues = {
   group: DEFAULT_GROUP,
   cross_group_retry: true,
   tokenCount: 1,
+  bound_subscription_plan_id: 0,
 }
 
 export function getApiKeyFormDefaultValues(
@@ -111,6 +113,7 @@ export function transformFormDataToPayload(
     allow_ips: data.allow_ips || '',
     group: data.group || '',
     cross_group_retry: data.group === 'auto' ? !!data.cross_group_retry : false,
+    bound_subscription_plan_id: Number(data.bound_subscription_plan_id || 0),
   }
 }
 
@@ -137,5 +140,6 @@ export function transformApiKeyToFormDefaults(
     group: apiKey.group || DEFAULT_GROUP,
     cross_group_retry: !!apiKey.cross_group_retry,
     tokenCount: 1,
+    bound_subscription_plan_id: Number(apiKey.bound_subscription_plan_id || 0),
   }
 }

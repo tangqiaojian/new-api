@@ -266,3 +266,65 @@ func GetSelfChannelModelStats(c *gin.Context) {
 		"data":    data,
 	})
 }
+
+// GetSelfSubscriptionUsage returns the requesting user's daily subscription-billed
+// token usage. Supports filtering by subscription_id and model, and an include_cache
+// toggle (default true) that controls whether cached tokens count toward total_tokens.
+func GetSelfSubscriptionUsage(c *gin.Context) {
+	userId := c.GetInt("id")
+	startTimestamp, endTimestamp, ok := parseFlowQuotaTimeRange(c)
+	if !ok {
+		return
+	}
+	if endTimestamp-startTimestamp > 2592000 {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": "时间跨度不能超过 1 个月",
+		})
+		return
+	}
+	subscriptionId, _ := strconv.Atoi(c.Query("subscription_id"))
+	modelName := c.Query("model")
+	includeCache := c.Query("include_cache") != "false"
+	data, err := model.GetSelfSubscriptionDailyUsage(userId, startTimestamp, endTimestamp, subscriptionId, modelName, includeCache)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "",
+		"data":    data,
+	})
+}
+
+// GetSelfSubscriptionModelUsage returns the requesting user's per-model
+// subscription-billed token usage. Supports the same filters as
+// GetSelfSubscriptionUsage.
+func GetSelfSubscriptionModelUsage(c *gin.Context) {
+	userId := c.GetInt("id")
+	startTimestamp, endTimestamp, ok := parseFlowQuotaTimeRange(c)
+	if !ok {
+		return
+	}
+	if endTimestamp-startTimestamp > 2592000 {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": "时间跨度不能超过 1 个月",
+		})
+		return
+	}
+	subscriptionId, _ := strconv.Atoi(c.Query("subscription_id"))
+	modelName := c.Query("model")
+	includeCache := c.Query("include_cache") != "false"
+	data, err := model.GetSelfSubscriptionModelUsage(userId, startTimestamp, endTimestamp, subscriptionId, modelName, includeCache)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "",
+		"data":    data,
+	})
+}

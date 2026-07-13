@@ -78,6 +78,62 @@ func (s *BillingSession) Settle(actualQuota int) error {
 	return tokenErr
 }
 
+// SettleWithTokens settles both the quota delta and the subscription token delta.
+// actualQuota is the final quota charge; actualTokens is the final token usage
+// (prompt+completion, optionally including cache tokens per the subscription's
+// IncludeCacheTokens flag). Used by the text billing path which tracks token usage.
+func (s *BillingSession) SettleWithTokens(actualQuota int, actualTokens int64) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.settled {
+		return nil
+	}
+
+	quotaDelta := actualQuota - s.preConsumedQuota
+	// Compute subscription token delta: actualTokens - preConsumedTokens.
+	var tokenDelta int64
+	var preConsumedTokens int64
+	if sub, ok := s.funding.(*SubscriptionFunding); ok {
+		preConsumedTokens = sub.preConsumedTokens
+	}
+	tokenDelta = actualTokens - preConsumedTokens
+
+	if quotaDelta == 0 && tokenDelta == 0 {
+		s.settled = true
+		return nil
+	}
+
+	// 1) Adjust funding source (quota + subscription token delta together).
+	if !s.fundingSettled {
+		if err := s.funding.SettleWithTokens(quotaDelta, tokenDelta); err != nil {
+			return err
+		}
+		s.fundingSettled = true
+	}
+
+	// 2) Adjust token (API key) quota — keyed off quotaDelta, same as Settle.
+	var tokenErr error
+	if !s.relayInfo.IsPlayground && quotaDelta != 0 {
+		if quotaDelta > 0 {
+			tokenErr = model.DecreaseTokenQuota(s.relayInfo.TokenId, s.relayInfo.TokenKey, quotaDelta)
+		} else {
+			tokenErr = model.IncreaseTokenQuota(s.relayInfo.TokenId, s.relayInfo.TokenKey, -quotaDelta)
+		}
+		if tokenErr != nil {
+			common.SysLog(fmt.Sprintf("error adjusting token quota after funding settled (userId=%d, tokenId=%d, delta=%d): %s",
+				s.relayInfo.UserId, s.relayInfo.TokenId, quotaDelta, tokenErr.Error()))
+		}
+	}
+
+	// 3) Update relayInfo post-delta fields for logging.
+	if s.funding.Source() == BillingSourceSubscription {
+		s.relayInfo.SubscriptionPostDelta += int64(quotaDelta)
+		s.relayInfo.SubscriptionTokensPostDelta += tokenDelta
+	}
+	s.settled = true
+	return tokenErr
+}
+
 // Refund 退还所有预扣费，幂等安全，异步执行。
 func (s *BillingSession) Refund(c *gin.Context) {
 	s.mu.Lock()
@@ -109,7 +165,7 @@ func (s *BillingSession) Refund(c *gin.Context) {
 			common.SysLog("error refunding billing source: " + err.Error())
 		}
 		if extraReserved > 0 && funding.Source() == BillingSourceSubscription && subscriptionId > 0 {
-			if err := model.PostConsumeUserSubscriptionDelta(subscriptionId, -int64(extraReserved)); err != nil {
+			if err := model.PostConsumeUserSubscriptionDelta(subscriptionId, -int64(extraReserved), 0); err != nil {
 				common.SysLog("error refunding subscription extra reserved quota: " + err.Error())
 			}
 		}
@@ -238,7 +294,7 @@ func (s *BillingSession) reserveFunding(delta int) error {
 		funding.consumed += delta
 		return nil
 	case *SubscriptionFunding:
-		if err := model.PostConsumeUserSubscriptionDelta(funding.subscriptionId, int64(delta)); err != nil {
+		if err := model.PostConsumeUserSubscriptionDelta(funding.subscriptionId, int64(delta), 0); err != nil {
 			return types.NewErrorWithStatusCode(
 				fmt.Errorf("订阅额度不足或未配置订阅: %s", err.Error()),
 				types.ErrorCodeInsufficientUserQuota,
@@ -262,7 +318,7 @@ func (s *BillingSession) rollbackFundingReserve(delta int) {
 			funding.consumed -= delta
 		}
 	case *SubscriptionFunding:
-		if err := model.PostConsumeUserSubscriptionDelta(funding.subscriptionId, -int64(delta)); err != nil {
+		if err := model.PostConsumeUserSubscriptionDelta(funding.subscriptionId, -int64(delta), 0); err != nil {
 			common.SysLog("error rolling back subscription funding reserve: " + err.Error())
 		}
 	}
@@ -328,6 +384,13 @@ func (s *BillingSession) syncRelayInfo() {
 		info.SubscriptionAmountUsedAfterPreConsume = sub.AmountUsedAfter + int64(s.extraReserved)
 		info.SubscriptionPlanId = sub.PlanId
 		info.SubscriptionPlanTitle = sub.PlanTitle
+		// Token-quota snapshot
+		info.SubscriptionTokensTotal = sub.TokensTotal
+		info.SubscriptionTokensUsedAfterPreConsume = sub.TokensUsedAfter
+		info.SubscriptionTokensPreConsumed = sub.preConsumedTokens
+		info.SubscriptionTokensPostDelta = 0
+		info.SubscriptionIncludeCacheTokens = sub.IncludeCacheTokens
+		info.TokenBoundPlanId = sub.planId
 	} else {
 		info.SubscriptionId = 0
 		info.SubscriptionPreConsumed = 0
@@ -396,13 +459,23 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 		if subConsume <= 0 {
 			subConsume = 1
 		}
+		// Estimate token consumption for pre-consumption: prompt estimate + a
+		// reasonable completion ceiling. Falls back to 0 (no token check) when no
+		// estimate is available; the post-consume settle path still reconciles the
+		// actual token usage regardless.
+		tokenAmount := estimateSubscriptionTokens(relayInfo)
+		// API key binding: when the token has a bound plan id, restrict candidate
+		// subscriptions to that plan.
+		boundPlanId := relayInfo.TokenBoundPlanId
 		session := &BillingSession{
 			relayInfo: relayInfo,
 			funding: &SubscriptionFunding{
-				requestId: relayInfo.RequestId,
-				userId:    relayInfo.UserId,
-				modelName: relayInfo.OriginModelName,
-				amount:    subConsume,
+				requestId:   relayInfo.RequestId,
+				userId:      relayInfo.UserId,
+				modelName:   relayInfo.OriginModelName,
+				amount:      subConsume,
+				tokenAmount: tokenAmount,
+				planId:      boundPlanId,
 			},
 		}
 		// 必须传 subConsume 而非 preConsumedQuota，保证 SubscriptionFunding.amount、
@@ -454,4 +527,28 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 		}
 		return session, nil
 	}
+}
+
+// estimateSubscriptionTokens returns a rough token-consumption estimate for
+// subscription pre-consumption. It uses the estimated prompt tokens plus a
+// conservative completion ceiling. Returns 0 when no estimate is available
+// (disables the token-quota pre-check; the actual usage is still reconciled
+// during settle).
+func estimateSubscriptionTokens(relayInfo *relaycommon.RelayInfo) int64 {
+	if relayInfo == nil {
+		return 0
+	}
+	prompt := relayInfo.GetEstimatePromptTokens()
+	if prompt <= 0 {
+		return 0
+	}
+	// Conservative default completion estimate. The actual token usage is
+	// reconciled during the post-consume settle path, so this only needs to
+	// be a safe upper bound for the pre-consume reservation.
+	const defaultCompletionCeiling = 1024
+	total := int64(prompt) + defaultCompletionCeiling
+	if total <= 0 {
+		return 0
+	}
+	return total
 }

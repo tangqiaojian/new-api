@@ -17,7 +17,13 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { zodResolver } from '@hookform/resolvers/zod'
-import { CalendarClock, CreditCard, RefreshCw, Settings2 } from 'lucide-react'
+import {
+  CalendarClock,
+  Coins,
+  CreditCard,
+  RefreshCw,
+  Settings2,
+} from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useForm, type Resolver } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
@@ -144,6 +150,7 @@ export function SubscriptionsMutateDrawer({
 
   const durationUnit = form.watch('duration_unit')
   const resetPeriod = form.watch('quota_reset_period')
+  const tokenResetPeriod = form.watch('token_reset_period')
   // Gate "+ Create on Pancake" on the same checks the mint handler runs.
   const watchedTitle = form.watch('title')
   const watchedPrice = form.watch('price_amount')
@@ -716,6 +723,135 @@ export function SubscriptionsMutateDrawer({
                           type='number'
                           min={0}
                           disabled={resetPeriod !== 'custom'}
+                          onChange={(e) =>
+                            field.onChange(parseInt(e.target.value, 10) || 0)
+                          }
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+            </SideDrawerSection>
+
+            {/* Token Quota */}
+            <SideDrawerSection>
+              <h3 className='flex items-center gap-2 text-sm font-medium'>
+                <Coins className='h-4 w-4' />
+                {t('Token Quota')}
+              </h3>
+
+              <FormField
+                control={form.control}
+                name='total_tokens'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Total Tokens')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        {...field}
+                        type='number'
+                        min={0}
+                        onChange={(e) =>
+                          field.onChange(parseInt(e.target.value, 10) || 0)
+                        }
+                      />
+                    </FormControl>
+                    <FormDescription>{t('0 means unlimited')}</FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='include_cache_tokens'
+                render={({ field }) => (
+                  <FormItem className={sideDrawerSwitchItemClassName()}>
+                    <div className='flex flex-col gap-0.5'>
+                      <FormLabel className='!mt-0 text-sm'>
+                        {t('Include Cache Tokens')}
+                      </FormLabel>
+                      <FormDescription className='line-clamp-2 text-xs sm:line-clamp-none'>
+                        {t(
+                          'When enabled, cached tokens are counted towards token quota consumption'
+                        )}
+                      </FormDescription>
+                    </div>
+                    <FormControl>
+                      <Switch
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                      />
+                    </FormControl>
+                  </FormItem>
+                )}
+              />
+
+              <div className='grid grid-cols-1 gap-3 sm:grid-cols-2'>
+                <FormField
+                  control={form.control}
+                  name='token_reset_period'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('Token Reset Period')}</FormLabel>
+                      <Select
+                        items={[
+                          {
+                            value: '__same__',
+                            label: t('Same as quota reset'),
+                          },
+                          ...resetPeriodOpts.map((o) => ({
+                            value: o.value,
+                            label: o.label,
+                          })),
+                        ]}
+                        value={field.value || '__same__'}
+                        onValueChange={(v) =>
+                          field.onChange(v === '__same__' ? '' : v)
+                        }
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent alignItemWithTrigger={false}>
+                          <SelectGroup>
+                            <SelectItem value='__same__'>
+                              {t('Same as quota reset')}
+                            </SelectItem>
+                            {resetPeriodOpts.map((o) => (
+                              <SelectItem key={o.value} value={o.value}>
+                                {o.label}
+                              </SelectItem>
+                            ))}
+                          </SelectGroup>
+                        </SelectContent>
+                      </Select>
+                      <FormDescription>
+                        {t(
+                          'Independent reset period for token quota. Leave empty to use the same as quota reset period.'
+                        )}
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name='token_reset_custom_seconds'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('Custom Seconds')}</FormLabel>
+                      <FormControl>
+                        <Input
+                          {...field}
+                          type='number'
+                          min={0}
+                          disabled={tokenResetPeriod !== 'custom'}
                           onChange={(e) =>
                             field.onChange(parseInt(e.target.value, 10) || 0)
                           }

@@ -9,6 +9,11 @@ type BillingSettler interface {
 	// 同时调整资金来源（钱包/订阅）和令牌额度。
 	Settle(actualQuota int) error
 
+	// SettleWithTokens 同 Settle，但同时根据 actualTokens 调整订阅的 token 用量。
+	// actualTokens 为本次请求的实际 token 消耗（含 cache 视订阅配置而定）。
+	// 仅订阅计费路径会用到 token 维度；钱包计费路径等价于 Settle。
+	SettleWithTokens(actualQuota int, actualTokens int64) error
+
 	// Refund 退还所有预扣费额度（资金来源 + 令牌），幂等安全。
 	// 通过 gopool 异步执行。如果已经结算或退款则不做任何操作。
 	Refund(c *gin.Context)

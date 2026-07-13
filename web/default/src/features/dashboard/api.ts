@@ -25,6 +25,8 @@ import type {
   DailyTokenDataItem,
   DailyModelTokenDataItem,
   ChannelModelStatsItem,
+  SubscriptionUsageDataItem,
+  SubscriptionModelUsageDataItem,
 } from './types'
 
 // ============================================================================
@@ -241,5 +243,39 @@ export async function getSelfChannelModelStats(params: {
     success: boolean
     data: ChannelModelStatsItem[]
   }>('/api/data/channel-stats/self', { params })
+  return res.data
+}
+
+// ----------------------------------------------------------------------------
+// Subscription Usage Statistics
+// ----------------------------------------------------------------------------
+
+// Get subscription usage data for current user (daily)
+export async function getSelfSubscriptionUsage(params: {
+  start_timestamp: number
+  end_timestamp: number
+  subscription_id?: number
+  model?: string
+  include_cache?: boolean
+}) {
+  const res = await api.get<{ success: boolean; data: SubscriptionUsageDataItem[] }>(
+    '/api/data/subscription-usage/self',
+    { params }
+  )
+  return res.data
+}
+
+// Get subscription model usage for current user
+export async function getSelfSubscriptionModelUsage(params: {
+  start_timestamp: number
+  end_timestamp: number
+  subscription_id?: number
+  model?: string
+  include_cache?: boolean
+}) {
+  const res = await api.get<{ success: boolean; data: SubscriptionModelUsageDataItem[] }>(
+    '/api/data/subscription-model-usage/self',
+    { params }
+  )
   return res.data
 }

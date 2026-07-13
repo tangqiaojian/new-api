@@ -204,6 +204,18 @@ func AdminCreateSubscriptionPlan(c *gin.Context) {
 		common.ApiErrorMsg(c, "自定义重置周期需大于0秒")
 		return
 	}
+	// Token quota reset period (independent; empty = same as QuotaResetPeriod)
+	if strings.TrimSpace(req.Plan.TokenResetPeriod) != "" {
+		req.Plan.TokenResetPeriod = model.NormalizeResetPeriod(req.Plan.TokenResetPeriod)
+		if req.Plan.TokenResetPeriod == model.SubscriptionResetCustom && req.Plan.TokenResetCustomSeconds <= 0 {
+			common.ApiErrorMsg(c, "自定义 token 重置周期需大于0秒")
+			return
+		}
+	}
+	if req.Plan.TotalTokens < 0 {
+		common.ApiErrorMsg(c, "token 总额度不能为负数")
+		return
+	}
 	err := model.DB.Create(&req.Plan).Error
 	if err != nil {
 		common.ApiError(c, err)

@@ -52,6 +52,14 @@ import {
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
 import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
   Sheet,
   SheetClose,
   SheetContent,
@@ -66,8 +74,9 @@ import { useStatus } from '@/hooks/use-status'
 import { getUserModels, getUserGroups } from '@/lib/api'
 import { getCurrencyDisplay, getCurrencyLabel } from '@/lib/currency'
 import { cn } from '@/lib/utils'
+import { getPublicPlans } from '@/features/subscriptions/api'
 
-import { createApiKey, updateApiKey, getApiKey } from '../api'
+import { createApiKey, updateApiKey, getApiKey, getUserSubscriptions } from '../api'
 import { ERROR_MESSAGES, SUCCESS_MESSAGES } from '../constants'
 import {
   getApiKeyFormSchema,
@@ -118,6 +127,22 @@ export function ApiKeysMutateDrawer({
     staleTime: 0,
   })
 
+  // Fetch the current user's active subscriptions (for binding to a plan)
+  const { data: subsData } = useQuery({
+    queryKey: ['user-subscriptions-self'],
+    queryFn: getUserSubscriptions,
+    enabled: open,
+    staleTime: 0,
+  })
+
+  // Fetch public plans to resolve plan titles for the binding dropdown
+  const { data: plansData } = useQuery({
+    queryKey: ['public-plans'],
+    queryFn: getPublicPlans,
+    enabled: open,
+    staleTime: 0,
+  })
+
   const models = modelsData?.data || []
   const groupsRaw = groupsData?.data || {}
   const groups: ApiKeyGroupOption[] = Object.entries(groupsRaw).map(
@@ -130,6 +155,24 @@ export function ApiKeysMutateDrawer({
   )
   const backendHasAuto = groups.some((g) => g.value === 'auto')
   const schema = getApiKeyFormSchema(t)
+
+  // Build the binding options from the user's active subscriptions, mapping
+  // plan_id -> plan title via the public plans list.
+  const activeSubs = subsData?.data?.subscriptions || []
+  const publicPlans = plansData?.data || []
+  const planTitleMap = new Map<number, string>()
+  for (const p of publicPlans) {
+    if (p?.plan?.id) {
+      planTitleMap.set(p.plan.id, p.plan.title || '')
+    }
+  }
+  const boundPlanOptions: number[] = Array.from(
+    new Set(
+      activeSubs
+        .map((s) => s?.subscription?.plan_id)
+        .filter((id): id is number => typeof id === 'number' && id > 0)
+    )
+  )
 
   const form = useForm<ApiKeyFormValues>({
     resolver: zodResolver(schema),
@@ -520,6 +563,61 @@ export function ApiKeysMutateDrawer({
                 </CollapsibleTrigger>
                 <CollapsibleContent>
                   <div className='flex flex-col gap-4 pt-2'>
+                    <FormField
+                      control={form.control}
+                      name='bound_subscription_plan_id'
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>
+                            {t('Bound Subscription Plan')}
+                          </FormLabel>
+                          <Select
+                            items={[
+                              { value: '0', label: t('No binding') },
+                              ...boundPlanOptions.map((planId) => ({
+                                value: String(planId),
+                                label:
+                                  planTitleMap.get(planId) ||
+                                  `${t('Plan')} #${planId}`,
+                              })),
+                            ]}
+                            value={String(field.value ?? 0)}
+                            onValueChange={(v) =>
+                              field.onChange(Number(v))
+                            }
+                          >
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue placeholder={t('No binding')} />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent alignItemWithTrigger={false}>
+                              <SelectGroup>
+                                <SelectItem value='0'>
+                                  {t('No binding')}
+                                </SelectItem>
+                                {boundPlanOptions.map((planId) => (
+                                  <SelectItem
+                                    key={planId}
+                                    value={String(planId)}
+                                  >
+                                    {planTitleMap.get(planId) ||
+                                      `${t('Plan')} #${planId}`}
+                                  </SelectItem>
+                                ))}
+                              </SelectGroup>
+                            </SelectContent>
+                          </Select>
+                          <FormDescription>
+                            {t(
+                              'When bound, API calls using this key will prioritize deducting from the selected subscription plan'
+                            )}
+                          </FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
                     <FormField
                       control={form.control}
                       name='model_limits'

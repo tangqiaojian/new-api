@@ -18,6 +18,8 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { api } from '@/lib/api'
 
+import type { SelfSubscriptionData } from '@/features/subscriptions/types'
+
 import type {
   ApiKey,
   ApiResponse,
@@ -114,5 +116,13 @@ export async function fetchTokenKeysBatch(ids: number[]): Promise<{
   data?: { keys: Record<number, string> }
 }> {
   const res = await api.post('/api/token/batch/keys', { ids })
+  return res.data
+}
+
+// Get the current user's active subscriptions (for binding an API key to a plan)
+export async function getUserSubscriptions(): Promise<
+  ApiResponse<SelfSubscriptionData>
+> {
+  const res = await api.get('/api/subscription/self')
   return res.data
 }

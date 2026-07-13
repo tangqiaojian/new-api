@@ -36,6 +36,13 @@ func PreConsumeBilling(c *gin.Context, preConsumedQuota int, relayInfo *relaycom
 // SettleBilling 执行计费结算。如果 RelayInfo 上有 BillingSession 则通过 session 结算，
 // 否则回退到旧的 PostConsumeQuota 路径（兼容按次计费等场景）。
 func SettleBilling(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, actualQuota int) error {
+	return SettleBillingWithTokens(ctx, relayInfo, actualQuota, 0)
+}
+
+// SettleBillingWithTokens 同 SettleBilling，但同时根据 actualTokens 调整订阅的 token 用量。
+// actualTokens 为本次请求的实际 token 消耗（含 cache 视订阅配置而定）。钱包计费路径忽略
+// token 维度，等价于 SettleBilling。
+func SettleBillingWithTokens(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, actualQuota int, actualTokens int64) error {
 	if relayInfo.Billing != nil {
 		preConsumed := relayInfo.Billing.GetPreConsumedQuota()
 		delta := actualQuota - preConsumed
@@ -58,7 +65,7 @@ func SettleBilling(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, actualQuo
 			))
 		}
 
-		if err := relayInfo.Billing.Settle(actualQuota); err != nil {
+		if err := relayInfo.Billing.SettleWithTokens(actualQuota, actualTokens); err != nil {
 			return err
 		}
 

@@ -71,6 +71,7 @@ import {
   type UserChartsFilters,
   type DailyTokensFilters,
   type ChannelStatsFilters,
+  type SubscriptionUsageFilters,
 } from './types'
 
 const route = getRouteApi('/_authenticated/dashboard/$section')
@@ -126,6 +127,12 @@ const LazyDailyModelTokensSection = lazy(() =>
 const LazyChannelStatsSection = lazy(() =>
   import('./components/channel-stats/channel-stats-section').then((m) => ({
     default: m.ChannelStatsSection,
+  }))
+)
+
+const LazySubscriptionUsageSection = lazy(() =>
+  import('./components/subscription-usage/subscription-usage-section').then((m) => ({
+    default: m.SubscriptionUsageSection,
   }))
 )
 
@@ -200,6 +207,9 @@ const SECTION_META: Record<DashboardSectionId, { titleKey: string }> = {
   },
   'channel-stats': {
     titleKey: 'Channel Statistics',
+  },
+  'subscription-usage': {
+    titleKey: 'Subscription Usage',
   },
   users: {
     titleKey: 'User Analytics',
@@ -369,6 +379,13 @@ export function Dashboard() {
       timeGranularity: 'day',
       selectedRange: 1,
       topLimit: 10,
+    }))
+
+  const [subscriptionUsageFilters, setSubscriptionUsageFilters] =
+    useState<SubscriptionUsageFilters>(() => ({
+      timeGranularity: 'day',
+      selectedRange: 7,
+      model: '',
     }))
 
   const handleFilterChange = useCallback((filters: DashboardFilters) => {
@@ -616,12 +633,13 @@ export function Dashboard() {
               </Suspense>
             </FadeIn>
           )}
-          {activeSection === 'channel-stats' && (
+          {activeSection === 'subscription-usage' && (
             <FadeIn>
               <Suspense fallback={<ModelChartsFallback />}>
-                <LazyChannelStatsSection
-                  filters={dailyTokensFilters}
-                  onFiltersChange={setDailyTokensFilters}
+                <LazySubscriptionUsageSection
+                  filters={subscriptionUsageFilters}
+                  onFiltersChange={setSubscriptionUsageFilters}
+                  includeCache={includeCache}
                 />
               </Suspense>
             </FadeIn>

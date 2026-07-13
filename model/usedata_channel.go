@@ -64,6 +64,36 @@ func LogJsonExtractInt(key string) string {
 	return channelStatsJsonExtractInt(key)
 }
 
+// channelStatsJsonExtractString builds a dialect-specific SQL expression to extract a
+// string value from the JSON `other` column at the given key. Missing keys yield an
+// empty string (via COALESCE where the dialect needs it) so the expression is safe to
+// use inside MAX()/GROUP BY without producing NULLs.
+func channelStatsJsonExtractString(key string) string {
+	otherCol := channelStatsOtherCol()
+	switch {
+	case common.UsingLogDatabase(common.DatabaseTypeClickHouse):
+		// ClickHouse: JSONExtractString returns a String (empty when missing)
+		return "JSONExtractString(" + otherCol + ", '" + key + "')"
+	case common.UsingLogDatabase(common.DatabaseTypePostgreSQL):
+		// PostgreSQL: other is text, cast to jsonb; ->> yields text, COALESCE for NULL
+		return "COALESCE((" + otherCol + "::jsonb)->>'" + key + "', '')"
+	case common.UsingLogDatabase(common.DatabaseTypeSQLite):
+		// SQLite: json_extract returns the raw scalar (text); COALESCE for NULL
+		return "COALESCE(json_extract(" + otherCol + ", '$." + key + "'), '')"
+	default:
+		// MySQL: JSON_EXTRACT returns a quoted JSON string, JSON_UNQUOTE strips quotes
+		return "COALESCE(JSON_UNQUOTE(JSON_EXTRACT(" + otherCol + ", '$." + key + "')), '')"
+	}
+}
+
+// LogJsonExtractString is the exported form of channelStatsJsonExtractString. It builds
+// a dialect-specific SQL expression to extract a string value from the logs `other`
+// JSON column at the given key. Reused by subscription usage aggregations to pull
+// fields such as subscription_plan_title.
+func LogJsonExtractString(key string) string {
+	return channelStatsJsonExtractString(key)
+}
+
 // logCacheTokensSumExpr returns a SQL expression that sums cache_tokens extracted
 // from the `other` JSON column, wrapped in COALESCE so missing keys yield 0.
 func logCacheTokensSumExpr() string {

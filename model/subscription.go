@@ -185,6 +185,16 @@ type SubscriptionPlan struct {
 	QuotaResetPeriod        string `json:"quota_reset_period" gorm:"type:varchar(16);default:'never'"`
 	QuotaResetCustomSeconds int64  `json:"quota_reset_custom_seconds" gorm:"type:bigint;default:0"`
 
+	// Token quota (0 = unlimited, no token limit)
+	TotalTokens int64 `json:"total_tokens" gorm:"type:bigint;not null;default:0"`
+
+	// Whether to include cached tokens when deducting token quota
+	IncludeCacheTokens bool `json:"include_cache_tokens" gorm:"default:false"`
+
+	// Independent token quota reset period (empty = same as QuotaResetPeriod)
+	TokenResetPeriod        string `json:"token_reset_period" gorm:"type:varchar(16);default:''"`
+	TokenResetCustomSeconds int64  `json:"token_reset_custom_seconds" gorm:"type:bigint;default:0"`
+
 	CreatedAt int64 `json:"created_at" gorm:"bigint"`
 	UpdatedAt int64 `json:"updated_at" gorm:"bigint"`
 }
@@ -275,6 +285,17 @@ type UserSubscription struct {
 
 	// Whether wallet fallback is allowed after this subscription's quota is exhausted (snapshot from plan)
 	AllowWalletOverflow bool `json:"allow_wallet_overflow"`
+
+	// Token quota (snapshot from plan)
+	TokensTotal int64 `json:"tokens_total" gorm:"type:bigint;not null;default:0"`
+	TokensUsed  int64 `json:"tokens_used" gorm:"type:bigint;not null;default:0"`
+
+	// Include cache tokens in token deduction (snapshot from plan)
+	IncludeCacheTokens bool `json:"include_cache_tokens"`
+
+	// Token quota reset schedule (independent from quota reset)
+	TokenLastResetTime int64 `json:"token_last_reset_time" gorm:"bigint;default:0"`
+	TokenNextResetTime int64 `json:"token_next_reset_time" gorm:"bigint;default:0;index"`
 
 	CreatedAt int64 `json:"created_at" gorm:"bigint"`
 	UpdatedAt int64 `json:"updated_at" gorm:"bigint"`
@@ -373,6 +394,58 @@ func calcNextResetTime(base time.Time, plan *SubscriptionPlan, endUnix int64) in
 			return 0
 		}
 		next = base.Add(time.Duration(plan.QuotaResetCustomSeconds) * time.Second)
+	default:
+		return 0
+	}
+	if endUnix > 0 && next.Unix() > endUnix {
+		return 0
+	}
+	return next.Unix()
+}
+
+// calcNextTokenResetTime computes the next token-quota reset time for a plan.
+// It mirrors calcNextResetTime but uses the plan's independent token reset
+// period/custom seconds, falling back to the plan's quota reset period when
+// TokenResetPeriod is empty. base is the reference time, endUnix clamps the
+// result to the subscription's end time (0 means no clamp).
+func calcNextTokenResetTime(base time.Time, plan *SubscriptionPlan, endUnix int64) int64 {
+	if plan == nil {
+		return 0
+	}
+	period := strings.TrimSpace(plan.TokenResetPeriod)
+	var customSeconds int64
+	if period == "" {
+		// Fall back to the plan's quota reset period
+		period = NormalizeResetPeriod(plan.QuotaResetPeriod)
+		customSeconds = plan.QuotaResetCustomSeconds
+	} else {
+		period = NormalizeResetPeriod(period)
+		customSeconds = plan.TokenResetCustomSeconds
+	}
+	if period == SubscriptionResetNever {
+		return 0
+	}
+	var next time.Time
+	switch period {
+	case SubscriptionResetDaily:
+		next = time.Date(base.Year(), base.Month(), base.Day(), 0, 0, 0, 0, base.Location()).
+			AddDate(0, 0, 1)
+	case SubscriptionResetWeekly:
+		weekday := int(base.Weekday()) // Sunday=0
+		if weekday == 0 {
+			weekday = 7
+		}
+		daysUntil := 8 - weekday
+		next = time.Date(base.Year(), base.Month(), base.Day(), 0, 0, 0, 0, base.Location()).
+			AddDate(0, 0, daysUntil)
+	case SubscriptionResetMonthly:
+		next = time.Date(base.Year(), base.Month(), 1, 0, 0, 0, 0, base.Location()).
+			AddDate(0, 1, 0)
+	case SubscriptionResetCustom:
+		if customSeconds <= 0 {
+			return 0
+		}
+		next = base.Add(time.Duration(customSeconds) * time.Second)
 	default:
 		return 0
 	}
@@ -514,6 +587,12 @@ func CreateUserSubscriptionFromPlanTx(tx *gorm.DB, userId int, plan *Subscriptio
 	if nextReset > 0 {
 		lastReset = now.Unix()
 	}
+	// Token reset schedule (independent from quota reset)
+	tokenNextReset := calcNextTokenResetTime(resetBase, plan, endUnix)
+	tokenLastReset := int64(0)
+	if tokenNextReset > 0 {
+		tokenLastReset = now.Unix()
+	}
 	upgradeGroup := strings.TrimSpace(plan.UpgradeGroup)
 	prevGroup := ""
 	if upgradeGroup != "" {
@@ -548,6 +627,11 @@ func CreateUserSubscriptionFromPlanTx(tx *gorm.DB, userId int, plan *Subscriptio
 		PrevUserGroup:       prevGroup,
 		DowngradeGroup:      strings.TrimSpace(plan.DowngradeGroup),
 		AllowWalletOverflow: allowWalletOverflow,
+		TokensTotal:         plan.TotalTokens,
+		TokensUsed:          0,
+		IncludeCacheTokens:  plan.IncludeCacheTokens,
+		TokenLastResetTime:  tokenLastReset,
+		TokenNextResetTime:  tokenNextReset,
 		CreatedAt:           common.GetTimestamp(),
 		UpdatedAt:           common.GetTimestamp(),
 	}
@@ -989,6 +1073,10 @@ func resetUserSubscriptionTx(tx *gorm.DB, sub *UserSubscription, plan *Subscript
 		return errors.New("invalid reset args")
 	}
 	sub.AmountUsed = 0
+	// Also reset token usage when the subscription defines a token limit.
+	if sub.TokensTotal > 0 {
+		sub.TokensUsed = 0
+	}
 	if advanceResetTime {
 		nextReset := calcNextResetTime(time.Unix(now, 0), plan, sub.EndTime)
 		sub.NextResetTime = nextReset
@@ -996,6 +1084,14 @@ func resetUserSubscriptionTx(tx *gorm.DB, sub *UserSubscription, plan *Subscript
 			sub.LastResetTime = now
 		} else {
 			sub.LastResetTime = 0
+		}
+		// Advance token reset schedule too (independent period).
+		tokenNextReset := calcNextTokenResetTime(time.Unix(now, 0), plan, sub.EndTime)
+		sub.TokenNextResetTime = tokenNextReset
+		if tokenNextReset > 0 {
+			sub.TokenLastResetTime = now
+		} else {
+			sub.TokenLastResetTime = 0
 		}
 	}
 	return tx.Save(sub).Error
@@ -1109,6 +1205,10 @@ type SubscriptionPreConsumeResult struct {
 	AmountTotal        int64
 	AmountUsedBefore   int64
 	AmountUsedAfter    int64
+	TokensTotal             int64
+	TokensUsedBefore        int64
+	TokensUsedAfter         int64
+	PreConsumedTokens       int64
 }
 
 // ExpireDueSubscriptions marks expired subscriptions and handles group downgrade.
@@ -1216,6 +1316,8 @@ type SubscriptionPreConsumeRecord struct {
 	UserId             int    `json:"user_id" gorm:"index"`
 	UserSubscriptionId int    `json:"user_subscription_id" gorm:"index"`
 	PreConsumed        int64  `json:"pre_consumed" gorm:"type:bigint;not null;default:0"`
+	// Token amount pre-consumed (for idempotent token tracking)
+	PreConsumedTokens int64  `json:"pre_consumed_tokens" gorm:"type:bigint;default:0"`
 	Status             string `json:"status" gorm:"type:varchar(32);index"` // consumed/refunded
 	CreatedAt          int64  `json:"created_at" gorm:"bigint"`
 	UpdatedAt          int64  `json:"updated_at" gorm:"bigint;index"`
@@ -1269,8 +1371,63 @@ func maybeResetUserSubscriptionWithPlanTx(tx *gorm.DB, sub *UserSubscription, pl
 	return tx.Save(sub).Error
 }
 
+// maybeResetUserSubscriptionTokensWithPlanTx resets the token quota usage when
+// TokenNextResetTime has passed. Token reset is independent from quota reset and
+// may use a different period. No-op when the subscription has no token limit or
+// no token reset schedule.
+func maybeResetUserSubscriptionTokensWithPlanTx(tx *gorm.DB, sub *UserSubscription, plan *SubscriptionPlan, now int64) error {
+	if tx == nil || sub == nil || plan == nil {
+		return errors.New("invalid token reset args")
+	}
+	// Nothing to reset when there is no token limit.
+	if sub.TokensTotal <= 0 {
+		return nil
+	}
+	// Determine the effective token reset period.
+	tokenPeriod := strings.TrimSpace(plan.TokenResetPeriod)
+	if tokenPeriod == "" {
+		tokenPeriod = NormalizeResetPeriod(plan.QuotaResetPeriod)
+	} else {
+		tokenPeriod = NormalizeResetPeriod(tokenPeriod)
+	}
+	if tokenPeriod == SubscriptionResetNever {
+		return nil
+	}
+	// Not yet due.
+	if sub.TokenNextResetTime > 0 && sub.TokenNextResetTime > now {
+		return nil
+	}
+	baseUnix := sub.TokenLastResetTime
+	if baseUnix <= 0 {
+		baseUnix = sub.StartTime
+	}
+	base := time.Unix(baseUnix, 0)
+	next := calcNextTokenResetTime(base, plan, sub.EndTime)
+	advanced := false
+	for next > 0 && next <= now {
+		advanced = true
+		base = time.Unix(next, 0)
+		next = calcNextTokenResetTime(base, plan, sub.EndTime)
+	}
+	if !advanced {
+		if sub.TokenNextResetTime == 0 && next > 0 {
+			sub.TokenNextResetTime = next
+			sub.TokenLastResetTime = base.Unix()
+			return tx.Save(sub).Error
+		}
+		return nil
+	}
+	sub.TokensUsed = 0
+	sub.TokenLastResetTime = base.Unix()
+	sub.TokenNextResetTime = next
+	return tx.Save(sub).Error
+}
+
 // PreConsumeUserSubscription pre-consumes from any active subscription total quota.
-func PreConsumeUserSubscription(requestId string, userId int, modelName string, quotaType int, amount int64) (*SubscriptionPreConsumeResult, error) {
+// tokenAmount is the estimated token consumption for this request (0 disables token checks).
+// planId > 0 restricts candidate subscriptions to those with the given plan_id (API key binding);
+// planId == 0 means no plan filter.
+func PreConsumeUserSubscription(requestId string, userId int, modelName string, quotaType int, amount int64, tokenAmount int64, planId int) (*SubscriptionPreConsumeResult, error) {
 	if userId <= 0 {
 		return nil, errors.New("invalid userId")
 	}
@@ -1279,6 +1436,9 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 	}
 	if amount <= 0 {
 		return nil, errors.New("amount must be > 0")
+	}
+	if tokenAmount < 0 {
+		tokenAmount = 0
 	}
 	now := GetDBTimestamp()
 
@@ -1303,12 +1463,20 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 			returnValue.AmountTotal = sub.AmountTotal
 			returnValue.AmountUsedBefore = sub.AmountUsed
 			returnValue.AmountUsedAfter = sub.AmountUsed
+			returnValue.TokensTotal = sub.TokensTotal
+			returnValue.TokensUsedBefore = sub.TokensUsed
+			returnValue.TokensUsedAfter = sub.TokensUsed
+			returnValue.PreConsumedTokens = existing.PreConsumedTokens
 			return nil
 		}
 
 		var subs []UserSubscription
-		if err := lockForUpdate(tx).
-			Where("user_id = ? AND status = ? AND end_time > ?", userId, "active", now).
+		subQuery := lockForUpdate(tx).
+			Where("user_id = ? AND status = ? AND end_time > ?", userId, "active", now)
+		if planId > 0 {
+			subQuery = subQuery.Where("plan_id = ?", planId)
+		}
+		if err := subQuery.
 			Order("end_time asc, id asc").
 			Find(&subs).Error; err != nil {
 			return errors.New("no active subscription")
@@ -1325,10 +1493,22 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 			if err := maybeResetUserSubscriptionWithPlanTx(tx, &sub, plan, now); err != nil {
 				return err
 			}
+			// Also check token quota reset independently.
+			if err := maybeResetUserSubscriptionTokensWithPlanTx(tx, &sub, plan, now); err != nil {
+				return err
+			}
 			usedBefore := sub.AmountUsed
 			if sub.AmountTotal > 0 {
 				remain := sub.AmountTotal - usedBefore
 				if remain < amount {
+					continue
+				}
+			}
+			// Token quota check (only when the subscription defines a token limit)
+			tokensUsedBefore := sub.TokensUsed
+			if sub.TokensTotal > 0 && tokenAmount > 0 {
+				tokenRemain := sub.TokensTotal - tokensUsedBefore
+				if tokenRemain < tokenAmount {
 					continue
 				}
 			}
@@ -1337,6 +1517,7 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 				UserId:             userId,
 				UserSubscriptionId: sub.Id,
 				PreConsumed:        amount,
+				PreConsumedTokens:  tokenAmount,
 				Status:             "consumed",
 			}
 			if err := tx.Create(record).Error; err != nil {
@@ -1350,11 +1531,18 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 					returnValue.AmountTotal = sub.AmountTotal
 					returnValue.AmountUsedBefore = sub.AmountUsed
 					returnValue.AmountUsedAfter = sub.AmountUsed
+					returnValue.TokensTotal = sub.TokensTotal
+					returnValue.TokensUsedBefore = sub.TokensUsed
+					returnValue.TokensUsedAfter = sub.TokensUsed
+					returnValue.PreConsumedTokens = dup.PreConsumedTokens
 					return nil
 				}
 				return err
 			}
 			sub.AmountUsed += amount
+			if tokenAmount > 0 {
+				sub.TokensUsed += tokenAmount
+			}
 			if err := tx.Save(&sub).Error; err != nil {
 				return err
 			}
@@ -1363,6 +1551,10 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 			returnValue.AmountTotal = sub.AmountTotal
 			returnValue.AmountUsedBefore = usedBefore
 			returnValue.AmountUsedAfter = sub.AmountUsed
+			returnValue.TokensTotal = sub.TokensTotal
+			returnValue.TokensUsedBefore = tokensUsedBefore
+			returnValue.TokensUsedAfter = sub.TokensUsed
+			returnValue.PreConsumedTokens = tokenAmount
 			return nil
 		}
 		return fmt.Errorf("subscription quota insufficient, need=%d", amount)
@@ -1387,11 +1579,12 @@ func RefundSubscriptionPreConsume(requestId string) error {
 		if record.Status == "refunded" {
 			return nil
 		}
-		if record.PreConsumed <= 0 {
+		if record.PreConsumed <= 0 && record.PreConsumedTokens <= 0 {
 			record.Status = "refunded"
 			return tx.Save(&record).Error
 		}
-		if err := PostConsumeUserSubscriptionDelta(record.UserSubscriptionId, -record.PreConsumed); err != nil {
+		// Refund both quota amount and pre-consumed tokens (tokenDelta is negative).
+		if err := PostConsumeUserSubscriptionDelta(record.UserSubscriptionId, -record.PreConsumed, -record.PreConsumedTokens); err != nil {
 			return err
 		}
 		record.Status = "refunded"
@@ -1399,14 +1592,20 @@ func RefundSubscriptionPreConsume(requestId string) error {
 	})
 }
 
-// ResetDueSubscriptions resets subscriptions whose next_reset_time has passed.
+// ResetDueSubscriptions resets subscriptions whose next_reset_time or
+// token_next_reset_time has passed. Quota and token resets are independent and
+// may use different periods; both are checked within the same transaction.
 func ResetDueSubscriptions(limit int) (int, error) {
 	if limit <= 0 {
 		limit = 200
 	}
 	now := GetDBTimestamp()
 	var subs []UserSubscription
-	if err := DB.Where("next_reset_time > 0 AND next_reset_time <= ? AND status = ?", now, "active").
+	// Match subscriptions whose quota OR token reset time is due.
+	if err := DB.Where(
+		"status = ? AND ((next_reset_time > 0 AND next_reset_time <= ?) OR (token_next_reset_time > 0 AND token_next_reset_time <= ?))",
+		"active", now, now,
+	).
 		Order("next_reset_time asc").
 		Limit(limit).
 		Find(&subs).Error; err != nil {
@@ -1425,14 +1624,28 @@ func ResetDueSubscriptions(limit int) (int, error) {
 		err = DB.Transaction(func(tx *gorm.DB) error {
 			var locked UserSubscription
 			if err := lockForUpdate(tx).
-				Where("id = ? AND next_reset_time > 0 AND next_reset_time <= ?", subCopy.Id, now).
+				Where("id = ? AND status = ?", subCopy.Id, "active").
 				First(&locked).Error; err != nil {
 				return nil
 			}
-			if err := maybeResetUserSubscriptionWithPlanTx(tx, &locked, plan, now); err != nil {
-				return err
+			changed := false
+			// Quota reset
+			if locked.NextResetTime > 0 && locked.NextResetTime <= now {
+				if err := maybeResetUserSubscriptionWithPlanTx(tx, &locked, plan, now); err != nil {
+					return err
+				}
+				changed = true
 			}
-			resetCount++
+			// Token reset (independent)
+			if locked.TokenNextResetTime > 0 && locked.TokenNextResetTime <= now {
+				if err := maybeResetUserSubscriptionTokensWithPlanTx(tx, &locked, plan, now); err != nil {
+					return err
+				}
+				changed = true
+			}
+			if changed {
+				resetCount++
+			}
 			return nil
 		})
 		if err != nil {
@@ -1482,11 +1695,12 @@ func GetSubscriptionPlanInfoByUserSubscriptionId(userSubscriptionId int) (*Subsc
 }
 
 // Update subscription used amount by delta (positive consume more, negative refund).
-func PostConsumeUserSubscriptionDelta(userSubscriptionId int, delta int64) error {
+// tokenDelta adjusts the token usage in the same transaction (positive consume more, negative refund).
+func PostConsumeUserSubscriptionDelta(userSubscriptionId int, delta int64, tokenDelta int64) error {
 	if userSubscriptionId <= 0 {
 		return errors.New("invalid userSubscriptionId")
 	}
-	if delta == 0 {
+	if delta == 0 && tokenDelta == 0 {
 		return nil
 	}
 	return DB.Transaction(func(tx *gorm.DB) error {
@@ -1504,6 +1718,17 @@ func PostConsumeUserSubscriptionDelta(userSubscriptionId int, delta int64) error
 			return fmt.Errorf("subscription used exceeds total, used=%d total=%d", newUsed, sub.AmountTotal)
 		}
 		sub.AmountUsed = newUsed
+		// Adjust token usage (independent from quota amount)
+		if tokenDelta != 0 {
+			newTokensUsed := sub.TokensUsed + tokenDelta
+			if newTokensUsed < 0 {
+				newTokensUsed = 0
+			}
+			if sub.TokensTotal > 0 && newTokensUsed > sub.TokensTotal {
+				newTokensUsed = sub.TokensTotal
+			}
+			sub.TokensUsed = newTokensUsed
+		}
 		return tx.Save(&sub).Error
 	})
 }

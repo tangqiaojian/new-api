@@ -147,6 +147,15 @@ type RelayInfo struct {
 	// SubscriptionAmountTotal / SubscriptionAmountUsedAfterPreConsume are used to compute remaining in logs.
 	SubscriptionAmountTotal               int64
 	SubscriptionAmountUsedAfterPreConsume int64
+	// Token-quota (subscription) snapshot fields, populated when billing from a
+	// subscription plan that defines a token limit (TotalTokens > 0).
+	SubscriptionTokensTotal                int64
+	SubscriptionTokensUsedAfterPreConsume  int64
+	SubscriptionTokensPreConsumed          int64
+	SubscriptionTokensPostDelta            int64
+	SubscriptionIncludeCacheTokens         bool
+	// TokenBoundPlanId is the API key's bound subscription plan id (0 = no binding).
+	TokenBoundPlanId                       int
 	IsClaudeBetaQuery                     bool // /v1/messages?beta=true
 	IsChannelTest                         bool // channel test request
 	RetryIndex                            int
@@ -515,6 +524,7 @@ func genBaseRelayInfo(c *gin.Context, request dto.Request) *RelayInfo {
 		TokenKey:       common.GetContextKeyString(c, constant.ContextKeyTokenKey),
 		TokenUnlimited: common.GetContextKeyBool(c, constant.ContextKeyTokenUnlimited),
 		TokenGroup:     tokenGroup,
+		TokenBoundPlanId: common.GetContextKeyInt(c, constant.ContextKeyTokenBoundPlanId),
 
 		isFirstResponse:    true,
 		RelayMode:          relayconstant.Path2RelayMode(c.Request.URL.Path),

@@ -45,6 +45,10 @@ export function getPlanFormSchema(t: TFunction) {
     allow_wallet_overflow: z.boolean(),
     max_purchase_per_user: z.coerce.number().min(0),
     total_amount: z.coerce.number().min(0),
+    total_tokens: z.coerce.number().min(0),
+    include_cache_tokens: z.boolean(),
+    token_reset_period: z.string(),
+    token_reset_custom_seconds: z.coerce.number().min(0),
     upgrade_group: z.string().optional(),
     downgrade_group: z.string().optional(),
     stripe_price_id: z.string().optional(),
@@ -70,6 +74,10 @@ export const PLAN_FORM_DEFAULTS: PlanFormValues = {
   allow_wallet_overflow: true,
   max_purchase_per_user: 0,
   total_amount: 0,
+  total_tokens: 0,
+  include_cache_tokens: false,
+  token_reset_period: '',
+  token_reset_custom_seconds: 0,
   upgrade_group: '',
   downgrade_group: '',
   stripe_price_id: '',
@@ -93,6 +101,10 @@ export function planToFormValues(plan: SubscriptionPlan): PlanFormValues {
     allow_wallet_overflow: plan.allow_wallet_overflow !== false,
     max_purchase_per_user: Number(plan.max_purchase_per_user || 0),
     total_amount: quotaUnitsToDollars(Number(plan.total_amount || 0)),
+    total_tokens: Number(plan.total_tokens || 0),
+    include_cache_tokens: plan.include_cache_tokens === true,
+    token_reset_period: plan.token_reset_period || '',
+    token_reset_custom_seconds: Number(plan.token_reset_custom_seconds || 0),
     upgrade_group: plan.upgrade_group || '',
     downgrade_group: plan.downgrade_group || '',
     stripe_price_id: plan.stripe_price_id || '',
@@ -113,6 +125,13 @@ export function formValuesToPlanPayload(values: PlanFormValues): PlanPayload {
       quota_reset_custom_seconds:
         values.quota_reset_period === 'custom'
           ? Number(values.quota_reset_custom_seconds || 0)
+          : 0,
+      total_tokens: Number(values.total_tokens || 0),
+      include_cache_tokens: !!values.include_cache_tokens,
+      token_reset_period: values.token_reset_period || '',
+      token_reset_custom_seconds:
+        values.token_reset_period === 'custom'
+          ? Number(values.token_reset_custom_seconds || 0)
           : 0,
       sort_order: Number(values.sort_order || 0),
       max_purchase_per_user: Number(values.max_purchase_per_user || 0),

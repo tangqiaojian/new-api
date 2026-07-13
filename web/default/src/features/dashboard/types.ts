@@ -320,6 +320,41 @@ export interface ChannelStatsFilters {
 }
 
 // ============================================================================
+// Subscription Usage Types
+// ============================================================================
+
+export interface SubscriptionUsageDataItem {
+  date: string
+  subscription_id: number
+  plan_id: number
+  plan_title: string
+  prompt_tokens: number
+  completion_tokens: number
+  total_tokens: number
+  cached_tokens: number
+  request_count: number
+  quota: number
+}
+
+export interface SubscriptionModelUsageDataItem {
+  model_name: string
+  plan_id: number
+  plan_title: string
+  prompt_tokens: number
+  completion_tokens: number
+  total_tokens: number
+  cached_tokens: number
+  request_count: number
+  quota: number
+}
+
+export interface SubscriptionUsageFilters {
+  timeGranularity: TimeGranularity
+  selectedRange: number
+  model: string
+}
+
+// ============================================================================
 // Announcement Types
 // ============================================================================
 

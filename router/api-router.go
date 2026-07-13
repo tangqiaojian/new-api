@@ -306,6 +306,8 @@ func SetApiRouter(router *gin.Engine) {
 		dataRoute.GET("/daily-model-tokens/self", middleware.UserAuth(), controller.GetUserDailyModelTokenData)
 		dataRoute.GET("/channel-stats", middleware.AdminAuth(), controller.GetAllChannelModelStats)
 		dataRoute.GET("/channel-stats/self", middleware.UserAuth(), controller.GetSelfChannelModelStats)
+		dataRoute.GET("/subscription-usage/self", middleware.UserAuth(), controller.GetSelfSubscriptionUsage)
+		dataRoute.GET("/subscription-model-usage/self", middleware.UserAuth(), controller.GetSelfSubscriptionModelUsage)
 
 		logRoute.Use(middleware.CORS(), middleware.CriticalRateLimit())
 		{

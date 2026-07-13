@@ -205,6 +205,29 @@ func appendBillingInfo(relayInfo *relaycommon.RelayInfo, other map[string]interf
 		if consumed > 0 {
 			other["subscription_consumed"] = consumed
 		}
+		// Token-quota (subscription) fields, written when the subscription
+		// defines a token limit (TokensTotal > 0).
+		if relayInfo.SubscriptionTokensTotal > 0 {
+			tokenUsedFinal := relayInfo.SubscriptionTokensUsedAfterPreConsume + relayInfo.SubscriptionTokensPostDelta
+			if tokenUsedFinal < 0 {
+				tokenUsedFinal = 0
+			}
+			tokenConsumed := relayInfo.SubscriptionTokensPreConsumed + relayInfo.SubscriptionTokensPostDelta
+			if tokenConsumed < 0 {
+				tokenConsumed = 0
+			}
+			tokenRemain := relayInfo.SubscriptionTokensTotal - tokenUsedFinal
+			if tokenRemain < 0 {
+				tokenRemain = 0
+			}
+			other["subscription_tokens_total"] = relayInfo.SubscriptionTokensTotal
+			other["subscription_tokens_used"] = tokenUsedFinal
+			other["subscription_tokens_consumed"] = tokenConsumed
+			other["subscription_tokens_remain"] = tokenRemain
+			if relayInfo.SubscriptionIncludeCacheTokens {
+				other["subscription_include_cache_tokens"] = true
+			}
+		}
 		// Wallet quota is not deducted when billed from subscription.
 		other["wallet_quota_deducted"] = 0
 	}

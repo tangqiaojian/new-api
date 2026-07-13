@@ -45,6 +45,7 @@ export const apiKeySchema = z.object({
   model_limits_enabled: z.boolean(),
   model_limits: z.string().nullish().default(''),
   allow_ips: z.string().nullish().default(''),
+  bound_subscription_plan_id: z.number().int().default(0),
 })
 
 export type ApiKey = z.infer<typeof apiKeySchema>
@@ -92,6 +93,7 @@ export interface ApiKeyFormData {
   allow_ips: string
   group: string
   cross_group_retry: boolean
+  bound_subscription_plan_id: number
 }
 
 // ============================================================================

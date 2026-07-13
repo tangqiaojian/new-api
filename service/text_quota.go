@@ -384,7 +384,18 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 		model.UpdateChannelUsedQuota(relayInfo.ChannelId, summary.Quota)
 	}
 
-	if err := SettleBilling(ctx, relayInfo, summary.Quota); err != nil {
+	// Compute actual token consumption for subscription token-quota settlement.
+	// actualTokens = prompt + completion (+ cache tokens when the subscription
+	// is configured to include cache tokens in the deduction).
+	actualTokens := int64(summary.PromptTokens + summary.CompletionTokens)
+	if relayInfo.BillingSource == BillingSourceSubscription && relayInfo.SubscriptionIncludeCacheTokens {
+		actualTokens += int64(summary.CacheTokens)
+	}
+	if actualTokens < 0 {
+		actualTokens = 0
+	}
+
+	if err := SettleBillingWithTokens(ctx, relayInfo, summary.Quota, actualTokens); err != nil {
 		logger.LogError(ctx, "error settling billing: "+err.Error())
 	}
 

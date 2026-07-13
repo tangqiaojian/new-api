@@ -18,6 +18,8 @@ type FundingSource interface {
 	PreConsume(amount int) error
 	// Settle 根据差额调整资金来源（正数补扣，负数退还）
 	Settle(delta int) error
+	// SettleWithTokens 同 Settle，但同时调整订阅的 token 用量（仅订阅来源生效，钱包忽略 tokenDelta）
+	SettleWithTokens(delta int, tokenDelta int64) error
 	// Refund 退还所有预扣费
 	Refund() error
 }
@@ -54,6 +56,11 @@ func (w *WalletFunding) Settle(delta int) error {
 	return model.IncreaseUserQuota(w.userId, -delta, false)
 }
 
+// SettleWithTokens settles wallet quota only; tokenDelta is ignored for wallet funding.
+func (w *WalletFunding) SettleWithTokens(delta int, _ int64) error {
+	return w.Settle(delta)
+}
+
 func (w *WalletFunding) Refund() error {
 	if w.consumed <= 0 {
 		return nil
@@ -74,25 +81,38 @@ type SubscriptionFunding struct {
 	amount         int64 // 预扣的订阅额度（subConsume）
 	subscriptionId int
 	preConsumed    int64
+	// tokenAmount is the estimated token consumption for this request (pre-consume estimate)
+	tokenAmount int64
+	// preConsumedTokens is the actual pre-consumed tokens (filled after PreConsume)
+	preConsumedTokens int64
+	// planId restricts candidate subscriptions to a specific plan (API key binding). 0 = no filter.
+	planId int
 	// 以下字段在 PreConsume 成功后填充，供 RelayInfo 同步使用
 	AmountTotal     int64
 	AmountUsedAfter int64
 	PlanId          int
 	PlanTitle       string
+	// Token-quota snapshot fields (filled after PreConsume)
+	TokensTotal      int64
+	TokensUsedAfter  int64
+	IncludeCacheTokens bool
 }
 
 func (s *SubscriptionFunding) Source() string { return BillingSourceSubscription }
 
 func (s *SubscriptionFunding) PreConsume(_ int) error {
 	// amount 参数被忽略，使用内部 s.amount（已在构造时根据 preConsumedQuota 计算）
-	res, err := model.PreConsumeUserSubscription(s.requestId, s.userId, s.modelName, 0, s.amount)
+	res, err := model.PreConsumeUserSubscription(s.requestId, s.userId, s.modelName, 0, s.amount, s.tokenAmount, s.planId)
 	if err != nil {
 		return err
 	}
 	s.subscriptionId = res.UserSubscriptionId
 	s.preConsumed = res.PreConsumed
+	s.preConsumedTokens = res.PreConsumedTokens
 	s.AmountTotal = res.AmountTotal
 	s.AmountUsedAfter = res.AmountUsedAfter
+	s.TokensTotal = res.TokensTotal
+	s.TokensUsedAfter = res.TokensUsedAfter
 	// 获取订阅计划信息
 	if planInfo, err := model.GetSubscriptionPlanInfoByUserSubscriptionId(res.UserSubscriptionId); err == nil && planInfo != nil {
 		s.PlanId = planInfo.PlanId
@@ -102,14 +122,21 @@ func (s *SubscriptionFunding) PreConsume(_ int) error {
 }
 
 func (s *SubscriptionFunding) Settle(delta int) error {
-	if delta == 0 {
+	return s.SettleWithTokens(delta, 0)
+}
+
+// SettleWithTokens settles both the quota amount delta and the token delta.
+// tokenDelta adjusts the pre-consumed token usage to match actual consumption
+// (positive = consume more, negative = refund).
+func (s *SubscriptionFunding) SettleWithTokens(delta int, tokenDelta int64) error {
+	if delta == 0 && tokenDelta == 0 {
 		return nil
 	}
-	return model.PostConsumeUserSubscriptionDelta(s.subscriptionId, int64(delta))
+	return model.PostConsumeUserSubscriptionDelta(s.subscriptionId, int64(delta), tokenDelta)
 }
 
 func (s *SubscriptionFunding) Refund() error {
-	if s.preConsumed <= 0 {
+	if s.preConsumed <= 0 && s.preConsumedTokens <= 0 {
 		return nil
 	}
 	return refundWithRetry(func() error {
