@@ -1608,17 +1608,20 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 			// Quota (money) check: only blocks when the subscription has a quota
 			// limit AND no token limit. When a token limit exists, tokens are the
 			// primary billing unit — the money quota is tracked but does not block.
+			// Only block when quota is fully used (used >= total), not when the
+			// pre-consume estimate would exceed remaining — the last request should
+			// still be allowed.
 			if sub.AmountTotal > 0 && sub.TokensTotal == 0 {
-				remain := sub.AmountTotal - usedBefore
-				if remain < amount {
+				if usedBefore >= sub.AmountTotal {
 					continue
 				}
 			}
-			// Token quota check (only when the subscription defines a token limit)
+			// Token quota check: only block when tokens are fully used (used >= total).
+			// As long as there is remaining quota, allow the request even if the
+			// pre-consume estimate exceeds it — the settle path will clamp to total.
 			tokensUsedBefore := sub.TokensUsed
-			if sub.TokensTotal > 0 && tokenAmount > 0 {
-				tokenRemain := sub.TokensTotal - tokensUsedBefore
-				if tokenRemain < tokenAmount {
+			if sub.TokensTotal > 0 {
+				if tokensUsedBefore >= sub.TokensTotal {
 					continue
 				}
 			}
