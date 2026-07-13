@@ -1369,7 +1369,7 @@ func IncreaseWeeklyQuotaUsed(userId int, quota int) error {
 		return fmt.Errorf("周额度不足, 本周已用: %s, 周额度上限: %s, 本次需要: %s",
 			logger.FormatQuota(used), logger.FormatQuota(limit), logger.FormatQuota(quota))
 	}
-	return DB.Model(&User{}).Where("id = ? AND weekly_quota_used + ? <= weekly_quota", userId, quota, quota).
+	return DB.Model(&User{}).Where("id = ? AND weekly_quota_used + ? <= weekly_quota", userId, quota).
 		Update("weekly_quota_used", gorm.Expr("weekly_quota_used + ?", quota)).Error
 }
 
