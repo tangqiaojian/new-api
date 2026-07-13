@@ -265,17 +265,21 @@ export function SubscriptionUsageSection(props: SubscriptionUsageSectionProps) {
     })
 
     const totalTokens = sortedItems.reduce(
-      (sum, item) => sum + (Number(item.total_tokens) || 0),
+      (sum, item) =>
+        sum +
+        (Number(item.prompt_tokens) || 0) +
+        (Number(item.completion_tokens) || 0) +
+        (includeCache ? Number(item.cached_tokens) || 0 : 0),
       0
     )
 
     return {
-      type: 'area',
+      type: 'bar',
       data: [{ id: 'subscriptionTrendData', values }],
       xField: 'Date',
       yField: 'Tokens',
       seriesField: 'Series',
-      stack: false,
+      stack: true,
       title: {
         visible: true,
         text: t('Daily Subscription Token Usage Trend'),
@@ -330,19 +334,11 @@ export function SubscriptionUsageSection(props: SubscriptionUsageSectionProps) {
           },
         },
       },
-      area: {
+      bar: {
         style: {
-          fillOpacity: 0.15,
-          curveType: 'monotone',
+          cornerRadius: 2,
         },
       },
-      line: {
-        style: {
-          lineWidth: 2,
-          curveType: 'monotone',
-        },
-      },
-      point: { visible: false },
       color: { specified: colorMap },
       background: { fill: 'transparent' },
       animation: true,
