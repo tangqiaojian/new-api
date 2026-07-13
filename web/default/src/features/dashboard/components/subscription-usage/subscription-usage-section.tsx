@@ -564,6 +564,16 @@ export function SubscriptionUsageSection(props: SubscriptionUsageSectionProps) {
                     </div>
                   </div>
                 )}
+                {(sub.next_reset_time ?? 0) > 0 && (
+                  <div className='text-xs text-muted-foreground'>
+                    {t('Quota resets')}: {new Date((sub.next_reset_time ?? 0) * 1000).toLocaleString()}
+                  </div>
+                )}
+                {(sub.token_next_reset_time ?? 0) > 0 && (
+                  <div className='text-xs text-muted-foreground'>
+                    {t('Token resets')}: {new Date((sub.token_next_reset_time ?? 0) * 1000).toLocaleString()}
+                  </div>
+                )}
                 <div className='text-xs text-muted-foreground'>
                   {t('Expires')}: {endDate.toLocaleDateString()}
                 </div>

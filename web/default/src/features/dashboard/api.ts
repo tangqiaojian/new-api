@@ -297,6 +297,8 @@ export async function getSelfSubscriptions() {
           tokens_used?: number
           start_time: number
           end_time: number
+          next_reset_time?: number
+          token_next_reset_time?: number
         }
       }>
     }

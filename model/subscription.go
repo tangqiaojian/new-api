@@ -1498,7 +1498,10 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 				return err
 			}
 			usedBefore := sub.AmountUsed
-			if sub.AmountTotal > 0 {
+			// Quota (money) check: only blocks when the subscription has a quota
+			// limit AND no token limit. When a token limit exists, tokens are the
+			// primary billing unit — the money quota is tracked but does not block.
+			if sub.AmountTotal > 0 && sub.TokensTotal == 0 {
 				remain := sub.AmountTotal - usedBefore
 				if remain < amount {
 					continue
