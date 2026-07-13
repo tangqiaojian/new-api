@@ -5008,6 +5008,11 @@
         "Enabled {{count}} users": "Включено пользователей: {{count}}",
         "Failed to delete users": "Не удалось удалить пользователей",
         "Failed to disable users": "Не удалось отключить пользователей",
-        "Failed to enable users": "Не удалось включить пользователей"
+        "Failed to enable users": "Не удалось включить пользователей",
+        "Assign one or more groups. The user can only use models from these groups.": "Assign one or more groups. The user can only use models from these groups.",
+        "Across all channels": "Across all channels",
+        "Across {{channel}}": "Across {{channel}}",
+        "All channels": "All channels",
+        "Select groups": "Select groups"
     }
 }

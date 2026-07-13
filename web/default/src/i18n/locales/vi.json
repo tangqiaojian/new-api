@@ -5008,6 +5008,11 @@
         "Enabled {{count}} users": "Đã bật {{count}} người dùng",
         "Failed to delete users": "Xóa người dùng thất bại",
         "Failed to disable users": "Vô hiệu hóa người dùng thất bại",
-        "Failed to enable users": "Bật người dùng thất bại"
+        "Failed to enable users": "Bật người dùng thất bại",
+        "Assign one or more groups. The user can only use models from these groups.": "Assign one or more groups. The user can only use models from these groups.",
+        "Across all channels": "Across all channels",
+        "Across {{channel}}": "Across {{channel}}",
+        "All channels": "All channels",
+        "Select groups": "Select groups"
     }
 }

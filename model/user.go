@@ -47,6 +47,7 @@ type User struct {
 	RateLimitTotal     int                        `json:"rate_limit_total" gorm:"type:int;default:0;column:rate_limit_total"`     // 每分钟总请求数限制，0=按group默认
 	RateLimitSuccess   int                        `json:"rate_limit_success" gorm:"type:int;default:0;column:rate_limit_success"` // 每分钟成功请求数限制，0=按group默认
 	Group              string                     `json:"group" gorm:"type:varchar(64);default:'default'"`
+	Groups             string                     `json:"groups" gorm:"type:varchar(512);default:''"` // 逗号分隔的多个分组，为空时回退到 Group
 	AffCode            string                     `json:"aff_code" gorm:"type:varchar(32);column:aff_code;uniqueIndex"`
 	AffCount           int                        `json:"aff_count" gorm:"type:int;default:0;column:aff_count"`
 	AffQuota           int                        `json:"aff_quota" gorm:"type:int;default:0;column:aff_quota"`           // 邀请剩余额度
@@ -66,6 +67,7 @@ func (user *User) ToBaseUser() *UserBase {
 	cache := &UserBase{
 		Id:                 user.Id,
 		Group:              user.Group,
+		Groups:             user.Groups,
 		Quota:              user.Quota,
 		Status:             user.Status,
 		Username:           user.Username,
@@ -718,6 +720,7 @@ func (user *User) EditWithTx(tx *gorm.DB, updatePassword bool) error {
 		"username":     newUser.Username,
 		"display_name": newUser.DisplayName,
 		"group":        newUser.Group,
+		"groups":       newUser.Groups,
 		"remark":       newUser.Remark,
 	}
 	if updatePassword {
@@ -1037,6 +1040,47 @@ func GetUserGroup(id int, fromDB bool) (group string, err error) {
 	}
 
 	return group, nil
+}
+
+// GetGroups 解析用户的 Groups 字段（逗号分隔），去空白、去空、去重。
+// 若 Groups 为空则回退到单个 Group 字段，保证向后兼容。
+func (user *User) GetGroups() []string {
+	return parseUserGroups(user.Groups, user.Group)
+}
+
+// GetGroups 解析 UserBase 缓存中的多分组。
+func (user *UserBase) GetGroups() []string {
+	return parseUserGroups(user.Groups, user.Group)
+}
+
+// HasExplicitGroups 报告用户是否被显式分配了多分组（Groups 字段非空）。
+// 用于区分"严格白名单"与"回退到单组"两种语义。
+func (user *User) HasExplicitGroups() bool {
+	return strings.TrimSpace(user.Groups) != ""
+}
+
+// HasExplicitGroups 报告缓存中的用户是否被显式分配了多分组。
+func (user *UserBase) HasExplicitGroups() bool {
+	return strings.TrimSpace(user.Groups) != ""
+}
+
+// parseUserGroups 把逗号分隔的 groups 字符串解析为去重后的分组切片。
+// 若解析结果为空，则回退到单个 fallbackGroup。
+func parseUserGroups(groups string, fallbackGroup string) []string {
+	var result []string
+	seen := make(map[string]bool)
+	for _, g := range strings.Split(groups, ",") {
+		g = strings.TrimSpace(g)
+		if g == "" || seen[g] {
+			continue
+		}
+		seen[g] = true
+		result = append(result, g)
+	}
+	if len(result) == 0 && fallbackGroup != "" {
+		result = []string{fallbackGroup}
+	}
+	return result
 }
 
 // GetUserSetting gets setting from Redis first, falls back to DB if needed

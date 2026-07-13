@@ -31,6 +31,8 @@ import { ROLE } from '@/lib/roles'
 import { formatQuotaWithCurrency } from '@/lib/currency'
 import { formatCompactNumber, formatNumber } from '@/lib/format'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Switch } from '@/components/ui/switch'
+import { Label } from '@/components/ui/label'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import {
@@ -115,6 +117,7 @@ export function DailyModelTokensSection(props: DailyModelTokensSectionProps) {
   const isAdmin = Boolean(userRole && userRole >= ROLE.ADMIN)
 
   const [compactMode, setCompactMode] = useState(true)
+  const [includeCache, setIncludeCache] = useState(true)
   const selectedRange = props.filters.selectedRange
   const topUserLimit = props.filters.topUserLimit
   const onFiltersChange = props.onFiltersChange
@@ -264,6 +267,22 @@ export function DailyModelTokensSection(props: DailyModelTokensSectionProps) {
           <ArrowLeftRight className='h-3 w-3' />
           {compactMode ? t('Compact') : t('Precise')}
         </Button>
+
+        {/* Cache toggle */}
+        <div className='flex shrink-0 items-center gap-1.5'>
+          <Switch
+            id='daily-model-tokens-include-cache'
+            checked={includeCache}
+            onCheckedChange={setIncludeCache}
+            className='scale-90'
+          />
+          <Label
+            htmlFor='daily-model-tokens-include-cache'
+            className='text-muted-foreground cursor-pointer text-xs font-normal'
+          >
+            {t('Include cache')}
+          </Label>
+        </div>
 
         {isLoading && <Loader2 className='text-muted-foreground size-4 animate-spin' />}
       </div>

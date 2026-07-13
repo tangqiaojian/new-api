@@ -5008,6 +5008,11 @@
         "Enabled {{count}} users": "{{count}} utilisateurs activés",
         "Failed to delete users": "Échec de la suppression des utilisateurs",
         "Failed to disable users": "Échec de la désactivation des utilisateurs",
-        "Failed to enable users": "Échec de l'activation des utilisateurs"
+        "Failed to enable users": "Échec de l'activation des utilisateurs",
+        "Assign one or more groups. The user can only use models from these groups.": "Assign one or more groups. The user can only use models from these groups.",
+        "Across all channels": "Across all channels",
+        "Across {{channel}}": "Across {{channel}}",
+        "All channels": "All channels",
+        "Select groups": "Select groups"
     }
 }

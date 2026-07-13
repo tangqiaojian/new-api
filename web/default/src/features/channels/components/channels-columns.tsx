@@ -472,6 +472,25 @@ function BalanceCell({ channel }: { channel: Channel }) {
             {channel.type !== 57 && <p>{t('Click to update balance')}</p>}
           </TooltipContent>
         </Tooltip>
+        {channel.cache_hit_ratio > 0 && (
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <StatusBadge
+                  label={`${channel.cache_hit_ratio.toFixed(0)}%`}
+                  variant='info'
+                  size='sm'
+                  copyable={false}
+                  showDot={false}
+                  className='cursor-help'
+                />
+              }
+            />
+            <TooltipContent>
+              <p>{t('Cache Hit Ratio')}: {channel.cache_hit_ratio.toFixed(1)}%</p>
+            </TooltipContent>
+          </Tooltip>
+        )}
       </div>
 
       <CodexUsageDialog

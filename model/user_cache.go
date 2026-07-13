@@ -17,6 +17,7 @@ import (
 type UserBase struct {
 	Id                 int    `json:"id"`
 	Group              string `json:"group"`
+	Groups             string `json:"groups"`
 	Email              string `json:"email"`
 	Quota              int    `json:"quota"`
 	Status             int    `json:"status"`
@@ -31,6 +32,11 @@ type UserBase struct {
 
 func (user *UserBase) WriteContext(c *gin.Context) {
 	common.SetContextKey(c, constant.ContextKeyUserGroup, user.Group)
+	// 仅当用户被显式分配了多分组时才写入多分组上下文。
+	// 这样下游可通过该 key 是否存在来判断走严格白名单还是回退到单组语义。
+	if user.HasExplicitGroups() {
+		common.SetContextKey(c, constant.ContextKeyUserGroups, user.GetGroups())
+	}
 	common.SetContextKey(c, constant.ContextKeyUserQuota, user.Quota)
 	common.SetContextKey(c, constant.ContextKeyUserStatus, user.Status)
 	common.SetContextKey(c, constant.ContextKeyUserEmail, user.Email)
@@ -139,6 +145,7 @@ func GetUserCache(userId int) (userCache *UserBase, err error) {
 	userCache = &UserBase{
 		Id:       user.Id,
 		Group:    user.Group,
+		Groups:   user.Groups,
 		Quota:    user.Quota,
 		Status:   user.Status,
 		Username: user.Username,
@@ -250,6 +257,18 @@ func updateUserEmailCache(userId int, email string) error {
 		return nil
 	}
 	return common.RedisHSetField(getUserCacheKey(userId), "Email", email)
+}
+
+func updateUserGroupsCache(userId int, groups string) error {
+	if !common.RedisEnabled {
+		return nil
+	}
+	return common.RedisHSetField(getUserCacheKey(userId), "Groups", groups)
+}
+
+// UpdateUserGroupsCache updates the multi-group cache field for a user.
+func UpdateUserGroupsCache(userId int, groups string) error {
+	return updateUserGroupsCache(userId, groups)
 }
 
 func updateUserNameCache(userId int, username string) error {

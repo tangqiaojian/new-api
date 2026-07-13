@@ -25,15 +25,27 @@ func GetGroups(c *gin.Context) {
 
 func GetUserGroups(c *gin.Context) {
 	usableGroups := make(map[string]map[string]interface{})
-	userGroup := ""
 	userId := c.GetInt("id")
-	userGroup, _ = model.GetUserGroup(userId, false)
-	userUsableGroups := service.GetUserUsableGroups(userGroup)
-	for groupName, _ := range ratio_setting.GetGroupRatioCopy() {
+	userCache, err := model.GetUserCache(userId)
+	userGroup := ""
+	if err == nil && userCache != nil {
+		userGroup = userCache.Group
+	}
+	var userUsableGroups map[string]string
+	if err == nil && userCache != nil {
+		userUsableGroups = service.GetUserUsableGroupsByUser(userCache)
+	} else {
+		userUsableGroups = service.GetUserUsableGroups(userGroup)
+	}
+	userGroups := []string{userGroup}
+	if err == nil && userCache != nil {
+		userGroups = userCache.GetGroups()
+	}
+	for groupName := range ratio_setting.GetGroupRatioCopy() {
 		// UserUsableGroups contains the groups that the user can use
 		if desc, ok := userUsableGroups[groupName]; ok {
 			usableGroups[groupName] = map[string]interface{}{
-				"ratio": service.GetUserGroupRatio(userGroup, groupName),
+				"ratio": bestUserGroupRatio(userGroups, groupName),
 				"desc":  desc,
 			}
 		}
@@ -49,4 +61,16 @@ func GetUserGroups(c *gin.Context) {
 		"message": "",
 		"data":    usableGroups,
 	})
+}
+
+// bestUserGroupRatio 在用户拥有的多个分组中，取该 groupName 的最优（最低）倍率。
+// 倍率越低对用户越优惠，因此多分组时取最小值。
+func bestUserGroupRatio(userGroups []string, groupName string) float64 {
+	best := service.GetUserGroupRatio(userGroups[0], groupName)
+	for _, ug := range userGroups[1:] {
+		if r := service.GetUserGroupRatio(ug, groupName); r < best {
+			best = r
+		}
+	}
+	return best
 }

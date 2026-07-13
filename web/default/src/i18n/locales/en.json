@@ -5012,6 +5012,8 @@
         "Enabled {{count}} users": "Enabled {{count}} users",
         "Failed to delete users": "Failed to delete users",
         "Failed to disable users": "Failed to disable users",
-        "Failed to enable users": "Failed to enable users"
+        "Failed to enable users": "Failed to enable users",
+        "Assign one or more groups. The user can only use models from these groups.": "Assign one or more groups. The user can only use models from these groups.",
+        "Select groups": "Select groups"
     }
 }

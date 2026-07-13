@@ -110,7 +110,7 @@ export async function getDailyTokenData(params: {
 }) {
   const res = await api.get<{ success: boolean; data: DailyTokenDataItem[] }>(
     '/api/data/daily-tokens',
-    { params }
+    { params: { ...params, include_cache: params.include_cache !== false } }
   )
   return res.data
 }
@@ -123,7 +123,7 @@ export async function getSelfDailyTokenData(params: {
 }) {
   const res = await api.get<{ success: boolean; data: DailyTokenDataItem[] }>(
     '/api/data/daily-tokens/self',
-    { params }
+    { params: { ...params, include_cache: params.include_cache !== false } }
   )
   return res.data
 }
@@ -141,7 +141,9 @@ export async function getDailyModelTokenData(params: {
   const res = await api.get<{
     success: boolean
     data: DailyModelTokenDataItem[]
-  }>('/api/data/daily-model-tokens', { params })
+  }>('/api/data/daily-model-tokens', {
+    params: { ...params, include_cache: params.include_cache !== false },
+  })
   return res.data
 }
 
@@ -154,7 +156,60 @@ export async function getSelfDailyModelTokenData(params: {
   const res = await api.get<{
     success: boolean
     data: DailyModelTokenDataItem[]
-  }>('/api/data/daily-model-tokens/self', { params })
+  }>('/api/data/daily-model-tokens/self', {
+    params: { ...params, include_cache: params.include_cache !== false },
+  })
+  return res.data
+}
+
+// ----------------------------------------------------------------------------
+// Channel Statistics
+// ----------------------------------------------------------------------------
+
+export interface ChannelStatsItem {
+  channel_id: number
+  channel_name: string
+  request_count: number
+  success_count: number
+  error_count: number
+  success_rate: number
+  avg_use_time: number
+  avg_first_byte: number
+  total_tokens: number
+  cached_tokens: number
+  cache_hit_ratio: number
+  used_quota: number
+}
+
+export interface ChannelStatsSummary {
+  total_requests: number
+  total_success: number
+  total_errors: number
+  overall_success_rate: number
+  avg_use_time: number
+  avg_first_byte: number
+  total_tokens: number
+  total_cached_tokens: number
+  overall_cache_hit_ratio: number
+  total_used_quota: number
+  top_channels: ChannelStatsItem[]
+  all_channels: ChannelStatsItem[]
+}
+
+export async function getChannelStats(params: {
+  start_timestamp: number
+  end_timestamp: number
+  include_cache?: boolean
+}) {
+  const res = await api.get<{
+    success: boolean
+    data: ChannelStatsSummary
+  }>('/api/data/channel-stats', {
+    params: {
+      ...params,
+      include_cache: params.include_cache !== false,
+    },
+  })
   return res.data
 }
 

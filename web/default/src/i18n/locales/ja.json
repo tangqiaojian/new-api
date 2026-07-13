@@ -5008,6 +5008,11 @@
         "Enabled {{count}} users": "{{count}} 人のユーザーを有効にしました",
         "Failed to delete users": "ユーザーの削除に失敗しました",
         "Failed to disable users": "ユーザーの無効化に失敗しました",
-        "Failed to enable users": "ユーザーの有効化に失敗しました"
+        "Failed to enable users": "ユーザーの有効化に失敗しました",
+        "Assign one or more groups. The user can only use models from these groups.": "Assign one or more groups. The user can only use models from these groups.",
+        "Across all channels": "Across all channels",
+        "Across {{channel}}": "Across {{channel}}",
+        "All channels": "All channels",
+        "Select groups": "Select groups"
     }
 }

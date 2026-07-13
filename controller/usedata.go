@@ -139,7 +139,7 @@ func GetAllDailyTokenData(c *gin.Context) {
 		return
 	}
 	username := c.Query("username")
-	includeCache, _ := strconv.ParseBool(c.Query("include_cache"))
+	includeCache := c.Query("include_cache") != "false"
 	data, err := model.GetAllDailyTokenData(startTimestamp, endTimestamp, username, includeCache)
 	if err != nil {
 		common.ApiError(c, err)
@@ -165,7 +165,7 @@ func GetUserDailyTokenData(c *gin.Context) {
 		})
 		return
 	}
-	includeCache, _ := strconv.ParseBool(c.Query("include_cache"))
+	includeCache := c.Query("include_cache") != "false"
 	data, err := model.GetDailyTokenDataByUserId(userId, startTimestamp, endTimestamp, includeCache)
 	if err != nil {
 		common.ApiError(c, err)
@@ -183,7 +183,7 @@ func GetAllDailyModelTokenData(c *gin.Context) {
 	if !ok {
 		return
 	}
-	includeCache, _ := strconv.ParseBool(c.Query("include_cache"))
+	includeCache := c.Query("include_cache") != "false"
 	data, err := model.GetAllDailyModelTokenData(startTimestamp, endTimestamp, includeCache)
 	if err != nil {
 		common.ApiError(c, err)
@@ -209,7 +209,7 @@ func GetUserDailyModelTokenData(c *gin.Context) {
 		})
 		return
 	}
-	includeCache, _ := strconv.ParseBool(c.Query("include_cache"))
+	includeCache := c.Query("include_cache") != "false"
 	data, err := model.GetDailyModelTokenDataByUserId(userId, startTimestamp, endTimestamp, includeCache)
 	if err != nil {
 		common.ApiError(c, err)
@@ -228,7 +228,7 @@ func GetAllChannelModelStats(c *gin.Context) {
 		return
 	}
 	username := c.Query("username")
-	includeCache, _ := strconv.ParseBool(c.Query("include_cache"))
+	includeCache := c.Query("include_cache") != "false"
 	data, err := model.GetChannelModelStats(startTimestamp, endTimestamp, username, includeCache)
 	if err != nil {
 		common.ApiError(c, err)
@@ -254,7 +254,7 @@ func GetSelfChannelModelStats(c *gin.Context) {
 		})
 		return
 	}
-	includeCache, _ := strconv.ParseBool(c.Query("include_cache"))
+	includeCache := c.Query("include_cache") != "false"
 	data, err := model.GetSelfChannelModelStats(userId, startTimestamp, endTimestamp, includeCache)
 	if err != nil {
 		common.ApiError(c, err)

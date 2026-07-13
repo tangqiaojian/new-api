@@ -616,6 +616,16 @@ export function Dashboard() {
               </Suspense>
             </FadeIn>
           )}
+          {activeSection === 'channel-stats' && (
+            <FadeIn>
+              <Suspense fallback={<ModelChartsFallback />}>
+                <LazyChannelStatsSection
+                  filters={dailyTokensFilters}
+                  onFiltersChange={setDailyTokensFilters}
+                />
+              </Suspense>
+            </FadeIn>
+          )}
         </div>
       </SectionPageLayout.Content>
     </SectionPageLayout>
