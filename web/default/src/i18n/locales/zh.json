@@ -5216,6 +5216,23 @@
         "Request body beyond this limit will be truncated.": "超过此限制的请求体将被截断。",
         "API Reasoning Effort": "API 推理强度",
         "Earn rewards when users join through your referral link. Transfer accumulated rewards to your balance anytime.": "用户通过您的邀请链接注册时获得奖励。可随时将累计奖励转入余额。",
-        "Resize column": "调整列宽"
+        "Resize column": "调整列宽",
+        "0 means no change": "0 表示无变化",
+        "Add Amount": "添加金额",
+        "Add Tokens": "添加 Token",
+        "Add quota to the subscription for {{username}} ({{plan}})": "为 {{username}} 的订阅（{{plan}}）添加额度",
+        "Adds": "增加",
+        "Enter token count": "输入 Token 数量",
+        "Are you sure you want to reset this subscription? The next reset time will be recalculated according to the plan period.": "确定要重置此订阅吗？下一次重置时间将根据套餐周期重新计算。",
+        "Reset Subscription?": "重置订阅？",
+        "Subscription usage has been reset": "订阅用量已重置",
+        "Next Reset": "下次重置",
+        "Quota Usage": "额度用量",
+        "Token Usage": "Token 用量",
+        "Reset Usage": "重置用量",
+        "No subscriptions found": "未找到订阅",
+        "Search by username": "按用户名搜索",
+        "User subscriptions will appear here once they subscribe to a plan.": "用户订阅套餐后，订阅记录将显示在此处。",
+        "User Subscriptions": "用户订阅"
     }
 }
