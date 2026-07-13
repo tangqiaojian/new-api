@@ -279,3 +279,27 @@ export async function getSelfSubscriptionModelUsage(params: {
   )
   return res.data
 }
+
+// Get current user's active subscriptions (for summary display)
+export async function getSelfSubscriptions() {
+  const res = await api.get<{
+    success: boolean
+    data?: {
+      billing_preference?: string
+      subscriptions?: Array<{
+        subscription: {
+          id: number
+          plan_id: number
+          status: string
+          amount_total: number
+          amount_used: number
+          tokens_total?: number
+          tokens_used?: number
+          start_time: number
+          end_time: number
+        }
+      }>
+    }
+  }>('/api/subscription/self')
+  return res.data
+}

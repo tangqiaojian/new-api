@@ -240,7 +240,6 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 		common.ApiErrorMsg(c, "参数错误")
 		return
 	}
-	common.SysLog(fmt.Sprintf("AdminUpdateSubscriptionPlan: total_tokens=%d, include_cache_tokens=%v, token_reset_period=%s", req.Plan.TotalTokens, req.Plan.IncludeCacheTokens, req.Plan.TokenResetPeriod))
 	if strings.TrimSpace(req.Plan.Title) == "" {
 		common.ApiErrorMsg(c, "套餐标题不能为空")
 		return

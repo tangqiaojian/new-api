@@ -519,9 +519,20 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 					return nil, types.NewError(overflowErr, types.ErrorCodeQueryDataError, types.ErrOptionWithSkipRetry())
 				}
 				if allowOverflow {
-					return tryWallet()
+					walletSession, walletErr := tryWallet()
+					if walletErr != nil && walletErr.GetErrorCode() == types.ErrorCodeInsufficientUserQuota {
+						// 订阅额度和钱包余额都不足，给出清晰的错误提示
+						return nil, types.NewErrorWithStatusCode(
+							fmt.Errorf("订阅额度和钱包余额均不足，请充值或升级套餐"),
+							types.ErrorCodeInsufficientUserQuota, http.StatusForbidden,
+							types.ErrOptionWithSkipRetry(), types.ErrOptionWithNoRecordErrorLog())
+					}
+					return walletSession, walletErr
 				}
-				return nil, apiErr
+				return nil, types.NewErrorWithStatusCode(
+					fmt.Errorf("订阅额度不足，且当前套餐不允许使用钱包余额"),
+					types.ErrorCodeInsufficientUserQuota, http.StatusForbidden,
+					types.ErrOptionWithSkipRetry(), types.ErrOptionWithNoRecordErrorLog())
 			}
 			return nil, apiErr
 		}

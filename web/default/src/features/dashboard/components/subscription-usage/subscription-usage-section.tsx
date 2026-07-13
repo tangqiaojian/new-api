@@ -45,6 +45,7 @@ import {
 import {
   getSelfSubscriptionUsage,
   getSelfSubscriptionModelUsage,
+  getSelfSubscriptions,
 } from '@/features/dashboard/api'
 import { TIME_RANGE_PRESETS } from '@/features/dashboard/constants'
 import type {
@@ -183,6 +184,18 @@ export function SubscriptionUsageSection(props: SubscriptionUsageSectionProps) {
     staleTime: 60_000,
     refetchInterval: refetchInterval || undefined,
   })
+
+  const { data: subscriptionInfo } = useQuery({
+    queryKey: ['dashboard', 'subscription-self'],
+    queryFn: () => getSelfSubscriptions(),
+    staleTime: 60_000,
+    refetchInterval: refetchInterval || undefined,
+  })
+
+  const activeSubscriptions =
+    subscriptionInfo?.data?.subscriptions?.filter(
+      (s) => s.subscription.status === 'active'
+    ) ?? []
 
   const isLoading = dailyLoading || modelLoading
   const hasError = dailyError || modelError
@@ -511,6 +524,54 @@ export function SubscriptionUsageSection(props: SubscriptionUsageSectionProps) {
           <Loader2 className='text-muted-foreground size-4 animate-spin' />
         )}
       </div>
+
+      {/* Subscription summary cards */}
+      {activeSubscriptions.length > 0 && (
+        <div className='grid gap-2 sm:grid-cols-2 lg:grid-cols-3'>
+          {activeSubscriptions.map((s, idx) => {
+            const sub = s.subscription
+            const amountRemain = sub.amount_total > 0 ? sub.amount_total - sub.amount_used : 0
+            const amountPercent = sub.amount_total > 0 ? Math.min(100, (sub.amount_used / sub.amount_total) * 100) : 0
+            const tokensRemain = (sub.tokens_total ?? 0) > 0 ? (sub.tokens_total ?? 0) - (sub.tokens_used ?? 0) : 0
+            const tokensPercent = (sub.tokens_total ?? 0) > 0 ? Math.min(100, ((sub.tokens_used ?? 0) / (sub.tokens_total ?? 0)) * 100) : 0
+            const endDate = new Date(sub.end_time * 1000)
+            const daysLeft = Math.max(0, Math.ceil((sub.end_time * 1000 - Date.now()) / 86400000))
+            return (
+              <div key={idx} className='rounded-lg border p-3 space-y-2'>
+                <div className='flex items-center justify-between'>
+                  <span className='text-sm font-medium'>{t('Plan')} #{sub.plan_id}</span>
+                  <span className='text-xs text-muted-foreground'>{daysLeft} {t('days remaining')}</span>
+                </div>
+                {sub.amount_total > 0 && (
+                  <div className='space-y-1'>
+                    <div className='flex justify-between text-xs text-muted-foreground'>
+                      <span>{t('Quota')}</span>
+                      <span>{formatQuotaWithCurrency(sub.amount_used)} / {formatQuotaWithCurrency(sub.amount_total)}</span>
+                    </div>
+                    <div className='h-1.5 rounded-full bg-muted overflow-hidden'>
+                      <div className='h-full bg-primary rounded-full' style={{ width: `${amountPercent}%` }} />
+                    </div>
+                  </div>
+                )}
+                {(sub.tokens_total ?? 0) > 0 && (
+                  <div className='space-y-1'>
+                    <div className='flex justify-between text-xs text-muted-foreground'>
+                      <span>{t('Total Tokens')}</span>
+                      <span>{formatCompactNumber(sub.tokens_used ?? 0)} / {formatCompactNumber(sub.tokens_total ?? 0)}</span>
+                    </div>
+                    <div className='h-1.5 rounded-full bg-muted overflow-hidden'>
+                      <div className='h-full bg-blue-500 rounded-full' style={{ width: `${tokensPercent}%` }} />
+                    </div>
+                  </div>
+                )}
+                <div className='text-xs text-muted-foreground'>
+                  {t('Expires')}: {endDate.toLocaleDateString()}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
 
       {/* Error state */}
       {hasError && !isLoading && (

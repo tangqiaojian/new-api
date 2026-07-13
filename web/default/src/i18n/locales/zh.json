@@ -5162,6 +5162,7 @@
         "Number Format": "数字格式",
         "Precise": "精确",
         "Filter by model": "按模型筛选",
-        "{{total}} records": "{{total}} 条记录"
+        "{{total}} records": "{{total}} 条记录",
+        "days remaining": "天剩余"
     }
 }
