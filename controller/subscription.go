@@ -240,6 +240,7 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 		common.ApiErrorMsg(c, "参数错误")
 		return
 	}
+	common.SysLog(fmt.Sprintf("AdminUpdateSubscriptionPlan: total_tokens=%d, include_cache_tokens=%v, token_reset_period=%s", req.Plan.TotalTokens, req.Plan.IncludeCacheTokens, req.Plan.TokenResetPeriod))
 	if strings.TrimSpace(req.Plan.Title) == "" {
 		common.ApiErrorMsg(c, "套餐标题不能为空")
 		return
@@ -290,6 +291,19 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 		common.ApiErrorMsg(c, "自定义重置周期需大于0秒")
 		return
 	}
+	// Token quota reset period (independent; empty = same as QuotaResetPeriod)
+	tokenResetPeriod := ""
+	if strings.TrimSpace(req.Plan.TokenResetPeriod) != "" {
+		tokenResetPeriod = model.NormalizeResetPeriod(req.Plan.TokenResetPeriod)
+		if tokenResetPeriod == model.SubscriptionResetCustom && req.Plan.TokenResetCustomSeconds <= 0 {
+			common.ApiErrorMsg(c, "自定义 token 重置周期需大于0秒")
+			return
+		}
+	}
+	if req.Plan.TotalTokens < 0 {
+		common.ApiErrorMsg(c, "token 总额度不能为负数")
+		return
+	}
 
 	err := model.DB.Transaction(func(tx *gorm.DB) error {
 		// update plan (allow zero values updates with map)
@@ -312,6 +326,10 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 			"downgrade_group":            req.Plan.DowngradeGroup,
 			"quota_reset_period":         req.Plan.QuotaResetPeriod,
 			"quota_reset_custom_seconds": req.Plan.QuotaResetCustomSeconds,
+			"total_tokens":               req.Plan.TotalTokens,
+			"include_cache_tokens":       req.Plan.IncludeCacheTokens,
+			"token_reset_period":         tokenResetPeriod,
+			"token_reset_custom_seconds": req.Plan.TokenResetCustomSeconds,
 			"updated_at":                 common.GetTimestamp(),
 		}
 		if req.Plan.AllowBalancePay != nil {
