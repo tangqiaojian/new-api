@@ -5001,6 +5001,13 @@
         "Avg Speed": "Vitesse moyenne",
         "Cache Hit Ratio": "Taux de cache",
         "Success Rate": "Taux de réussite",
-        "Top Channels": "Top fournisseurs"
+        "Top Channels": "Top fournisseurs",
+        "{{count}} tokens": "{{count}} tokens",
+        "Deleted {{count}} users": "{{count}} utilisateurs supprimés",
+        "Disabled {{count}} users": "{{count}} utilisateurs désactivés",
+        "Enabled {{count}} users": "{{count}} utilisateurs activés",
+        "Failed to delete users": "Échec de la suppression des utilisateurs",
+        "Failed to disable users": "Échec de la désactivation des utilisateurs",
+        "Failed to enable users": "Échec de l'activation des utilisateurs"
     }
 }

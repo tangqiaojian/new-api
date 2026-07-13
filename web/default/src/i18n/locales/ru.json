@@ -5001,6 +5001,13 @@
         "Avg Speed": "Средняя скорость",
         "Cache Hit Ratio": "Попадание в кэш",
         "Success Rate": "Успешность",
-        "Top Channels": "Топ поставщиков"
+        "Top Channels": "Топ поставщиков",
+        "{{count}} tokens": "{{count}} токенов",
+        "Deleted {{count}} users": "Удалено пользователей: {{count}}",
+        "Disabled {{count}} users": "Отключено пользователей: {{count}}",
+        "Enabled {{count}} users": "Включено пользователей: {{count}}",
+        "Failed to delete users": "Не удалось удалить пользователей",
+        "Failed to disable users": "Не удалось отключить пользователей",
+        "Failed to enable users": "Не удалось включить пользователей"
     }
 }

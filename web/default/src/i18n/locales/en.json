@@ -5005,6 +5005,13 @@
         "Across all channels": "Across all channels",
         "Across {{channel}}": "Across {{channel}}",
         "All channels": "All channels",
-        "Filter by channel": "Filter by channel"
+        "Filter by channel": "Filter by channel",
+        "{{count}} tokens": "{{count}} tokens",
+        "Deleted {{count}} users": "Deleted {{count}} users",
+        "Disabled {{count}} users": "Disabled {{count}} users",
+        "Enabled {{count}} users": "Enabled {{count}} users",
+        "Failed to delete users": "Failed to delete users",
+        "Failed to disable users": "Failed to disable users",
+        "Failed to enable users": "Failed to enable users"
     }
 }

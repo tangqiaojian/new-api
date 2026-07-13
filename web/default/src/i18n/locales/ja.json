@@ -5001,6 +5001,13 @@
         "Avg Speed": "平均速度",
         "Cache Hit Ratio": "キャッシュヒット率",
         "Success Rate": "成功率",
-        "Top Channels": "上位チャネル"
+        "Top Channels": "上位チャネル",
+        "{{count}} tokens": "{{count}} トークン",
+        "Deleted {{count}} users": "{{count}} 人のユーザーを削除しました",
+        "Disabled {{count}} users": "{{count}} 人のユーザーを無効にしました",
+        "Enabled {{count}} users": "{{count}} 人のユーザーを有効にしました",
+        "Failed to delete users": "ユーザーの削除に失敗しました",
+        "Failed to disable users": "ユーザーの無効化に失敗しました",
+        "Failed to enable users": "ユーザーの有効化に失敗しました"
     }
 }

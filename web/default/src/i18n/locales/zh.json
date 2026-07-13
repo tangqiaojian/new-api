@@ -5005,6 +5005,13 @@
         "Across all channels": "所有渠道合计",
         "Across {{channel}}": "{{channel}} 统计",
         "All channels": "全部渠道",
-        "Filter by channel": "按渠道筛选"
+        "Filter by channel": "按渠道筛选",
+        "{{count}} tokens": "{{count}} Token",
+        "Deleted {{count}} users": "已删除 {{count}} 个用户",
+        "Disabled {{count}} users": "已禁用 {{count}} 个用户",
+        "Enabled {{count}} users": "已启用 {{count}} 个用户",
+        "Failed to delete users": "删除用户失败",
+        "Failed to disable users": "禁用用户失败",
+        "Failed to enable users": "启用用户失败"
     }
 }
