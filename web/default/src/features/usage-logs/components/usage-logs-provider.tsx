@@ -19,7 +19,11 @@ For commercial licensing, please contact support@quantumnous.com
 /* eslint-disable react-refresh/only-export-components */
 import { createContext, useContext, useState, type ReactNode } from 'react'
 
+import { useIsAdmin } from '@/hooks/use-admin'
+
 import type { ChannelAffinityInfo } from '../types'
+
+export type LogsViewScope = 'all' | 'self'
 
 interface UsageLogsContextValue {
   selectedUserId: number | null
@@ -34,6 +38,8 @@ interface UsageLogsContextValue {
   setSensitiveVisible: (visible: boolean) => void
   includeCache: boolean
   setIncludeCache: (value: boolean) => void
+  viewScope: LogsViewScope
+  setViewScope: (scope: LogsViewScope) => void
 }
 
 const UsageLogsContext = createContext<UsageLogsContextValue | undefined>(
@@ -48,6 +54,7 @@ export function UsageLogsProvider({ children }: { children: ReactNode }) {
   const [affinityDialogOpen, setAffinityDialogOpen] = useState(false)
   const [sensitiveVisible, setSensitiveVisible] = useState(true)
   const [includeCache, setIncludeCache] = useState(false)
+  const [viewScope, setViewScope] = useState<LogsViewScope>('all')
 
   return (
     <UsageLogsContext.Provider
@@ -64,6 +71,8 @@ export function UsageLogsProvider({ children }: { children: ReactNode }) {
         setSensitiveVisible,
         includeCache,
         setIncludeCache,
+        viewScope,
+        setViewScope,
       }}
     >
       {children}
@@ -77,4 +86,24 @@ export function useUsageLogsContext() {
     throw new Error('useUsageLogsContext must be used within UsageLogsProvider')
   }
   return context
+}
+
+/**
+ * Resolves the effective admin scope for usage logs: whether the current
+ * user is allowed to view all users' logs (`canManageScope`), and whether
+ * their current view preference (`viewScope`) has that scope active
+ * (`isAdminView`). Data fetching and admin-only UI should key off
+ * `isAdminView` rather than raw role, so an admin who switches to "only
+ * mine" is treated exactly like a regular user for that view.
+ */
+export function useLogsViewScope() {
+  const canManageScope = useIsAdmin()
+  const { viewScope, setViewScope } = useUsageLogsContext()
+
+  return {
+    canManageScope,
+    viewScope,
+    setViewScope,
+    isAdminView: canManageScope && viewScope === 'all',
+  }
 }
