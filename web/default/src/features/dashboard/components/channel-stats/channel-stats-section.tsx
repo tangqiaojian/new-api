@@ -129,7 +129,9 @@ export function ChannelStatsSection(props: ChannelStatsSectionProps) {
   const [selectedChannelId, setSelectedChannelId] = useState<number | null>(
     null
   )
-  const [modelQuery, setModelQuery] = useState('')
+  // Draft input vs applied keyword so users can type and click Search.
+  const [searchInput, setSearchInput] = useState('')
+  const [appliedQuery, setAppliedQuery] = useState('')
   const selectedRange = props.filters.selectedRange
   const topLimit = props.filters.topLimit
   const onFiltersChange = props.onFiltersChange
@@ -190,18 +192,46 @@ export function ChannelStatsSection(props: ChannelStatsSectionProps) {
     const seen = new Map<number, string>()
     for (const item of (channelStatsData ?? []) as ChannelModelStatsItem[]) {
       if (!seen.has(item.channel_id)) {
-        seen.set(item.channel_id, item.channel_name || String(item.channel_id))
+        const name = (item.channel_name || '').trim()
+        seen.set(
+          item.channel_id,
+          name || `${t('Channel')} #${item.channel_id}`
+        )
       }
     }
     return Array.from(seen.entries())
       .map(([id, name]) => ({ id, name }))
       .sort((a, b) => a.name.localeCompare(b.name))
-  }, [channelStatsData])
+  }, [channelStatsData, t])
+
+  // Base UI Select needs items=[{value,label}] so SelectValue shows labels, not raw ids.
+  const channelSelectItems = useMemo(
+    () => [
+      { value: 'all', label: t('All channels') },
+      ...channelOptions.map((ch) => ({
+        value: String(ch.id),
+        label: ch.name,
+      })),
+    ],
+    [channelOptions, t]
+  )
+
+  const topLimitSelectItems = useMemo(
+    () =>
+      TOP_LIMIT_OPTIONS.map((limit) => ({
+        value: String(limit),
+        label:
+          limit === 0
+            ? t('Show all')
+            : t('Top {{count}}', { count: limit }),
+      })),
+    [t]
+  )
 
   const statsCardData = useMemo(() => {
     const raw = (channelStatsData ?? []) as ChannelModelStatsItem[]
     if (selectedChannelId === null) return raw
-    return raw.filter((item) => item.channel_id === selectedChannelId)
+    return raw.filter((item) => Number(item.channel_id) === selectedChannelId)
   }, [channelStatsData, selectedChannelId])
 
   const selectedChannelName = useMemo(() => {
@@ -209,19 +239,31 @@ export function ChannelStatsSection(props: ChannelStatsSectionProps) {
     return channelOptions.find((c) => c.id === selectedChannelId)?.name
   }, [channelOptions, selectedChannelId])
 
+  const applySearch = useCallback(() => {
+    setAppliedQuery(searchInput.trim())
+    setCurrentPage(1)
+  }, [searchInput])
+
   const filteredData = useMemo(() => {
     let raw = (channelStatsData ?? []) as ChannelModelStatsItem[]
     if (selectedChannelId !== null) {
-      raw = raw.filter((item) => item.channel_id === selectedChannelId)
+      raw = raw.filter((item) => Number(item.channel_id) === selectedChannelId)
     }
-    const query = modelQuery.trim().toLowerCase()
+    const query = appliedQuery.trim().toLowerCase()
     if (query) {
-      raw = raw.filter((item) =>
-        (item.model_name || '').toLowerCase().includes(query)
-      )
+      raw = raw.filter((item) => {
+        const model = (item.model_name || '').toLowerCase()
+        const channel = (item.channel_name || '').toLowerCase()
+        const channelId = String(item.channel_id)
+        return (
+          model.includes(query) ||
+          channel.includes(query) ||
+          channelId.includes(query)
+        )
+      })
     }
     return raw
-  }, [channelStatsData, selectedChannelId, modelQuery])
+  }, [channelStatsData, selectedChannelId, appliedQuery])
 
   const sortedData = useMemo(() => {
     const sorted = [...filteredData].sort((a, b) => {
@@ -314,11 +356,15 @@ export function ChannelStatsSection(props: ChannelStatsSectionProps) {
   }
 
   const hasActiveFilters =
-    selectedChannelId !== null || modelQuery.trim().length > 0 || topLimit !== 20
+    selectedChannelId !== null ||
+    appliedQuery.trim().length > 0 ||
+    searchInput.trim().length > 0 ||
+    topLimit !== 20
 
   const clearFilters = () => {
     setSelectedChannelId(null)
-    setModelQuery('')
+    setSearchInput('')
+    setAppliedQuery('')
     if (topLimit !== 20) {
       onFiltersChange({ ...props.filters, topLimit: 20 })
     }
@@ -354,44 +400,64 @@ export function ChannelStatsSection(props: ChannelStatsSectionProps) {
         </Tabs>
 
         <Select
+          items={channelSelectItems}
           value={selectedChannelId === null ? 'all' : String(selectedChannelId)}
           onValueChange={(value) => {
-            setSelectedChannelId(value === 'all' ? null : Number(value))
+            const next =
+              value == null || value === 'all' ? null : Number(value)
+            setSelectedChannelId(
+              next != null && Number.isFinite(next) ? next : null
+            )
             setCurrentPage(1)
           }}
         >
           <SelectTrigger
-            className='h-8 w-full min-w-[140px] shrink-0 text-xs sm:w-[180px]'
+            className='h-8 w-full min-w-[160px] shrink-0 text-xs sm:w-[200px]'
             aria-label={t('Filter by channel')}
           >
             <SelectValue placeholder={t('All channels')} />
           </SelectTrigger>
           <SelectContent alignItemWithTrigger={false}>
             <SelectGroup>
-              <SelectItem value='all'>{t('All channels')}</SelectItem>
-              {channelOptions.map((ch) => (
-                <SelectItem key={ch.id} value={String(ch.id)}>
-                  {ch.name}
+              {channelSelectItems.map((item) => (
+                <SelectItem key={item.value} value={item.value}>
+                  {item.label}
                 </SelectItem>
               ))}
             </SelectGroup>
           </SelectContent>
         </Select>
 
-        <div className='relative min-w-0 flex-1 sm:max-w-[220px]'>
-          <Search className='text-muted-foreground pointer-events-none absolute top-1/2 left-2 size-3.5 -translate-y-1/2' />
-          <Input
-            value={modelQuery}
-            onChange={(e) => {
-              setModelQuery(e.target.value)
-              setCurrentPage(1)
-            }}
-            placeholder={t('Search model')}
-            className='h-8 pl-7 text-xs'
-          />
+        <div className='flex min-w-0 flex-1 items-center gap-1.5 sm:max-w-[320px]'>
+          <div className='relative min-w-0 flex-1'>
+            <Search className='text-muted-foreground pointer-events-none absolute top-1/2 left-2 size-3.5 -translate-y-1/2' />
+            <Input
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  applySearch()
+                }
+              }}
+              placeholder={t('Search channel or model')}
+              className='h-8 pl-7 text-xs'
+            />
+          </div>
+          <Button
+            type='button'
+            variant='secondary'
+            size='sm'
+            className='h-8 shrink-0 gap-1 px-2.5 text-xs'
+            onClick={applySearch}
+          >
+            <Search className='h-3 w-3' />
+            {t('Search')}
+          </Button>
         </div>
 
         <Select
+          items={topLimitSelectItems}
           value={String(topLimit)}
           onValueChange={(value) => handleTopLimitChange(Number(value))}
         >
@@ -403,11 +469,9 @@ export function ChannelStatsSection(props: ChannelStatsSectionProps) {
           </SelectTrigger>
           <SelectContent alignItemWithTrigger={false}>
             <SelectGroup>
-              {TOP_LIMIT_OPTIONS.map((limit) => (
-                <SelectItem key={limit} value={String(limit)}>
-                  {limit === 0
-                    ? t('Show all')
-                    : t('Top {{count}}', { count: limit })}
+              {topLimitSelectItems.map((item) => (
+                <SelectItem key={item.value} value={item.value}>
+                  {item.label}
                 </SelectItem>
               ))}
             </SelectGroup>
