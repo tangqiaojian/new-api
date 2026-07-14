@@ -68,6 +68,7 @@ import {
 } from '@/components/ui/sheet'
 import { Switch } from '@/components/ui/switch'
 import { getCurrencyDisplay, getCurrencyLabel } from '@/lib/currency'
+import { formatChineseNumber, formatNumber } from '@/lib/format'
 
 import {
   createPlan,
@@ -762,23 +763,35 @@ export function SubscriptionsMutateDrawer({
               <FormField
                 control={form.control}
                 name='total_tokens'
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('Total Tokens')}</FormLabel>
-                    <FormControl>
-                      <Input
-                        {...field}
-                        type='number'
-                        min={0}
-                        onChange={(e) =>
-                          field.onChange(parseInt(e.target.value, 10) || 0)
-                        }
-                      />
-                    </FormControl>
-                    <FormDescription>{t('0 means unlimited')}</FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
+                render={({ field }) => {
+                  const tokenValue = Number(field.value) || 0
+                  const chineseHint =
+                    tokenValue > 0 ? formatChineseNumber(tokenValue) : null
+                  return (
+                    <FormItem>
+                      <FormLabel>{t('Total Tokens')}</FormLabel>
+                      <FormControl>
+                        <Input
+                          {...field}
+                          type='number'
+                          min={0}
+                          onChange={(e) =>
+                            field.onChange(parseInt(e.target.value, 10) || 0)
+                          }
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        {tokenValue <= 0
+                          ? t('0 means unlimited')
+                          : t('≈ {{readable}} tokens ({{exact}})', {
+                              readable: chineseHint,
+                              exact: formatNumber(tokenValue),
+                            })}
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )
+                }}
               />
 
               <FormField

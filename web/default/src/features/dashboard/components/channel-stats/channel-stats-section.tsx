@@ -18,18 +18,18 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useMemo, useState, useCallback } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Hash, Loader2, ArrowLeftRight, ArrowUpDown } from 'lucide-react'
+import {
+  ArrowLeftRight,
+  ArrowUpDown,
+  Hash,
+  Loader2,
+  Search,
+  X,
+} from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { toIntlLocale } from '@/i18n/languages'
-import { getRollingDateRange } from '@/lib/time'
-import { useAutoRefresh } from '@/features/dashboard/hooks/use-auto-refresh'
-import { useAuthStore } from '@/stores/auth-store'
-import { ROLE } from '@/lib/roles'
-import { formatQuotaWithCurrency } from '@/lib/currency'
-import { formatCompactNumber, formatNumber } from '@/lib/format'
-import { Skeleton } from '@/components/ui/skeleton'
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import {
   Select,
   SelectContent,
@@ -38,6 +38,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Skeleton } from '@/components/ui/skeleton'
 import {
   Table,
   TableBody,
@@ -46,20 +47,29 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   getChannelModelStats,
   getSelfChannelModelStats,
 } from '@/features/dashboard/api'
 import { TIME_RANGE_PRESETS } from '@/features/dashboard/constants'
-import { ChannelStatCards } from './channel-stat-cards'
+import { useAutoRefresh } from '@/features/dashboard/hooks/use-auto-refresh'
 import type {
   ChannelModelStatsItem,
   ChannelStatsFilters,
 } from '@/features/dashboard/types'
+import { toIntlLocale } from '@/i18n/languages'
+import { formatQuotaWithCurrency } from '@/lib/currency'
+import { formatCompactNumber, formatNumber } from '@/lib/format'
+import { ROLE } from '@/lib/roles'
+import { getRollingDateRange } from '@/lib/time'
+import { cn } from '@/lib/utils'
+import { useAuthStore } from '@/stores/auth-store'
+
+import { ChannelStatCards } from './channel-stat-cards'
 
 const PAGE_SIZE = 20
-
-const TOP_LIMIT_OPTIONS = [5, 10, 20, 50]
+const TOP_LIMIT_OPTIONS = [5, 10, 20, 50, 0] as const
 
 interface ChannelStatsSectionProps {
   filters: ChannelStatsFilters
@@ -83,7 +93,31 @@ type SortField =
 
 type SortDirection = 'asc' | 'desc'
 
-const STRING_SORT_FIELDS: Set<SortField> = new Set(['channel_name', 'model_name'])
+const STRING_SORT_FIELDS: Set<SortField> = new Set([
+  'channel_name',
+  'model_name',
+])
+
+function RatioBar(props: {
+  value: number
+  max: number
+  className?: string
+  label: string
+}) {
+  const ratio =
+    props.max > 0 ? Math.max(0, Math.min(props.value / props.max, 1)) : 0
+  return (
+    <div className='flex min-w-[88px] flex-col items-end gap-1'>
+      <span className='tabular-nums'>{props.label}</span>
+      <div className='bg-muted h-1 w-full max-w-[96px] overflow-hidden rounded-full'>
+        <div
+          className={cn('h-full rounded-full transition-all', props.className)}
+          style={{ width: `${ratio * 100}%` }}
+        />
+      </div>
+    </div>
+  )
+}
 
 export function ChannelStatsSection(props: ChannelStatsSectionProps) {
   const { t, i18n } = useTranslation()
@@ -92,7 +126,10 @@ export function ChannelStatsSection(props: ChannelStatsSectionProps) {
   const isAdmin = Boolean(userRole && userRole >= ROLE.ADMIN)
 
   const [compactMode, setCompactMode] = useState(true)
-  const [selectedChannelId, setSelectedChannelId] = useState<number | null>(null)
+  const [selectedChannelId, setSelectedChannelId] = useState<number | null>(
+    null
+  )
+  const [modelQuery, setModelQuery] = useState('')
   const selectedRange = props.filters.selectedRange
   const topLimit = props.filters.topLimit
   const onFiltersChange = props.onFiltersChange
@@ -113,6 +150,7 @@ export function ChannelStatsSection(props: ChannelStatsSectionProps) {
   const handleRangeChange = useCallback(
     (days: number) => {
       onFiltersChange({ ...props.filters, selectedRange: days })
+      setCurrentPage(1)
     },
     [onFiltersChange, props.filters]
   )
@@ -126,17 +164,28 @@ export function ChannelStatsSection(props: ChannelStatsSectionProps) {
   )
 
   const { data: channelStatsData, isLoading } = useQuery({
-    queryKey: ['dashboard', 'channel-stats', timeRange, isAdmin, props.includeCache],
+    queryKey: [
+      'dashboard',
+      'channel-stats',
+      timeRange,
+      isAdmin,
+      props.includeCache,
+    ],
     queryFn: () =>
       isAdmin
-        ? getChannelModelStats({ ...timeRange, include_cache: props.includeCache })
-        : getSelfChannelModelStats({ ...timeRange, include_cache: props.includeCache }),
+        ? getChannelModelStats({
+            ...timeRange,
+            include_cache: props.includeCache,
+          })
+        : getSelfChannelModelStats({
+            ...timeRange,
+            include_cache: props.includeCache,
+          }),
     select: (res) => (res.success ? res.data : []),
     staleTime: 60_000,
     refetchInterval: refetchInterval || undefined,
   })
 
-  // Unique channel list for the channel filter dropdown
   const channelOptions = useMemo(() => {
     const seen = new Map<number, string>()
     for (const item of (channelStatsData ?? []) as ChannelModelStatsItem[]) {
@@ -144,10 +193,11 @@ export function ChannelStatsSection(props: ChannelStatsSectionProps) {
         seen.set(item.channel_id, item.channel_name || String(item.channel_id))
       }
     }
-    return Array.from(seen.entries()).map(([id, name]) => ({ id, name }))
+    return Array.from(seen.entries())
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name))
   }, [channelStatsData])
 
-  // Data for the stat cards: filtered by selected channel, or all
   const statsCardData = useMemo(() => {
     const raw = (channelStatsData ?? []) as ChannelModelStatsItem[]
     if (selectedChannelId === null) return raw
@@ -159,14 +209,22 @@ export function ChannelStatsSection(props: ChannelStatsSectionProps) {
     return channelOptions.find((c) => c.id === selectedChannelId)?.name
   }, [channelOptions, selectedChannelId])
 
-  // Sort data
+  const filteredData = useMemo(() => {
+    let raw = (channelStatsData ?? []) as ChannelModelStatsItem[]
+    if (selectedChannelId !== null) {
+      raw = raw.filter((item) => item.channel_id === selectedChannelId)
+    }
+    const query = modelQuery.trim().toLowerCase()
+    if (query) {
+      raw = raw.filter((item) =>
+        (item.model_name || '').toLowerCase().includes(query)
+      )
+    }
+    return raw
+  }, [channelStatsData, selectedChannelId, modelQuery])
+
   const sortedData = useMemo(() => {
-    const raw = (channelStatsData ?? []) as ChannelModelStatsItem[]
-    // For non-admin users (who only see their own data), don't apply topLimit
-    // Admin users can adjust the limit to focus on top channels
-    const effectiveLimit = isAdmin ? topLimit : Math.max(raw.length, topLimit)
-    const topItems = raw.slice(0, effectiveLimit)
-    const sorted = [...topItems].sort((a, b) => {
+    const sorted = [...filteredData].sort((a, b) => {
       const aVal = a[sortField]
       const bVal = b[sortField]
       if (STRING_SORT_FIELDS.has(sortField)) {
@@ -178,21 +236,51 @@ export function ChannelStatsSection(props: ChannelStatsSectionProps) {
       const cmp = Number(aVal ?? 0) - Number(bVal ?? 0)
       return sortDirection === 'asc' ? cmp : -cmp
     })
-    return sorted
-  }, [channelStatsData, topLimit, sortField, sortDirection, isAdmin])
 
-  const totalPages = Math.ceil(sortedData.length / PAGE_SIZE)
+    // topLimit is applied after filter/sort for more intuitive UX.
+    // 0 means show all rows.
+    if (topLimit > 0) {
+      return sorted.slice(0, topLimit)
+    }
+    return sorted
+  }, [filteredData, topLimit, sortField, sortDirection])
+
+  const maxRequestCount = useMemo(
+    () =>
+      sortedData.reduce(
+        (max, item) => Math.max(max, Number(item.request_count) || 0),
+        0
+      ),
+    [sortedData]
+  )
+  const maxTotalTokens = useMemo(
+    () =>
+      sortedData.reduce(
+        (max, item) => Math.max(max, Number(item.total_tokens) || 0),
+        0
+      ),
+    [sortedData]
+  )
+  const maxQuota = useMemo(
+    () =>
+      sortedData.reduce(
+        (max, item) => Math.max(max, Number(item.quota) || 0),
+        0
+      ),
+    [sortedData]
+  )
+
+  const totalPages = Math.max(1, Math.ceil(sortedData.length / PAGE_SIZE))
+  const safePage = Math.min(currentPage, totalPages)
   const paginatedData = useMemo(
-    () => sortedData.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE),
-    [sortedData, currentPage]
+    () =>
+      sortedData.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE),
+    [sortedData, safePage]
   )
 
   const formatQuota = (quota: number) => formatQuotaWithCurrency(quota)
-
   const formatNum = (value: number) =>
-    compactMode
-      ? formatCompactNumber(value, locale)
-      : formatNumber(value)
+    compactMode ? formatCompactNumber(value, locale) : formatNumber(value)
 
   const formatRatio = (value: number) => {
     if (value === 0) return '0%'
@@ -218,11 +306,23 @@ export function ChannelStatsSection(props: ChannelStatsSectionProps) {
     if (sortField !== field) return null
     return (
       <ArrowUpDown
-        className={`inline-block size-3 ml-1 ${
+        className={`ml-1 inline-block size-3 ${
           sortDirection === 'asc' ? 'rotate-180' : ''
         }`}
       />
     )
+  }
+
+  const hasActiveFilters =
+    selectedChannelId !== null || modelQuery.trim().length > 0 || topLimit !== 20
+
+  const clearFilters = () => {
+    setSelectedChannelId(null)
+    setModelQuery('')
+    if (topLimit !== 20) {
+      onFiltersChange({ ...props.filters, topLimit: 20 })
+    }
+    setCurrentPage(1)
   }
 
   return (
@@ -234,8 +334,7 @@ export function ChannelStatsSection(props: ChannelStatsSectionProps) {
         channelName={selectedChannelName}
       />
 
-      {/* Filter controls */}
-      <div className='flex items-center gap-1.5 overflow-x-auto pb-1 sm:gap-2'>
+      <div className='bg-card flex flex-col gap-2 rounded-lg border p-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-2 sm:p-3'>
         <Tabs
           value={String(selectedRange)}
           onValueChange={(value) => handleRangeChange(Number(value))}
@@ -254,36 +353,15 @@ export function ChannelStatsSection(props: ChannelStatsSectionProps) {
           </TabsList>
         </Tabs>
 
-        {/* Show top limit control for all users — non-admin users may still want to filter */}
-        <Tabs
-          value={String(topLimit)}
-          onValueChange={(value) => handleTopLimitChange(Number(value))}
-          className='shrink-0'
-        >
-          <TabsList>
-            <span className='text-muted-foreground px-2 text-xs font-medium whitespace-nowrap'>
-              {t('Top Channels')}
-            </span>
-            {TOP_LIMIT_OPTIONS.map((limit) => (
-              <TabsTrigger
-                key={limit}
-                value={String(limit)}
-                className='px-2.5 text-xs'
-              >
-                {t('Top {{count}}', { count: limit })}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-        </Tabs>
-
         <Select
           value={selectedChannelId === null ? 'all' : String(selectedChannelId)}
-          onValueChange={(value) =>
+          onValueChange={(value) => {
             setSelectedChannelId(value === 'all' ? null : Number(value))
-          }
+            setCurrentPage(1)
+          }}
         >
           <SelectTrigger
-            className='shrink-0 h-7 w-auto gap-1 text-xs'
+            className='h-8 w-full min-w-[140px] shrink-0 text-xs sm:w-[180px]'
             aria-label={t('Filter by channel')}
           >
             <SelectValue placeholder={t('All channels')} />
@@ -300,10 +378,46 @@ export function ChannelStatsSection(props: ChannelStatsSectionProps) {
           </SelectContent>
         </Select>
 
+        <div className='relative min-w-0 flex-1 sm:max-w-[220px]'>
+          <Search className='text-muted-foreground pointer-events-none absolute top-1/2 left-2 size-3.5 -translate-y-1/2' />
+          <Input
+            value={modelQuery}
+            onChange={(e) => {
+              setModelQuery(e.target.value)
+              setCurrentPage(1)
+            }}
+            placeholder={t('Search model')}
+            className='h-8 pl-7 text-xs'
+          />
+        </div>
+
+        <Select
+          value={String(topLimit)}
+          onValueChange={(value) => handleTopLimitChange(Number(value))}
+        >
+          <SelectTrigger
+            className='h-8 w-full shrink-0 text-xs sm:w-[140px]'
+            aria-label={t('Top Channels')}
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent alignItemWithTrigger={false}>
+            <SelectGroup>
+              {TOP_LIMIT_OPTIONS.map((limit) => (
+                <SelectItem key={limit} value={String(limit)}>
+                  {limit === 0
+                    ? t('Show all')
+                    : t('Top {{count}}', { count: limit })}
+                </SelectItem>
+              ))}
+            </SelectGroup>
+          </SelectContent>
+        </Select>
+
         <Button
           variant='outline'
           size='sm'
-          className='shrink-0 h-7 px-2 text-xs gap-1'
+          className='h-8 shrink-0 gap-1 px-2 text-xs'
           onClick={() => setCompactMode(!compactMode)}
           title={t('Number Format')}
         >
@@ -311,17 +425,33 @@ export function ChannelStatsSection(props: ChannelStatsSectionProps) {
           {compactMode ? t('Compact') : t('Precise')}
         </Button>
 
+        {hasActiveFilters && (
+          <Button
+            variant='ghost'
+            size='sm'
+            className='h-8 shrink-0 gap-1 px-2 text-xs'
+            onClick={clearFilters}
+          >
+            <X className='h-3 w-3' />
+            {t('Clear filters')}
+          </Button>
+        )}
+
         {isLoading && (
           <Loader2 className='text-muted-foreground size-4 animate-spin' />
         )}
       </div>
 
-      {/* Data Table */}
       <div className='overflow-hidden rounded-lg border'>
-        <div className='flex w-full items-center gap-2 border-b px-3 py-2 sm:px-5 sm:py-3'>
-          <Hash className='text-muted-foreground/60 size-4' />
-          <div className='text-sm font-semibold'>
-            {t('Channel Statistics')}
+        <div className='flex w-full items-center justify-between gap-2 border-b px-3 py-2 sm:px-5 sm:py-3'>
+          <div className='flex min-w-0 items-center gap-2'>
+            <Hash className='text-muted-foreground/60 size-4' />
+            <div className='truncate text-sm font-semibold'>
+              {t('Channel Statistics')}
+            </div>
+          </div>
+          <div className='text-muted-foreground shrink-0 text-xs tabular-nums'>
+            {t('{{total}} records', { total: sortedData.length })}
           </div>
         </div>
 
@@ -340,7 +470,7 @@ export function ChannelStatsSection(props: ChannelStatsSectionProps) {
                 <TableRow>
                   <TableHead className='whitespace-nowrap'>
                     <button
-                      className='inline-flex items-center hover:text-foreground'
+                      className='hover:text-foreground inline-flex items-center'
                       onClick={() => handleSort('channel_name')}
                     >
                       {t('Channel Name')}
@@ -349,7 +479,7 @@ export function ChannelStatsSection(props: ChannelStatsSectionProps) {
                   </TableHead>
                   <TableHead className='whitespace-nowrap'>
                     <button
-                      className='inline-flex items-center hover:text-foreground'
+                      className='hover:text-foreground inline-flex items-center'
                       onClick={() => handleSort('model_name')}
                     >
                       {t('Model Name')}
@@ -358,7 +488,7 @@ export function ChannelStatsSection(props: ChannelStatsSectionProps) {
                   </TableHead>
                   <TableHead className='whitespace-nowrap text-right'>
                     <button
-                      className='inline-flex items-center hover:text-foreground'
+                      className='hover:text-foreground inline-flex items-center'
                       onClick={() => handleSort('request_count')}
                     >
                       {t('Request Count')}
@@ -367,7 +497,7 @@ export function ChannelStatsSection(props: ChannelStatsSectionProps) {
                   </TableHead>
                   <TableHead className='whitespace-nowrap text-right'>
                     <button
-                      className='inline-flex items-center hover:text-foreground'
+                      className='hover:text-foreground inline-flex items-center'
                       onClick={() => handleSort('prompt_tokens')}
                     >
                       {t('Input Tokens')}
@@ -376,7 +506,7 @@ export function ChannelStatsSection(props: ChannelStatsSectionProps) {
                   </TableHead>
                   <TableHead className='whitespace-nowrap text-right'>
                     <button
-                      className='inline-flex items-center hover:text-foreground'
+                      className='hover:text-foreground inline-flex items-center'
                       onClick={() => handleSort('completion_tokens')}
                     >
                       {t('Output Tokens')}
@@ -385,7 +515,7 @@ export function ChannelStatsSection(props: ChannelStatsSectionProps) {
                   </TableHead>
                   <TableHead className='whitespace-nowrap text-right'>
                     <button
-                      className='inline-flex items-center hover:text-foreground'
+                      className='hover:text-foreground inline-flex items-center'
                       onClick={() => handleSort('cached_tokens')}
                     >
                       {t('Cached Tokens')}
@@ -394,7 +524,7 @@ export function ChannelStatsSection(props: ChannelStatsSectionProps) {
                   </TableHead>
                   <TableHead className='whitespace-nowrap text-right'>
                     <button
-                      className='inline-flex items-center hover:text-foreground'
+                      className='hover:text-foreground inline-flex items-center'
                       onClick={() => handleSort('avg_first_byte_ms')}
                     >
                       {t('Avg First Byte')}
@@ -403,7 +533,7 @@ export function ChannelStatsSection(props: ChannelStatsSectionProps) {
                   </TableHead>
                   <TableHead className='whitespace-nowrap text-right'>
                     <button
-                      className='inline-flex items-center hover:text-foreground'
+                      className='hover:text-foreground inline-flex items-center'
                       onClick={() => handleSort('avg_speed_tok_per_s')}
                     >
                       {t('Avg Speed')}
@@ -412,7 +542,7 @@ export function ChannelStatsSection(props: ChannelStatsSectionProps) {
                   </TableHead>
                   <TableHead className='whitespace-nowrap text-right'>
                     <button
-                      className='inline-flex items-center hover:text-foreground'
+                      className='hover:text-foreground inline-flex items-center'
                       onClick={() => handleSort('cache_hit_ratio')}
                     >
                       {t('Cache Hit Ratio')}
@@ -421,7 +551,7 @@ export function ChannelStatsSection(props: ChannelStatsSectionProps) {
                   </TableHead>
                   <TableHead className='whitespace-nowrap text-right'>
                     <button
-                      className='inline-flex items-center hover:text-foreground'
+                      className='hover:text-foreground inline-flex items-center'
                       onClick={() => handleSort('success_rate')}
                     >
                       {t('Success Rate')}
@@ -430,7 +560,7 @@ export function ChannelStatsSection(props: ChannelStatsSectionProps) {
                   </TableHead>
                   <TableHead className='whitespace-nowrap text-right'>
                     <button
-                      className='inline-flex items-center hover:text-foreground'
+                      className='hover:text-foreground inline-flex items-center'
                       onClick={() => handleSort('total_tokens')}
                     >
                       {t('Total Tokens')}
@@ -439,7 +569,7 @@ export function ChannelStatsSection(props: ChannelStatsSectionProps) {
                   </TableHead>
                   <TableHead className='whitespace-nowrap text-right'>
                     <button
-                      className='inline-flex items-center hover:text-foreground'
+                      className='hover:text-foreground inline-flex items-center'
                       onClick={() => handleSort('quota')}
                     >
                       {t('Quota')}
@@ -450,15 +580,24 @@ export function ChannelStatsSection(props: ChannelStatsSectionProps) {
               </TableHeader>
               <TableBody>
                 {paginatedData.map((item, idx) => (
-                  <TableRow key={`${item.channel_id}-${item.model_name}-${idx}`}>
+                  <TableRow
+                    key={`${item.channel_id}-${item.model_name}-${idx}`}
+                  >
                     <TableCell className='whitespace-nowrap font-medium'>
                       {item.channel_name || `#${item.channel_id}`}
                     </TableCell>
                     <TableCell className='whitespace-nowrap'>
                       {item.model_name}
                     </TableCell>
-                    <TableCell className='whitespace-nowrap text-right tabular-nums'>
-                      {formatNum(item.request_count)}
+                    <TableCell className='whitespace-nowrap text-right'>
+                      <div className='flex justify-end'>
+                        <RatioBar
+                          value={item.request_count}
+                          max={maxRequestCount}
+                          className='bg-info'
+                          label={formatNum(item.request_count)}
+                        />
+                      </div>
                     </TableCell>
                     <TableCell className='whitespace-nowrap text-right tabular-nums'>
                       {formatNum(item.prompt_tokens)}
@@ -475,17 +614,51 @@ export function ChannelStatsSection(props: ChannelStatsSectionProps) {
                     <TableCell className='whitespace-nowrap text-right tabular-nums'>
                       {formatFloat(item.avg_speed_tok_per_s)} tok/s
                     </TableCell>
-                    <TableCell className='whitespace-nowrap text-right tabular-nums'>
-                      {formatRatio(item.cache_hit_ratio)}
+                    <TableCell className='whitespace-nowrap text-right'>
+                      <div className='flex justify-end'>
+                        <RatioBar
+                          value={item.cache_hit_ratio}
+                          max={1}
+                          className='bg-chart-4'
+                          label={formatRatio(item.cache_hit_ratio)}
+                        />
+                      </div>
                     </TableCell>
-                    <TableCell className='whitespace-nowrap text-right tabular-nums font-medium'>
-                      {formatRatio(item.success_rate)}
+                    <TableCell className='whitespace-nowrap text-right font-medium'>
+                      <div className='flex justify-end'>
+                        <RatioBar
+                          value={item.success_rate}
+                          max={1}
+                          className={
+                            item.success_rate >= 0.95
+                              ? 'bg-success'
+                              : item.success_rate >= 0.8
+                                ? 'bg-warning'
+                                : 'bg-destructive'
+                          }
+                          label={formatRatio(item.success_rate)}
+                        />
+                      </div>
                     </TableCell>
-                    <TableCell className='whitespace-nowrap text-right tabular-nums'>
-                      {formatNum(item.total_tokens)}
+                    <TableCell className='whitespace-nowrap text-right'>
+                      <div className='flex justify-end'>
+                        <RatioBar
+                          value={item.total_tokens}
+                          max={maxTotalTokens}
+                          className='bg-chart-2'
+                          label={formatNum(item.total_tokens)}
+                        />
+                      </div>
                     </TableCell>
-                    <TableCell className='whitespace-nowrap text-right tabular-nums'>
-                      {formatQuota(item.quota)}
+                    <TableCell className='whitespace-nowrap text-right'>
+                      <div className='flex justify-end'>
+                        <RatioBar
+                          value={item.quota}
+                          max={maxQuota}
+                          className='bg-success'
+                          label={formatQuota(item.quota)}
+                        />
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -494,20 +667,23 @@ export function ChannelStatsSection(props: ChannelStatsSectionProps) {
           )}
         </div>
 
-        {/* Pagination */}
         {totalPages > 1 && (
           <div className='flex items-center justify-between border-t px-3 py-2 sm:px-5'>
             <div className='text-muted-foreground text-xs'>
-              {t('{{total}} records', { total: sortedData.length })}
+              {t('Page {{current}} of {{total}}', {
+                current: safePage,
+                total: totalPages,
+              })}
             </div>
             <div className='flex items-center gap-1'>
               <Tabs
-                value={String(currentPage)}
+                value={String(safePage)}
                 onValueChange={(v) => setCurrentPage(Number(v))}
               >
                 <TabsList>
-                  {Array.from({ length: totalPages }, (_, i) => i + 1).map(
-                    (page) => (
+                  {Array.from({ length: totalPages }, (_, i) => i + 1)
+                    .slice(0, 12)
+                    .map((page) => (
                       <TabsTrigger
                         key={page}
                         value={String(page)}
@@ -515,8 +691,7 @@ export function ChannelStatsSection(props: ChannelStatsSectionProps) {
                       >
                         {page}
                       </TabsTrigger>
-                    )
-                  )}
+                    ))}
                 </TabsList>
               </Tabs>
             </div>

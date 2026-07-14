@@ -59,6 +59,7 @@ export function ChannelStatCards(props: ChannelStatCardsProps) {
     )
   }, [data])
 
+  const totalForShare = Math.max(stats.totalTokens, 1)
   const items: Array<{
     key: string
     title: string
@@ -66,6 +67,8 @@ export function ChannelStatCards(props: ChannelStatCardsProps) {
     fullValue: string
     icon: typeof Hash
     iconTone: IconBadgeTone
+    barClass: string
+    ratio: number
   }> = [
     {
       key: 'prompt',
@@ -74,6 +77,8 @@ export function ChannelStatCards(props: ChannelStatCardsProps) {
       fullValue: formatNumber(stats.promptTokens, locale),
       icon: ArrowDownToLine,
       iconTone: 'info',
+      barClass: 'bg-info',
+      ratio: stats.promptTokens / totalForShare,
     },
     {
       key: 'completion',
@@ -82,6 +87,8 @@ export function ChannelStatCards(props: ChannelStatCardsProps) {
       fullValue: formatNumber(stats.completionTokens, locale),
       icon: ArrowUpFromLine,
       iconTone: 'chart-2',
+      barClass: 'bg-chart-2',
+      ratio: stats.completionTokens / totalForShare,
     },
     {
       key: 'cached',
@@ -90,6 +97,8 @@ export function ChannelStatCards(props: ChannelStatCardsProps) {
       fullValue: formatNumber(stats.cachedTokens, locale),
       icon: Database,
       iconTone: 'chart-4',
+      barClass: 'bg-chart-4',
+      ratio: stats.cachedTokens / totalForShare,
     },
     {
       key: 'total',
@@ -98,6 +107,8 @@ export function ChannelStatCards(props: ChannelStatCardsProps) {
       fullValue: formatNumber(stats.totalTokens, locale),
       icon: Hash,
       iconTone: 'success',
+      barClass: 'bg-success',
+      ratio: 1,
     },
   ]
 
@@ -106,11 +117,13 @@ export function ChannelStatCards(props: ChannelStatCardsProps) {
       <div className='divide-border/60 grid min-w-0 grid-cols-2 divide-x sm:grid-cols-4'>
         {items.map((it, idx) => {
           const Icon = it.icon
+          const barWidth = `${Math.max(0, Math.min(it.ratio, 1)) * 100}%`
           let valueContent
           if (props.loading) {
             valueContent = (
               <div className='mt-1 flex flex-col gap-1 sm:mt-2 sm:gap-1.5'>
                 <Skeleton className='h-5 w-16 sm:h-7 sm:w-20' />
+                <Skeleton className='h-1.5 w-full' />
                 <Skeleton className='hidden h-3.5 w-28 md:block' />
               </div>
             )
@@ -122,6 +135,12 @@ export function ChannelStatCards(props: ChannelStatCardsProps) {
                   title={it.fullValue}
                 >
                   {it.value}
+                </div>
+                <div className='bg-muted mt-1.5 h-1.5 w-full overflow-hidden rounded-full'>
+                  <div
+                    className={cn('h-full rounded-full transition-all', it.barClass)}
+                    style={{ width: barWidth }}
+                  />
                 </div>
                 <div className='text-muted-foreground/60 mt-1 hidden text-xs md:block'>
                   {subtitle}

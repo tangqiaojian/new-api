@@ -49,6 +49,34 @@ export function formatCompactNumber(
   }).format(value as number)
 }
 
+/**
+ * Format large integers with Chinese unit suffixes for admin readability.
+ * Examples: 200000 -> "20万", 15000 -> "1.5万", 200000000 -> "2亿"
+ */
+export function formatChineseNumber(
+  value: number | null | undefined
+): string {
+  if (value == null || Number.isNaN(value as number)) return '-'
+  const n = Math.trunc(value as number)
+  if (n === 0) return '0'
+  const abs = Math.abs(n)
+  const sign = n < 0 ? '-' : ''
+
+  if (abs >= 100_000_000) {
+    const yi = abs / 100_000_000
+    const text =
+      yi % 1 === 0 ? String(yi) : yi.toFixed(2).replace(/\.?0+$/, '')
+    return `${sign}${text}亿`
+  }
+  if (abs >= 10_000) {
+    const wan = abs / 10_000
+    const text =
+      wan % 1 === 0 ? String(wan) : wan.toFixed(2).replace(/\.?0+$/, '')
+    return `${sign}${text}万`
+  }
+  return `${sign}${abs}`
+}
+
 export function formatPercent(value: number | null | undefined): string {
   if (value == null || Number.isNaN(value as number)) return '-'
   return Intl.NumberFormat(undefined, {

@@ -29,7 +29,11 @@ import {
   getCurrencyDisplay,
   getCurrencyLabel,
 } from '@/lib/currency'
-import { formatCompactNumber, parseQuotaFromDollars } from '@/lib/format'
+import {
+  formatChineseNumber,
+  formatCompactNumber,
+  parseQuotaFromDollars,
+} from '@/lib/format'
 
 import { adminAdjustSubscription } from '../../api'
 import type { AdminUserSubscriptionItem } from '../../types'
@@ -161,7 +165,7 @@ export function AddQuotaDialog({
           />
           <p className='text-muted-foreground text-xs'>
             {tokenDelta > 0
-              ? `${t('Adds')} ${formatCompactNumber(tokenDelta)} ${t('tokens')}`
+              ? `${t('Adds')} ${formatCompactNumber(tokenDelta)} ${t('tokens')}（${formatChineseNumber(tokenDelta)}）`
               : t('0 means no change')}
           </p>
         </div>

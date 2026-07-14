@@ -31,6 +31,7 @@ import {
 } from '@/components/ui/tooltip'
 import { formatQuotaWithCurrency } from '@/lib/currency'
 import {
+  formatChineseNumber,
   formatCompactNumber,
   formatTimestampToDate,
 } from '@/lib/format'
@@ -195,6 +196,9 @@ export function useUserSubscriptionsColumns({
                   </span>
                   <span className='text-muted-foreground tabular-nums'>
                     {formatCompactNumber(tokens_total)}
+                    <span className='ml-1 opacity-80'>
+                      ({formatChineseNumber(tokens_total)})
+                    </span>
                   </span>
                 </div>
                 <Progress
@@ -205,10 +209,12 @@ export function useUserSubscriptionsColumns({
               <TooltipContent>
                 <div className='space-y-1 text-xs'>
                   <div>
-                    {t('Used:')} {formatCompactNumber(used)}
+                    {t('Used:')} {formatCompactNumber(used)}（
+                    {formatChineseNumber(used)}）
                   </div>
                   <div>
-                    {t('Total:')} {formatCompactNumber(tokens_total)}
+                    {t('Total:')} {formatCompactNumber(tokens_total)}（
+                    {formatChineseNumber(tokens_total)}）
                   </div>
                   <div>
                     {t('Percentage:')} {percentage.toFixed(1)}%
