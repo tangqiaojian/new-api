@@ -32,10 +32,9 @@ type UserBase struct {
 
 func (user *UserBase) WriteContext(c *gin.Context) {
 	common.SetContextKey(c, constant.ContextKeyUserGroup, user.Group)
-	// 仅当用户被显式分配了多分组时才写入多分组上下文。
-	// 这样下游可通过该 key 是否存在来判断走严格白名单还是回退到单组语义。
-	if user.HasExplicitGroups() {
-		common.SetContextKey(c, constant.ContextKeyUserGroups, user.GetGroups())
+	// 始终写入分配分组列表（多分组或回退到主 Group），下游统一走严格白名单
+	if groups := user.GetGroups(); len(groups) > 0 {
+		common.SetContextKey(c, constant.ContextKeyUserGroups, groups)
 	}
 	common.SetContextKey(c, constant.ContextKeyUserQuota, user.Quota)
 	common.SetContextKey(c, constant.ContextKeyUserStatus, user.Status)
@@ -99,6 +98,10 @@ func updateUserCache(user User) error {
 		return nil
 	}
 	if err := updateUserGroupCache(user.Id, user.Group); err != nil {
+		return err
+	}
+	// 多分组字段必须与主分组一并刷新，否则管理员改完 groups 后缓存仍是旧白名单
+	if err := updateUserGroupsCache(user.Id, user.Groups); err != nil {
 		return err
 	}
 	if err := updateUserEmailCache(user.Id, user.Email); err != nil {

@@ -42,17 +42,12 @@ func GetUserUsableGroups(userGroup string) map[string]string {
 }
 
 // GetUserUsableGroupsByUser 从用户缓存解析其可用分组集合。
-// 语义：
-//   - 若用户被显式分配了多分组（Groups 字段非空），采用【严格白名单】：只能使用被分配
-//     的分组及其各自「+:」规则追加的分组，不再继承全局 UserUsableGroups 中未分配的分组。
-//   - 否则回退到原单组行为（GetUserUsableGroups），保持向后兼容。
+// 始终采用【严格白名单】：只能使用管理员分配的分组（Groups 多分组，或 Groups 为空时
+// 回退到主 Group）及其各自「+:」规则追加的分组，不再继承全局 UserUsableGroups 中
+// 未分配的分组。这样 API 密钥 / 游乐场的分组选择与管理员分配一致。
 func GetUserUsableGroupsByUser(user *model.UserBase) map[string]string {
 	if user == nil {
 		return setting.GetUserUsableGroupsCopy()
-	}
-	// 未显式分配多分组：回退到原单组逻辑，保持老用户行为不变
-	if !user.HasExplicitGroups() {
-		return GetUserUsableGroups(user.Group)
 	}
 	return getUserUsableGroupsStrict(user.GetGroups())
 }
@@ -153,30 +148,14 @@ func GetUserGroupRatio(userGroup, group string) float64 {
 	return ratio_setting.GetGroupRatio(group)
 }
 
-// GetUserAutoGroupFromCtx 从请求上下文读取用户的多个分组，计算其 auto 分组。
-// 优先用多分组上下文（支持多分组用户），回退到单分组上下文（兼容旧逻辑）。
+// GetUserAutoGroupFromCtx 从请求上下文读取用户的分配分组，计算其 auto 分组。
 func GetUserAutoGroupFromCtx(c *gin.Context) []string {
-	if val, ok := common.GetContextKey(c, constant.ContextKeyUserGroups); ok {
-		if groups, ok := val.([]string); ok && len(groups) > 0 {
-			return GetUserAutoGroupByGroups(groups)
-		}
-	}
-	userGroup := common.GetContextKeyString(c, constant.ContextKeyUserGroup)
-	return GetUserAutoGroup(userGroup)
+	return GetUserAutoGroupByGroups(GetUserGroupsFromCtx(c))
 }
 
-// GetUserUsableGroupsFromCtx 从请求上下文读取用户的多个分组，计算其可用分组集合。
-// 当 ContextKeyUserGroups 存在（用户被显式分配了多分组）时走严格白名单；
-// 否则回退到单组行为。
+// GetUserUsableGroupsFromCtx 从请求上下文读取用户的分配分组，严格白名单计算可用分组。
 func GetUserUsableGroupsFromCtx(c *gin.Context) map[string]string {
-	if val, ok := common.GetContextKey(c, constant.ContextKeyUserGroups); ok {
-		if groups, ok := val.([]string); ok && len(groups) > 0 {
-			// 显式分配：严格白名单
-			return getUserUsableGroupsStrict(groups)
-		}
-	}
-	userGroup := common.GetContextKeyString(c, constant.ContextKeyUserGroup)
-	return GetUserUsableGroups(userGroup)
+	return getUserUsableGroupsStrict(GetUserGroupsFromCtx(c))
 }
 
 // GetUserGroupsFromCtx 从请求上下文读取用户拥有的多个分组切片。

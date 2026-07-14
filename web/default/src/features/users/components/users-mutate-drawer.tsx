@@ -353,39 +353,42 @@ export function UsersMutateDrawer({
                 />
               </SideDrawerSection>
 
-              {/* Group & Quota Settings (Update only) */}
-              {isUpdate && (
-                <SideDrawerSection>
-                  <h3 className='text-sm font-medium'>{t('Group & Quota')}</h3>
+              {/* Groups: create + update. Quota adjustment: update only. */}
+              <SideDrawerSection>
+                <h3 className='text-sm font-medium'>
+                  {isUpdate ? t('Group & Quota') : t('Groups')}
+                </h3>
 
-                  <FormField
-                    control={form.control}
-                    name='groups'
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>{t('Groups')}</FormLabel>
-                        <FormControl>
-                          <MultiSelect
-                            options={groups.map((group) => ({
-                              label: group,
-                              value: group,
-                            }))}
-                            selected={field.value ?? []}
-                            onChange={field.onChange}
-                            allowCreate
-                            placeholder={t('Select groups')}
-                          />
-                        </FormControl>
-                        <FormDescription>
-                          {t(
-                            'Assign one or more groups. The user can only use models from these groups.'
-                          )}
-                        </FormDescription>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+                <FormField
+                  control={form.control}
+                  name='groups'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('Groups')}</FormLabel>
+                      <FormControl>
+                        <MultiSelect
+                          options={groups.map((group) => ({
+                            label: group,
+                            value: group,
+                          }))}
+                          selected={field.value ?? []}
+                          onChange={field.onChange}
+                          allowCreate
+                          placeholder={t('Select groups')}
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        {t(
+                          'Assign one or more groups. The user can only use models from these groups.'
+                        )}
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
+                {isUpdate && (
+                  <>
                   <FormField
                     control={form.control}
                     name='quota_dollars'
@@ -583,8 +586,9 @@ export function UsersMutateDrawer({
 	                      {t('0 means use group default rate limit')}
 	                    </p>
 	                  </div>
-                </SideDrawerSection>
-              )}
+                  </>
+                )}
+              </SideDrawerSection>
 
               {canEditAdminPermissions &&
                 targetIsAdmin &&

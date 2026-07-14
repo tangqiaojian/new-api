@@ -635,6 +635,24 @@ func GetUserModels(c *gin.Context) {
 			return
 		}
 
+		// auto：按用户可用自动分组顺序合并去重模型，而不是查询名为 "auto" 的 ability 组
+		if group == "auto" {
+			var models []string
+			for _, autoGroup := range service.GetUserAutoGroupByUser(user) {
+				for _, modelName := range model.GetGroupEnabledModels(autoGroup) {
+					if !common.StringsContains(models, modelName) {
+						models = append(models, modelName)
+					}
+				}
+			}
+			c.JSON(http.StatusOK, gin.H{
+				"success": true,
+				"message": "",
+				"data":    models,
+			})
+			return
+		}
+
 		c.JSON(http.StatusOK, gin.H{
 			"success": true,
 			"message": "",
@@ -643,10 +661,13 @@ func GetUserModels(c *gin.Context) {
 		return
 	}
 
-
+	// 未指定 group：返回用户全部可用分组下模型的并集（严格白名单用户仅含已分配分组）
 	var models []string
-	for group := range groups {
-		for _, g := range model.GetGroupEnabledModels(group) {
+	for groupName := range groups {
+		if groupName == "auto" {
+			continue
+		}
+		for _, g := range model.GetGroupEnabledModels(groupName) {
 			if !common.StringsContains(models, g) {
 				models = append(models, g)
 			}
@@ -696,6 +717,26 @@ func UpdateUser(c *gin.Context) {
 	}
 	if updatedUser.Password == "$I_LOVE_U" {
 		updatedUser.Password = "" // rollback to what it should be
+	}
+	// 规范化多分组：与主 group 对齐，保证严格白名单与缓存一致
+	updatedUser.Groups = strings.TrimSpace(updatedUser.Groups)
+	if updatedUser.Groups != "" {
+		parts := make([]string, 0)
+		for _, g := range strings.Split(updatedUser.Groups, ",") {
+			g = strings.TrimSpace(g)
+			if g != "" {
+				parts = append(parts, g)
+			}
+		}
+		updatedUser.Groups = strings.Join(parts, ",")
+		if len(parts) > 0 {
+			// 主 group 始终取多分组中的第一个，避免 UI 只改 MultiSelect 时 group 字段陈旧
+			updatedUser.Group = parts[0]
+		}
+	} else if strings.TrimSpace(updatedUser.Group) != "" {
+		// 仅有主 group 时同步写入 groups，使后续严格白名单生效
+		updatedUser.Group = strings.TrimSpace(updatedUser.Group)
+		updatedUser.Groups = updatedUser.Group
 	}
 	updatePassword := updatedUser.Password != ""
 	authzTouched := false
@@ -1111,11 +1152,36 @@ func CreateUser(c *gin.Context) {
 		return
 	}
 	// Even for admin users, we cannot fully trust them!
+	// 规范化分组：主 group 与多分组 groups 保持一致，便于严格白名单生效
+	primaryGroup := strings.TrimSpace(user.Group)
+	groupsStr := strings.TrimSpace(user.Groups)
+	if groupsStr != "" {
+		parts := make([]string, 0)
+		for _, g := range strings.Split(groupsStr, ",") {
+			g = strings.TrimSpace(g)
+			if g != "" {
+				parts = append(parts, g)
+			}
+		}
+		groupsStr = strings.Join(parts, ",")
+		if primaryGroup == "" && len(parts) > 0 {
+			primaryGroup = parts[0]
+		}
+	}
+	if primaryGroup == "" {
+		primaryGroup = "default"
+	}
+	if groupsStr == "" {
+		// 创建时若只给了主 group，也写入 groups，走严格白名单
+		groupsStr = primaryGroup
+	}
 	cleanUser := model.User{
 		Username:    user.Username,
 		Password:    user.Password,
 		DisplayName: user.DisplayName,
 		Role:        user.Role, // 保持管理员设置的角色
+		Group:       primaryGroup,
+		Groups:      groupsStr,
 	}
 	authzTouched := false
 	if err := model.DB.Transaction(func(tx *gorm.DB) error {

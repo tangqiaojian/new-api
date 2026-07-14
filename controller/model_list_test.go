@@ -212,7 +212,51 @@ func TestGetUserModelsFiltersByRequestedGroup(t *testing.T) {
 
 	GetUserModels(vipContext)
 
+	// legacy user without explicit multi-groups may still "access" vip via UserUsableGroups,
+	// but there are no vip abilities in this fixture so the list is empty
 	require.Empty(t, decodeUserModelsResponse(t, vipRecorder))
+}
+
+// TestGetUserModelsStrictMultiGroupWhitelist 验证用户只能看到已分配分组的模型
+// （含仅设置主 group、groups 为空的情况，不再继承全局 UserUsableGroups）
+func TestGetUserModelsStrictMultiGroupWhitelist(t *testing.T) {
+	db := setupModelListControllerTestDB(t)
+	require.NoError(t, db.Create(&model.User{
+		Id:       1004,
+		Username: "strict-multi-group-user",
+		Password: "password",
+		Group:    "vip",
+		Groups:   "", // 仅主 group：也应严格白名单，不能看到 default
+		Status:   common.UserStatusEnabled,
+	}).Error)
+	require.NoError(t, db.Create(&[]model.Ability{
+		{Group: "default", Model: "zz-default-model", ChannelId: 1, Enabled: true},
+		{Group: "vip", Model: "zz-vip-model", ChannelId: 1, Enabled: true},
+	}).Error)
+
+	// 指定 default 分组：不在白名单 → 空列表
+	defaultRecorder := httptest.NewRecorder()
+	defaultContext, _ := gin.CreateTestContext(defaultRecorder)
+	defaultContext.Request = httptest.NewRequest(http.MethodGet, "/api/user/models?group=default", nil)
+	defaultContext.Set("id", 1004)
+	GetUserModels(defaultContext)
+	require.Empty(t, decodeUserModelsResponse(t, defaultRecorder))
+
+	// 指定 vip 分组：在白名单 → 仅 vip 模型
+	vipRecorder := httptest.NewRecorder()
+	vipContext, _ := gin.CreateTestContext(vipRecorder)
+	vipContext.Request = httptest.NewRequest(http.MethodGet, "/api/user/models?group=vip", nil)
+	vipContext.Set("id", 1004)
+	GetUserModels(vipContext)
+	require.ElementsMatch(t, []string{"zz-vip-model"}, decodeUserModelsResponse(t, vipRecorder))
+
+	// 未指定 group：并集仅为已分配主分组
+	allRecorder := httptest.NewRecorder()
+	allContext, _ := gin.CreateTestContext(allRecorder)
+	allContext.Request = httptest.NewRequest(http.MethodGet, "/api/user/models", nil)
+	allContext.Set("id", 1004)
+	GetUserModels(allContext)
+	require.ElementsMatch(t, []string{"zz-vip-model"}, decodeUserModelsResponse(t, allRecorder))
 }
 
 func TestListModelsIncludesTieredBillingModel(t *testing.T) {

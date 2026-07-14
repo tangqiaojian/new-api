@@ -186,13 +186,18 @@ export async function getSelf() {
   return res.data
 }
 
-// Get user available models
-export async function getUserModels(): Promise<{
+// Get user available models.
+// When `group` is provided, only models enabled for that usable group are returned
+// (including expanded auto-group models). When omitted, returns the union of all
+// models from the user's usable groups.
+export async function getUserModels(group?: string): Promise<{
   success: boolean
   message?: string
   data?: string[]
 }> {
-  const res = await api.get('/api/user/models')
+  const res = await api.get('/api/user/models', {
+    params: group ? { group } : undefined,
+  })
   return res.data
 }
 

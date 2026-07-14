@@ -111,19 +111,30 @@ export function ApiKeysMutateDrawer({
   const [advancedOpen, setAdvancedOpen] = useState(false)
   const defaultUseAutoGroup = status?.default_use_auto_group === true
 
-  // Fetch models
-  const { data: modelsData } = useQuery({
-    queryKey: ['user-models'],
-    queryFn: getUserModels,
-    enabled: open,
-    staleTime: 0,
+  const schema = getApiKeyFormSchema(t)
+
+  const form = useForm<ApiKeyFormValues>({
+    resolver: zodResolver(schema),
+    defaultValues: getApiKeyFormDefaultValues(defaultUseAutoGroup),
   })
 
-  // Fetch groups
+  // Selected group drives model-limit options (only models in that group)
+  const selectedGroup = form.watch('group')
+  const unlimitedQuota = form.watch('unlimited_quota')
+
+  // Fetch groups — options are already filtered by the user's usable groups
   const { data: groupsData } = useQuery({
     queryKey: ['user-groups'],
     queryFn: getUserGroups,
     enabled: open,
+    staleTime: 0,
+  })
+
+  // Fetch models for the currently selected key group only
+  const { data: modelsData } = useQuery({
+    queryKey: ['user-models', selectedGroup],
+    queryFn: () => getUserModels(selectedGroup || undefined),
+    enabled: open && !!selectedGroup,
     staleTime: 0,
   })
 
@@ -154,7 +165,6 @@ export function ApiKeysMutateDrawer({
     })
   )
   const backendHasAuto = groups.some((g) => g.value === 'auto')
-  const schema = getApiKeyFormSchema(t)
 
   // Build the binding options from the user's active subscriptions, mapping
   // plan_id -> plan title via the public plans list.
@@ -173,11 +183,6 @@ export function ApiKeysMutateDrawer({
         .filter((id): id is number => typeof id === 'number' && id > 0)
     )
   )
-
-  const form = useForm<ApiKeyFormValues>({
-    resolver: zodResolver(schema),
-    defaultValues: getApiKeyFormDefaultValues(defaultUseAutoGroup),
-  })
 
   // Load existing data when updating
   useEffect(() => {
@@ -209,6 +214,17 @@ export function ApiKeysMutateDrawer({
       }
     }
   }, [groups, form])
+
+  // When group (or its model list) changes, drop model limits outside that group
+  useEffect(() => {
+    if (!modelsData?.data) return
+    const allowed = new Set(modelsData.data)
+    const current = form.getValues('model_limits') || []
+    const filtered = current.filter((m) => allowed.has(m))
+    if (filtered.length !== current.length) {
+      form.setValue('model_limits', filtered)
+    }
+  }, [modelsData, form, selectedGroup])
 
   const onSubmit = async (data: ApiKeyFormValues) => {
     setIsSubmitting(true)
@@ -290,8 +306,6 @@ export function ApiKeysMutateDrawer({
   const quotaPlaceholder = tokensOnly
     ? t('Enter quota in tokens')
     : t('Enter quota in {{currency}}', { currency: currencyLabel })
-  const selectedGroup = form.watch('group')
-  const unlimitedQuota = form.watch('unlimited_quota')
 
   return (
     <Sheet
@@ -644,7 +658,9 @@ export function ApiKeysMutateDrawer({
                             />
                           </FormControl>
                           <FormDescription>
-                            {t('Limit which models can be used with this key')}
+                            {t(
+                              'Limit which models can be used with this key (options are filtered by the selected group)'
+                            )}
                           </FormDescription>
                           <FormMessage />
                         </FormItem>

@@ -102,15 +102,23 @@ export function transformFormDataToPayload(
     )
   }
 
+  // 多分组：以 MultiSelect 为准；主 group 取首个已选分组，保证与 groups 一致
+  const selectedGroups = (data.groups ?? []).filter((g) => g !== '')
+  const primaryGroup =
+    selectedGroups[0] || data.group || DEFAULT_GROUP
+
   // For create: only send required fields
   if (userId === undefined) {
     payload.role = role
+    payload.group = primaryGroup
+    payload.groups =
+      selectedGroups.length > 0 ? selectedGroups.join(',') : primaryGroup
   } else {
     // For update: quota is adjusted atomically via /api/user/manage, not sent here
-    payload.group = data.group
-    // 多分组：逗号分隔后发给后端；为空时发送空串以清除
-    const groups = (data.groups ?? []).filter((g) => g !== '')
-    payload.groups = groups.length > 0 ? groups.join(',') : ''
+    payload.group = primaryGroup
+    // 多分组：逗号分隔后发给后端；为空时回退到主 group，确保严格白名单生效
+    payload.groups =
+      selectedGroups.length > 0 ? selectedGroups.join(',') : primaryGroup
     payload.remark = data.remark || undefined
     payload.id = userId
   }
