@@ -139,6 +139,7 @@ export async function adminListAllSubscriptions(params: {
   p?: number
   size?: number
   username?: string
+  status?: string
 }): Promise<ApiResponse<AdminUserSubscriptionList>> {
   const res = await api.get('/api/subscription/admin/all', { params })
   return res.data

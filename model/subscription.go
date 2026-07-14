@@ -1077,9 +1077,10 @@ type AdminUserSubscriptionDetail struct {
 }
 
 // AdminListAllUserSubscriptions returns all user subscriptions joined with the
-// owning username and plan title, with pagination and an optional username
-// filter. When username is empty all subscriptions are returned.
-func AdminListAllUserSubscriptions(page, pageSize int, username string) ([]AdminUserSubscriptionDetail, int64, error) {
+// owning username and plan title, with pagination and optional username / status
+// filters. When username or status is empty the corresponding filter is skipped.
+// status accepts: active, expired, cancelled (case-insensitive).
+func AdminListAllUserSubscriptions(page, pageSize int, username string, status string) ([]AdminUserSubscriptionDetail, int64, error) {
 	if page < 1 {
 		page = 1
 	}
@@ -1098,13 +1099,24 @@ func AdminListAllUserSubscriptions(page, pageSize int, username string) ([]Admin
 	if username = strings.TrimSpace(username); username != "" {
 		query = query.Where("users.username LIKE ?", "%"+username+"%")
 	}
+	if status = strings.ToLower(strings.TrimSpace(status)); status != "" {
+		// Normalize American spelling; DB stores "cancelled".
+		if status == "canceled" {
+			status = "cancelled"
+		}
+		switch status {
+		case "active", "expired", "cancelled":
+			query = query.Where("user_subscriptions.status = ?", status)
+		}
+	}
 
 	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
+	// Active first, then higher usage (easier to spot heavy consumers).
 	if err := query.
 		Select("user_subscriptions.*, users.username as username, subscription_plans.title as plan_title").
-		Order("user_subscriptions.id desc").
+		Order("CASE WHEN user_subscriptions.status = 'active' THEN 0 ELSE 1 END, user_subscriptions.amount_used DESC, user_subscriptions.tokens_used DESC, user_subscriptions.id DESC").
 		Limit(pageSize).
 		Offset((page - 1) * pageSize).
 		Find(&details).Error; err != nil {
@@ -1303,6 +1315,10 @@ type SubscriptionPreConsumeResult struct {
 	TokensUsedBefore        int64
 	TokensUsedAfter         int64
 	PreConsumedTokens       int64
+	// IncludeCacheTokens is the snapshot from the selected user subscription;
+	// text settlement uses it to decide whether cache tokens count toward the
+	// subscription token quota.
+	IncludeCacheTokens bool
 }
 
 // ExpireDueSubscriptions marks expired subscriptions and handles group downgrade.
@@ -1574,6 +1590,7 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 			returnValue.TokensUsedBefore = sub.TokensUsed
 			returnValue.TokensUsedAfter = sub.TokensUsed
 			returnValue.PreConsumedTokens = existing.PreConsumedTokens
+			returnValue.IncludeCacheTokens = sub.IncludeCacheTokens
 			return nil
 		}
 
@@ -1648,6 +1665,7 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 					returnValue.TokensUsedBefore = sub.TokensUsed
 					returnValue.TokensUsedAfter = sub.TokensUsed
 					returnValue.PreConsumedTokens = dup.PreConsumedTokens
+					returnValue.IncludeCacheTokens = sub.IncludeCacheTokens
 					return nil
 				}
 				return err
@@ -1668,6 +1686,7 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 			returnValue.TokensUsedBefore = tokensUsedBefore
 			returnValue.TokensUsedAfter = sub.TokensUsed
 			returnValue.PreConsumedTokens = tokenAmount
+			returnValue.IncludeCacheTokens = sub.IncludeCacheTokens
 			return nil
 		}
 		return fmt.Errorf("subscription quota insufficient, need=%d", amount)

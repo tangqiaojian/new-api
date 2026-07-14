@@ -191,7 +191,10 @@ func main() {
 	server.Use(middleware.Version())
 	server.Use(middleware.I18n())
 	middleware.SetUpLogger(server)
-	// Initialize session store
+	// Initialize session store (cookie-backed). Fixed SESSION_SECRET is required
+	// so restarts/deploys do not invalidate existing logins.
+	// SESSION_COOKIE_NAME isolates multiple instances behind the same hostname
+	// (browsers ignore port when storing cookies).
 	store := cookie.NewStore([]byte(common.SessionSecret))
 	store.Options(sessions.Options{
 		Path:     "/",
@@ -200,7 +203,8 @@ func main() {
 		Secure:   common.SessionCookieSecure,
 		SameSite: http.SameSiteStrictMode,
 	})
-	server.Use(sessions.Sessions("session", store))
+	server.Use(sessions.Sessions(common.SessionCookieName, store))
+	common.SysLog(fmt.Sprintf("session cookie name=%s (set SESSION_COOKIE_NAME to isolate multi-instance on same host)", common.SessionCookieName))
 
 	InjectUmamiAnalytics()
 	InjectGoogleAnalytics()

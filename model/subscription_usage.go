@@ -81,9 +81,10 @@ func subscriptionModelSelectColumns(includeCache bool) string {
 		"COALESCE(SUM(quota), 0) as quota"
 }
 
-// GetSelfSubscriptionDailyUsage returns daily token usage billed from subscriptions
-// for a specific user. Results are grouped by date + subscription_id + plan_id so each
-// row represents one day's usage under one subscription/plan.
+// GetSubscriptionDailyUsage returns daily token usage billed from subscriptions.
+// When userId > 0, results are restricted to that user; when userId == 0, all users
+// are included (admin platform view). Results are grouped by date + subscription_id
+// + plan_id so each row represents one day's usage under one subscription/plan.
 //
 // Filters:
 //   - startTime/endTime: created_at range (unix seconds, inclusive)
@@ -94,14 +95,18 @@ func subscriptionModelSelectColumns(includeCache bool) string {
 // When includeCache is true, total_tokens adds cached_tokens on top of
 // prompt_tokens + completion_tokens. cached_tokens is always populated from the
 // `other` JSON's cache_tokens field.
-func GetSelfSubscriptionDailyUsage(userId int, startTime, endTime int64, subscriptionId int, modelName string, includeCache bool) ([]*SubscriptionDailyUsage, error) {
+func GetSubscriptionDailyUsage(userId int, startTime, endTime int64, subscriptionId int, modelName string, includeCache bool) ([]*SubscriptionDailyUsage, error) {
 	var data []*SubscriptionDailyUsage
 	dateExpr := dailyTokenDateExpression()
 
 	query := LOG_DB.Table("logs").
 		Select(subscriptionDailySelectColumns(dateExpr, includeCache)).
-		Where("user_id = ? AND type = ? AND created_at >= ? AND created_at <= ?", userId, LogTypeConsume, startTime, endTime).
+		Where("type = ? AND created_at >= ? AND created_at <= ?", LogTypeConsume, startTime, endTime).
 		Where(subscriptionBillingSourceFilter())
+
+	if userId > 0 {
+		query = query.Where("user_id = ?", userId)
+	}
 
 	if subscriptionId > 0 {
 		// Use the JSON-extract comparison rather than a LIKE on the numeric value:
@@ -131,18 +136,30 @@ func GetSelfSubscriptionDailyUsage(userId int, startTime, endTime int64, subscri
 	return data, nil
 }
 
-// GetSelfSubscriptionModelUsage returns per-model token usage billed from
-// subscriptions for a specific user. Results are grouped by model_name + plan_id so
-// each row represents one model's usage under one plan.
+// GetSelfSubscriptionDailyUsage is a convenience wrapper for the current user only.
+func GetSelfSubscriptionDailyUsage(userId int, startTime, endTime int64, subscriptionId int, modelName string, includeCache bool) ([]*SubscriptionDailyUsage, error) {
+	if userId <= 0 {
+		return []*SubscriptionDailyUsage{}, nil
+	}
+	return GetSubscriptionDailyUsage(userId, startTime, endTime, subscriptionId, modelName, includeCache)
+}
+
+// GetSubscriptionModelUsage returns per-model token usage billed from subscriptions.
+// When userId > 0, results are restricted to that user; when userId == 0, all users
+// are included (admin platform view). Results are grouped by model_name + plan_id.
 //
-// The filters and includeCache semantics mirror GetSelfSubscriptionDailyUsage.
-func GetSelfSubscriptionModelUsage(userId int, startTime, endTime int64, subscriptionId int, modelName string, includeCache bool) ([]*SubscriptionModelUsage, error) {
+// The filters and includeCache semantics mirror GetSubscriptionDailyUsage.
+func GetSubscriptionModelUsage(userId int, startTime, endTime int64, subscriptionId int, modelName string, includeCache bool) ([]*SubscriptionModelUsage, error) {
 	var data []*SubscriptionModelUsage
 
 	query := LOG_DB.Table("logs").
 		Select(subscriptionModelSelectColumns(includeCache)).
-		Where("user_id = ? AND type = ? AND created_at >= ? AND created_at <= ?", userId, LogTypeConsume, startTime, endTime).
+		Where("type = ? AND created_at >= ? AND created_at <= ?", LogTypeConsume, startTime, endTime).
 		Where(subscriptionBillingSourceFilter())
+
+	if userId > 0 {
+		query = query.Where("user_id = ?", userId)
+	}
 
 	if subscriptionId > 0 {
 		query = query.Where(LogJsonExtractInt("subscription_id")+" = ?", subscriptionId)
@@ -161,4 +178,12 @@ func GetSelfSubscriptionModelUsage(userId int, startTime, endTime int64, subscri
 		return nil, err
 	}
 	return data, nil
+}
+
+// GetSelfSubscriptionModelUsage is a convenience wrapper for the current user only.
+func GetSelfSubscriptionModelUsage(userId int, startTime, endTime int64, subscriptionId int, modelName string, includeCache bool) ([]*SubscriptionModelUsage, error) {
+	if userId <= 0 {
+		return []*SubscriptionModelUsage{}, nil
+	}
+	return GetSubscriptionModelUsage(userId, startTime, endTime, subscriptionId, modelName, includeCache)
 }

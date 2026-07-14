@@ -100,6 +100,12 @@ const LazyLogStatCards = lazy(() =>
   }))
 )
 
+const LazyTodayModelTokensPanel = lazy(() =>
+  import('./components/models/today-model-tokens-panel').then((m) => ({
+    default: m.TodayModelTokensPanel,
+  }))
+)
+
 const LazyModelCharts = lazy(() =>
   import('./components/models/model-charts').then((m) => ({
     default: m.ModelCharts,
@@ -443,24 +449,30 @@ export function Dashboard() {
 
   const meta = SECTION_META[activeSection] ?? SECTION_META.overview
   const isAdmin = Boolean(userRole && userRole >= ROLE.ADMIN)
+  const adminOnlySections = useMemo(
+    () => new Set<DashboardSectionId>(['users', 'channel-stats']),
+    []
+  )
   const visibleSections = useMemo(
     () =>
       DASHBOARD_SECTION_IDS.filter(
-        (section) => section !== 'overview' && (section !== 'users' || isAdmin)
+        (section) =>
+          section !== 'overview' &&
+          (!adminOnlySections.has(section) || isAdmin)
       ),
-    [isAdmin]
+    [adminOnlySections, isAdmin]
   )
 
-  // Non-admins may deep-link to /dashboard/users; redirect away.
+  // Non-admins may deep-link to admin-only sections; redirect away.
   useEffect(() => {
-    if (activeSection === 'users' && !isAdmin) {
+    if (adminOnlySections.has(activeSection) && !isAdmin) {
       void navigate({
         to: '/dashboard/$section',
         params: { section: DASHBOARD_DEFAULT_SECTION },
         replace: true,
       })
     }
-  }, [activeSection, isAdmin, navigate])
+  }, [activeSection, adminOnlySections, isAdmin, navigate])
 
   const handleSectionChange = useCallback(
     (section: string) => {
@@ -573,14 +585,19 @@ export function Dashboard() {
                   />
                 </Suspense>
               </FadeIn>
+              <FadeIn delay={0.04}>
+                <Suspense fallback={<LogStatCardsFallback />}>
+                  <LazyTodayModelTokensPanel includeCache={includeCache} />
+                </Suspense>
+              </FadeIn>
               {isAdmin && (
-                <FadeIn delay={0.05}>
+                <FadeIn delay={0.08}>
                   <Suspense fallback={<PerformanceOverviewFallback />}>
                     <LazyPerformanceOverview />
                   </Suspense>
                 </FadeIn>
               )}
-              <FadeIn delay={0.1}>
+              <FadeIn delay={0.12}>
                 <Suspense fallback={<ModelChartsFallback />}>
                   <LazyConsumptionDistributionChart
                     data={modelData}
@@ -594,7 +611,7 @@ export function Dashboard() {
                   />
                 </Suspense>
               </FadeIn>
-              <FadeIn delay={0.15}>
+              <FadeIn delay={0.16}>
                 <Suspense fallback={<ModelChartsFallback />}>
                   <LazyModelCharts
                     data={modelData}
@@ -650,7 +667,7 @@ export function Dashboard() {
               </Suspense>
             </FadeIn>
           )}
-          {activeSection === 'channel-stats' && (
+          {activeSection === 'channel-stats' && isAdmin && (
             <FadeIn>
               <Suspense fallback={<ModelChartsFallback />}>
                 <LazyChannelStatsSection

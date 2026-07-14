@@ -265,6 +265,21 @@ export async function getSelfSubscriptionUsage(params: {
   return res.data
 }
 
+// Get platform-wide subscription usage (admin only)
+export async function getAllSubscriptionUsage(params: {
+  start_timestamp: number
+  end_timestamp: number
+  subscription_id?: number
+  model?: string
+  include_cache?: boolean
+}) {
+  const res = await api.get<{ success: boolean; data: SubscriptionUsageDataItem[] }>(
+    '/api/data/subscription-usage',
+    { params }
+  )
+  return res.data
+}
+
 // Get subscription model usage for current user
 export async function getSelfSubscriptionModelUsage(params: {
   start_timestamp: number
@@ -277,6 +292,21 @@ export async function getSelfSubscriptionModelUsage(params: {
     '/api/data/subscription-model-usage/self',
     { params }
   )
+  return res.data
+}
+
+// Get platform-wide subscription model usage (admin only)
+export async function getAllSubscriptionModelUsage(params: {
+  start_timestamp: number
+  end_timestamp: number
+  subscription_id?: number
+  model?: string
+  include_cache?: boolean
+}) {
+  const res = await api.get<{
+    success: boolean
+    data: SubscriptionModelUsageDataItem[]
+  }>('/api/data/subscription-model-usage', { params })
   return res.data
 }
 

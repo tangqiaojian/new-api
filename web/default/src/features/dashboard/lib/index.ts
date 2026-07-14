@@ -40,5 +40,10 @@ export {
   flowSankeyDatumValue,
   getFlowStages,
 } from './flow'
-export { safeDivide, calculateDashboardStats } from './stats'
+export {
+  safeDivide,
+  calculateDashboardStats,
+  aggregateTodayModelTokens,
+} from './stats'
+export type { TodayModelTokenRow, TodayModelTokenSummary } from './stats'
 export { getPreviewText } from './text'

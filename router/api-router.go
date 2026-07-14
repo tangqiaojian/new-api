@@ -307,9 +307,12 @@ func SetApiRouter(router *gin.Engine) {
 		dataRoute.GET("/daily-tokens/self", middleware.UserAuth(), controller.GetUserDailyTokenData)
 		dataRoute.GET("/daily-model-tokens", middleware.AdminAuth(), controller.GetAllDailyModelTokenData)
 		dataRoute.GET("/daily-model-tokens/self", middleware.UserAuth(), controller.GetUserDailyModelTokenData)
+		// Channel statistics expose upstream channel identity; admin-only.
 		dataRoute.GET("/channel-stats", middleware.AdminAuth(), controller.GetAllChannelModelStats)
-		dataRoute.GET("/channel-stats/self", middleware.UserAuth(), controller.GetSelfChannelModelStats)
+		dataRoute.GET("/channel-stats/self", middleware.AdminAuth(), controller.GetSelfChannelModelStats)
+		dataRoute.GET("/subscription-usage", middleware.AdminAuth(), controller.GetAllSubscriptionUsage)
 		dataRoute.GET("/subscription-usage/self", middleware.UserAuth(), controller.GetSelfSubscriptionUsage)
+		dataRoute.GET("/subscription-model-usage", middleware.AdminAuth(), controller.GetAllSubscriptionModelUsage)
 		dataRoute.GET("/subscription-model-usage/self", middleware.UserAuth(), controller.GetSelfSubscriptionModelUsage)
 
 		logRoute.Use(middleware.CORS(), middleware.CriticalRateLimit())

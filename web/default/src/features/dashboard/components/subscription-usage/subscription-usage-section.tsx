@@ -52,6 +52,9 @@ import type {
   SubscriptionUsageDataItem,
   SubscriptionUsageFilters,
 } from '@/features/dashboard/types'
+import { ROLE } from '@/lib/roles'
+import { useAuthStore } from '@/stores/auth-store'
+import { AdminSubscriptionPlanUsage } from './admin-subscription-plan-usage'
 
 let themeManagerPromise: Promise<
   (typeof import('@visactor/vchart'))['ThemeManager']
@@ -81,6 +84,19 @@ interface SubscriptionUsageSectionProps {
 type TrendSeries = 'prompt' | 'completion' | 'cached'
 
 export function SubscriptionUsageSection(props: SubscriptionUsageSectionProps) {
+  const userRole = useAuthStore((state) => state.auth.user?.role)
+  const isAdmin = Boolean(userRole && userRole >= ROLE.ADMIN)
+
+  // Admin needs per-user plan usage (quota/token remaining), not log traffic charts.
+  if (isAdmin) {
+    return <AdminSubscriptionPlanUsage />
+  }
+
+  return <SelfSubscriptionUsageSection {...props} />
+}
+
+/** Ordinary user: personal plan cards + subscription-billed token charts. */
+function SelfSubscriptionUsageSection(props: SubscriptionUsageSectionProps) {
   const { t, i18n } = useTranslation()
   const { resolvedTheme } = useTheme()
   const { refetchInterval } = useAutoRefresh()
@@ -282,7 +298,9 @@ export function SubscriptionUsageSection(props: SubscriptionUsageSectionProps) {
       stack: true,
       title: {
         visible: true,
-        text: t('Daily Subscription Token Usage Trend'),
+        text: isAdmin
+          ? t('Platform Subscription Token Trend')
+          : t('Daily Subscription Token Usage Trend'),
         subtext: `${t('Total:')} ${formatInt(totalTokens)}`,
       },
       legends: { visible: true, selectMode: 'single' },
@@ -343,7 +361,7 @@ export function SubscriptionUsageSection(props: SubscriptionUsageSectionProps) {
       background: { fill: 'transparent' },
       animation: true,
     }
-  }, [dailyData, isLoading, includeCache, t, formatInt])
+  }, [dailyData, isLoading, includeCache, isAdmin, t, formatInt])
 
   // Build the model distribution pie chart spec.
   const modelPieSpec = useMemo(() => {
@@ -376,7 +394,9 @@ export function SubscriptionUsageSection(props: SubscriptionUsageSectionProps) {
       padAngle: 0.6,
       title: {
         visible: true,
-        text: t('Subscription Model Distribution'),
+        text: isAdmin
+          ? t('Platform Subscription Model Distribution')
+          : t('Subscription Model Distribution'),
         subtext: `${t('Total:')} ${formatInt(totalTokens)}`,
       },
       legends: { visible: true, orient: 'left' },
@@ -396,7 +416,7 @@ export function SubscriptionUsageSection(props: SubscriptionUsageSectionProps) {
       background: { fill: 'transparent' },
       animation: true,
     }
-  }, [modelData, isLoading, t, formatInt])
+  }, [modelData, isLoading, isAdmin, t, formatInt])
 
   // Data fingerprint so VChart remounts when the underlying data changes
   // (react-vchart does not reliably re-render on spec prop changes alone).
@@ -521,7 +541,7 @@ export function SubscriptionUsageSection(props: SubscriptionUsageSectionProps) {
         )}
       </div>
 
-      {/* Subscription summary cards */}
+      {/* Personal subscription summary cards */}
       {activeSubscriptions.length > 0 && (
         <div className='grid gap-2 sm:grid-cols-2 lg:grid-cols-3'>
           {activeSubscriptions.map((s, idx) => {

@@ -113,6 +113,10 @@ func (s *SubscriptionFunding) PreConsume(_ int) error {
 	s.AmountUsedAfter = res.AmountUsedAfter
 	s.TokensTotal = res.TokensTotal
 	s.TokensUsedAfter = res.TokensUsedAfter
+	// Snapshot from the selected user subscription (copied from plan at bind time).
+	// Without this, text settlement always sees IncludeCacheTokens=false and never
+	// counts cache tokens toward the subscription token quota.
+	s.IncludeCacheTokens = res.IncludeCacheTokens
 	// 获取订阅计划信息
 	if planInfo, err := model.GetSubscriptionPlanInfoByUserSubscriptionId(res.UserSubscriptionId); err == nil && planInfo != nil {
 		s.PlanId = planInfo.PlanId

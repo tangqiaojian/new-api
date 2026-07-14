@@ -76,6 +76,8 @@ var SessionSecret = func() string {
 	if s := os.Getenv("SESSION_SECRET"); s != "" {
 		return s
 	}
+	// WARNING: random per process start — all browser sessions become invalid after restart.
+	// Production MUST set a fixed SESSION_SECRET so deploys/restarts do not force re-login.
 	return uuid.New().String()
 }()
 var CryptoSecret = func() string {
@@ -86,6 +88,18 @@ var CryptoSecret = func() string {
 }()
 var SessionCookieSecure = false
 var SessionCookieTrustedURLs []string
+
+// SessionCookieName is the browser cookie name for gin sessions.
+// Different instances on the same host (even different ports) MUST use different
+// names — cookies are not port-scoped, so two apps sharing "session" will overwrite
+// each other and look like "mutual kick" when switching super-admin logins.
+// Override with SESSION_COOKIE_NAME.
+var SessionCookieName = func() string {
+	if s := strings.TrimSpace(os.Getenv("SESSION_COOKIE_NAME")); s != "" {
+		return s
+	}
+	return "session"
+}()
 
 var OptionMap map[string]string
 var OptionMapRWMutex sync.RWMutex

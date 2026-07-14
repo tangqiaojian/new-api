@@ -340,6 +340,17 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 		if err := tx.Model(&model.SubscriptionPlan{}).Where("id = ?", id).Updates(updateMap).Error; err != nil {
 			return err
 		}
+		// include_cache_tokens is a billing rule, not a balance snapshot — keep
+		// active user subscriptions in sync when the plan toggle changes so the
+		// setting takes effect without rebinding every user.
+		if err := tx.Model(&model.UserSubscription{}).
+			Where("plan_id = ? AND status = ?", id, "active").
+			Updates(map[string]interface{}{
+				"include_cache_tokens": req.Plan.IncludeCacheTokens,
+				"updated_at":           common.GetTimestamp(),
+			}).Error; err != nil {
+			return err
+		}
 		return nil
 	})
 	if err != nil {
@@ -578,11 +589,13 @@ func AdminDeleteUserSubscription(c *gin.Context) {
 // ---- Admin: all-subscriptions listing & per-subscription management ----
 
 // AdminListAllSubscriptions lists all user subscriptions joined with the owning
-// username and plan title, with pagination and an optional username filter.
+// username and plan title, with pagination and optional username / status filters.
+// Query: username (fuzzy), status (active|expired|cancelled).
 func AdminListAllSubscriptions(c *gin.Context) {
 	pageInfo := common.GetPageQuery(c)
 	username := c.Query("username")
-	details, total, err := model.AdminListAllUserSubscriptions(pageInfo.GetPage(), pageInfo.GetPageSize(), username)
+	status := c.Query("status")
+	details, total, err := model.AdminListAllUserSubscriptions(pageInfo.GetPage(), pageInfo.GetPageSize(), username, status)
 	if err != nil {
 		common.ApiError(c, err)
 		return

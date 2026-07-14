@@ -344,6 +344,28 @@ func usageSemanticFromUsage(relayInfo *relaycommon.RelayInfo, usage *dto.Usage) 
 	return "openai"
 }
 
+// subscriptionTokenQuotaUsage computes how many tokens to charge against a
+// subscription's token quota for one request.
+//
+// Formula matches dashboard model token stats (usedata_daily):
+//   total = prompt + completion
+//   when includeCache: total += cache_tokens (from usage / log other.cache_tokens)
+//
+// Do NOT special-case OpenAI "prompt already includes cache": the product's
+// "include cache" toggle always means "add cache_tokens on top of prompt+completion",
+// same as the daily/model analytics panels. Providers may report prompt and cache
+// with overlapping or separate semantics; we follow the logged fields consistently.
+func subscriptionTokenQuotaUsage(promptTokens, completionTokens, cacheTokens int, includeCache bool) int64 {
+	actual := int64(promptTokens) + int64(completionTokens)
+	if includeCache && cacheTokens > 0 {
+		actual += int64(cacheTokens)
+	}
+	if actual < 0 {
+		return 0
+	}
+	return actual
+}
+
 func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usage *dto.Usage, extraContent []string) {
 	originUsage := usage
 	billingUsage := effectiveBillingUsage(usage)
@@ -396,16 +418,29 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 		model.UpdateChannelUsedQuota(relayInfo.ChannelId, summary.Quota)
 	}
 
-	// Compute actual token consumption for subscription token-quota settlement.
-	// actualTokens = prompt + completion (+ cache tokens when the subscription
-	// is configured to include cache tokens in the deduction).
-	actualTokens := int64(summary.PromptTokens + summary.CompletionTokens)
-	if relayInfo.BillingSource == BillingSourceSubscription && relayInfo.SubscriptionIncludeCacheTokens {
-		actualTokens += int64(summary.CacheTokens)
+	// Subscription token quota: same arithmetic as dashboard "include cache"
+	// model stats — prompt + completion (+ cache_tokens when the plan enables it).
+	// Use origin usage cache counts when available so OpenRouter Claude remaps on
+	// summary.PromptTokens do not change the token-quota base fields.
+	cacheForSub := summary.CacheTokens
+	if billingUsage != nil && billingUsage.PromptTokensDetails.CachedTokens > 0 {
+		cacheForSub = billingUsage.PromptTokensDetails.CachedTokens
 	}
-	if actualTokens < 0 {
-		actualTokens = 0
+	promptForSub := summary.PromptTokens
+	completionForSub := summary.CompletionTokens
+	// Prefer raw usage columns so token quota tracks log prompt/completion fields.
+	if billingUsage != nil {
+		if billingUsage.PromptTokens > 0 || billingUsage.CompletionTokens > 0 {
+			promptForSub = billingUsage.PromptTokens
+			completionForSub = billingUsage.CompletionTokens
+		}
 	}
+	actualTokens := subscriptionTokenQuotaUsage(
+		promptForSub,
+		completionForSub,
+		cacheForSub,
+		relayInfo.BillingSource == BillingSourceSubscription && relayInfo.SubscriptionIncludeCacheTokens,
+	)
 
 	if err := SettleBillingWithTokens(ctx, relayInfo, summary.Quota, actualTokens); err != nil {
 		logger.LogError(ctx, "error settling billing: "+err.Error())
