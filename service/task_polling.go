@@ -644,17 +644,31 @@ func settleTaskBillingOnComplete(ctx context.Context, adaptor TaskPollingAdaptor
 	// 0. 按次计费的任务不做差额结算
 	if bc := task.PrivateData.BillingContext; bc != nil && bc.PerCallBilling {
 		logger.LogInfo(ctx, fmt.Sprintf("任务 %s 按次计费，跳过差额结算", task.TaskID))
+		if err := SettleTaskChannelPoolUsage(ctx, task, task.Quota, int64(taskResult.TotalTokens)); err != nil {
+			logger.LogError(ctx, fmt.Sprintf("任务渠道订阅池结算失败 task %s: %s", task.TaskID, err.Error()))
+		}
 		return
 	}
 	// 1. 优先让 adaptor 决定最终额度
 	if actualQuota := adaptor.AdjustBillingOnComplete(task, taskResult); actualQuota > 0 {
 		RecalculateTaskQuota(ctx, task, actualQuota, "adaptor计费调整")
+		if taskResult.TotalTokens > 0 {
+			if err := SettleTaskChannelPoolUsage(ctx, task, task.Quota, int64(taskResult.TotalTokens)); err != nil {
+				logger.LogError(ctx, fmt.Sprintf("任务渠道订阅池 token 结算失败 task %s: %s", task.TaskID, err.Error()))
+			}
+		}
 		return
 	}
 	// 2. 回退到 token 重算
 	if taskResult.TotalTokens > 0 {
 		RecalculateTaskQuotaByTokens(ctx, task, taskResult.TotalTokens)
+		if err := SettleTaskChannelPoolUsage(ctx, task, task.Quota, int64(taskResult.TotalTokens)); err != nil {
+			logger.LogError(ctx, fmt.Sprintf("任务渠道订阅池 token 结算失败 task %s: %s", task.TaskID, err.Error()))
+		}
 		return
 	}
 	// 3. 无调整，保持预扣额度
+	if err := SettleTaskChannelPoolUsage(ctx, task, task.Quota, 0); err != nil {
+		logger.LogError(ctx, fmt.Sprintf("任务渠道订阅池结算失败 task %s: %s", task.TaskID, err.Error()))
+	}
 }

@@ -89,7 +89,7 @@ func taskIsSubscription(task *model.Task) bool {
 // taskAdjustFunding 调整任务的资金来源（钱包或订阅），delta > 0 表示扣费，delta < 0 表示退还。
 func taskAdjustFunding(task *model.Task, delta int) error {
 	if taskIsSubscription(task) {
-		return model.PostConsumeUserSubscriptionDelta(task.PrivateData.SubscriptionId, int64(delta))
+		return model.PostConsumeUserSubscriptionDelta(task.PrivateData.SubscriptionId, int64(delta), 0)
 	}
 	if delta > 0 {
 		return model.DecreaseUserQuota(task.UserId, delta, false)
@@ -166,6 +166,9 @@ func taskModelName(task *model.Task) string {
 func RefundTaskQuota(ctx context.Context, task *model.Task, reason string) bool {
 	quota := task.Quota
 	if quota == 0 {
+		if err := SettleTaskChannelPoolUsage(ctx, task, 0, 0); err != nil {
+			logger.LogError(ctx, fmt.Sprintf("任务渠道订阅池退款失败 task %s: %s", task.TaskID, err.Error()))
+		}
 		return true
 	}
 
@@ -177,6 +180,9 @@ func RefundTaskQuota(ctx context.Context, task *model.Task, reason string) bool 
 
 	// 2. 退还令牌额度
 	taskAdjustTokenQuota(ctx, task, -quota)
+	if err := SettleTaskChannelPoolUsage(ctx, task, 0, 0); err != nil {
+		logger.LogError(ctx, fmt.Sprintf("任务渠道订阅池退款失败 task %s: %s", task.TaskID, err.Error()))
+	}
 
 	// 3. 记录日志
 	other := taskBillingOther(task)
@@ -217,6 +223,9 @@ func RecalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int
 	if quotaDelta == 0 {
 		logger.LogInfo(ctx, fmt.Sprintf("任务 %s 预扣费准确（%s，%s）",
 			task.TaskID, logger.LogQuota(actualQuota), reason))
+		if err := SettleTaskChannelPoolUsage(ctx, task, actualQuota, 0); err != nil {
+			logger.LogError(ctx, fmt.Sprintf("任务渠道订阅池结算失败 task %s: %s", task.TaskID, err.Error()))
+		}
 		return
 	}
 
@@ -240,6 +249,9 @@ func RecalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int
 	task.Quota = actualQuota
 	if err := task.UpdateQuota(); err != nil {
 		logger.LogError(ctx, fmt.Sprintf("差额结算回写 quota 失败 task %s: %s", task.TaskID, err.Error()))
+	}
+	if err := SettleTaskChannelPoolUsage(ctx, task, actualQuota, 0); err != nil {
+		logger.LogError(ctx, fmt.Sprintf("任务渠道订阅池结算失败 task %s: %s", task.TaskID, err.Error()))
 	}
 
 	var logType int

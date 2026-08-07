@@ -85,7 +85,10 @@ func (s *SubscriptionFunding) Source() string { return BillingSourceSubscription
 
 func (s *SubscriptionFunding) PreConsume(_ int) error {
 	// amount 参数被忽略，使用内部 s.amount（已在构造时根据 preConsumedQuota 计算）
-	res, err := model.PreConsumeUserSubscription(s.requestId, s.userId, s.modelName, 0, s.amount)
+	// Token pre-consumption is disabled (tokenAmount=0): the actual token usage
+	// is reconciled during the post-consume settle path, and planId=0 means no
+	// API-key plan binding filter is applied at this layer.
+	res, err := model.PreConsumeUserSubscription(s.requestId, s.userId, s.modelName, 0, s.amount, 0, 0)
 	if err != nil {
 		return err
 	}
@@ -105,7 +108,7 @@ func (s *SubscriptionFunding) Settle(delta int) error {
 	if delta == 0 {
 		return nil
 	}
-	return model.PostConsumeUserSubscriptionDelta(s.subscriptionId, int64(delta))
+	return model.PostConsumeUserSubscriptionDelta(s.subscriptionId, int64(delta), 0)
 }
 
 func (s *SubscriptionFunding) Refund() error {

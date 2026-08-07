@@ -54,6 +54,20 @@ func runSubscriptionQuotaResetOnce() {
 	totalReset := 0
 	totalExpired := 0
 	for {
+		n, err := model.ExpireDueChannelSubscriptionPools(subscriptionResetBatchSize)
+		if err != nil {
+			logger.LogWarn(ctx, fmt.Sprintf("channel subscription pool expire task failed: %v", err))
+			return
+		}
+		if n == 0 {
+			break
+		}
+		totalExpired += n
+		if n < subscriptionResetBatchSize {
+			break
+		}
+	}
+	for {
 		n, err := model.ExpireDueSubscriptions(subscriptionResetBatchSize)
 		if err != nil {
 			logger.LogWarn(ctx, fmt.Sprintf("subscription expire task failed: %v", err))
@@ -63,6 +77,20 @@ func runSubscriptionQuotaResetOnce() {
 			break
 		}
 		totalExpired += n
+		if n < subscriptionResetBatchSize {
+			break
+		}
+	}
+	for {
+		n, err := model.ResetDueChannelSubscriptionPools(subscriptionResetBatchSize)
+		if err != nil {
+			logger.LogWarn(ctx, fmt.Sprintf("channel subscription pool reset task failed: %v", err))
+			return
+		}
+		if n == 0 {
+			break
+		}
+		totalReset += n
 		if n < subscriptionResetBatchSize {
 			break
 		}
@@ -83,7 +111,9 @@ func runSubscriptionQuotaResetOnce() {
 	}
 	lastCleanup := time.Unix(subscriptionCleanupLast.Load(), 0)
 	if time.Since(lastCleanup) >= subscriptionCleanupInterval {
-		if _, err := model.CleanupSubscriptionPreConsumeRecords(7 * 24 * 3600); err == nil {
+		_, preConsumeErr := model.CleanupSubscriptionPreConsumeRecords(7 * 24 * 3600)
+		_, settlementErr := model.CleanupChannelPoolSettlements(7 * 24 * 3600)
+		if preConsumeErr == nil && settlementErr == nil {
 			subscriptionCleanupLast.Store(time.Now().Unix())
 		}
 	}

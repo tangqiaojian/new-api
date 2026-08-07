@@ -31,11 +31,25 @@ const (
 	SubscriptionResetWeekly  = "weekly"
 	SubscriptionResetMonthly = "monthly"
 	SubscriptionResetCustom  = "custom"
+
+	SubscriptionPlanTypeUser    = "user"
+	SubscriptionPlanTypeChannel = "channel"
+	SubscriptionPlanTypeBoth    = "both"
+
+	SubscriptionResetScopeQuota  = "quota"
+	SubscriptionResetScopeTokens = "tokens"
+	SubscriptionResetScopeBoth   = "both"
 )
 
 var (
 	ErrSubscriptionOrderNotFound      = errors.New("subscription order not found")
 	ErrSubscriptionOrderStatusInvalid = errors.New("subscription order status invalid")
+)
+
+const (
+	minSupportedResetUnix int64 = -62135596800 // 0001-01-01 UTC
+	maxSupportedResetUnix int64 = 253402300799 // 9999-12-31 UTC
+	maxCustomResetSeconds int64 = maxSupportedResetUnix - minSupportedResetUnix
 )
 
 const (
@@ -185,6 +199,24 @@ type SubscriptionPlan struct {
 	QuotaResetPeriod        string `json:"quota_reset_period" gorm:"type:varchar(16);default:'never'"`
 	QuotaResetCustomSeconds int64  `json:"quota_reset_custom_seconds" gorm:"type:bigint;default:0"`
 
+	// Token quota (0 = unlimited, no token limit)
+	TotalTokens int64 `json:"total_tokens" gorm:"type:bigint;not null;default:0"`
+
+	// Whether to include cached tokens when deducting token quota
+	IncludeCacheTokens bool `json:"include_cache_tokens" gorm:"default:false"`
+
+	// Independent token quota reset period (empty = same as QuotaResetPeriod)
+	TokenResetPeriod        string `json:"token_reset_period" gorm:"type:varchar(16);default:''"`
+	TokenResetCustomSeconds int64  `json:"token_reset_custom_seconds" gorm:"type:bigint;default:0"`
+
+	// Plan type controls whether the plan can be used by users, channels, or both.
+	PlanType string `json:"plan_type" gorm:"type:varchar(16);default:'user'"`
+
+	QuotaResetAnchor   *int64 `json:"quota_reset_anchor" gorm:"type:bigint"`
+	QuotaResetTimezone string `json:"quota_reset_timezone" gorm:"type:varchar(64);default:''"`
+	TokenResetAnchor   *int64 `json:"token_reset_anchor" gorm:"type:bigint"`
+	TokenResetTimezone string `json:"token_reset_timezone" gorm:"type:varchar(64);default:''"`
+
 	CreatedAt int64 `json:"created_at" gorm:"bigint"`
 	UpdatedAt int64 `json:"updated_at" gorm:"bigint"`
 }
@@ -258,6 +290,14 @@ type UserSubscription struct {
 	AmountTotal int64 `json:"amount_total" gorm:"type:bigint;not null;default:0"`
 	AmountUsed  int64 `json:"amount_used" gorm:"type:bigint;not null;default:0"`
 
+	// Admin-added temporary quota (cleared on next reset cycle)
+	AdminAmountExtra int64 `json:"admin_amount_extra" gorm:"type:bigint;not null;default:0"`
+	AdminTokensExtra int64 `json:"admin_tokens_extra" gorm:"type:bigint;not null;default:0"`
+
+	// Snapshot of plan's total at creation/sync time (for delta sync when plan changes)
+	PlanAmountSnapshot int64 `json:"plan_amount_snapshot" gorm:"type:bigint;not null;default:0"`
+	PlanTokensSnapshot int64 `json:"plan_tokens_snapshot" gorm:"type:bigint;not null;default:0"`
+
 	StartTime int64  `json:"start_time" gorm:"bigint"`
 	EndTime   int64  `json:"end_time" gorm:"bigint;index;index:idx_user_sub_active,priority:3"`
 	Status    string `json:"status" gorm:"type:varchar(32);index;index:idx_user_sub_active,priority:2"` // active/expired/cancelled
@@ -275,6 +315,22 @@ type UserSubscription struct {
 
 	// Whether wallet fallback is allowed after this subscription's quota is exhausted (snapshot from plan)
 	AllowWalletOverflow bool `json:"allow_wallet_overflow"`
+
+	// Token quota (snapshot from plan)
+	TokensTotal int64 `json:"tokens_total" gorm:"type:bigint;not null;default:0"`
+	TokensUsed  int64 `json:"tokens_used" gorm:"type:bigint;not null;default:0"`
+
+	// Include cache tokens in token deduction (snapshot from plan)
+	IncludeCacheTokens bool `json:"include_cache_tokens"`
+
+	// Token quota reset schedule (independent from quota reset)
+	TokenLastResetTime int64 `json:"token_last_reset_time" gorm:"bigint;default:0"`
+	TokenNextResetTime int64 `json:"token_next_reset_time" gorm:"bigint;default:0;index"`
+
+	QuotaResetAnchor   *int64  `json:"quota_reset_anchor" gorm:"type:bigint"`
+	QuotaResetTimezone *string `json:"quota_reset_timezone" gorm:"type:varchar(64)"`
+	TokenResetAnchor   *int64  `json:"token_reset_anchor" gorm:"type:bigint"`
+	TokenResetTimezone *string `json:"token_reset_timezone" gorm:"type:varchar(64)"`
 
 	CreatedAt int64 `json:"created_at" gorm:"bigint"`
 	UpdatedAt int64 `json:"updated_at" gorm:"bigint"`
@@ -301,7 +357,8 @@ type SubscriptionResetResult struct {
 	MatchedCount     int    `json:"matched_count"`
 	ResetCount       int    `json:"reset_count"`
 	UserCount        int    `json:"user_count"`
-	AdvanceResetTime bool   `json:"advance_reset_time"`
+	AdvanceResetTime bool   `json:"-"`
+	ResetScope       string `json:"reset_scope"`
 	PlanTitle        string `json:"-"`
 	AffectedUserIds  []int  `json:"-"`
 }
@@ -341,45 +398,227 @@ func NormalizeResetPeriod(period string) string {
 	}
 }
 
+func NormalizeResetScope(scope string) (string, error) {
+	switch strings.TrimSpace(scope) {
+	case "", SubscriptionResetScopeBoth:
+		return SubscriptionResetScopeBoth, nil
+	case SubscriptionResetScopeQuota, SubscriptionResetScopeTokens:
+		return strings.TrimSpace(scope), nil
+	default:
+		return "", errors.New("invalid reset scope")
+	}
+}
+
+func NormalizeSubscriptionPlanType(planType string) (string, error) {
+	switch strings.TrimSpace(planType) {
+	case "", SubscriptionPlanTypeUser:
+		return SubscriptionPlanTypeUser, nil
+	case SubscriptionPlanTypeChannel, SubscriptionPlanTypeBoth:
+		return strings.TrimSpace(planType), nil
+	default:
+		return "", errors.New("invalid plan type")
+	}
+}
+
+func SubscriptionPlanAllowsUsers(plan *SubscriptionPlan) bool {
+	if plan == nil {
+		return false
+	}
+	planType, err := NormalizeSubscriptionPlanType(plan.PlanType)
+	return err == nil && planType != SubscriptionPlanTypeChannel
+}
+
+func resetScheduleLocation(timezone string, fallback *time.Location) *time.Location {
+	if strings.TrimSpace(timezone) != "" {
+		if location, err := time.LoadLocation(strings.TrimSpace(timezone)); err == nil {
+			return location
+		}
+	}
+	if fallback != nil {
+		return fallback
+	}
+	return time.Local
+}
+
+func daysInMonth(year int, month time.Month, location *time.Location) int {
+	return time.Date(year, month+1, 0, 0, 0, 0, 0, location).Day()
+}
+
+func anchoredWallTime(year int, month time.Month, day, hour, minute, second int, location *time.Location) time.Time {
+	candidate := time.Date(year, month, day, hour, minute, second, 0, location)
+	if candidate.Year() == year && candidate.Month() == month && candidate.Day() == day && candidate.Hour() == hour && candidate.Minute() == minute && candidate.Second() == second {
+		return candidate
+	}
+	// DST gap policy: advance to the first valid instant after the missing wall time.
+	start := time.Date(year, month, day, 0, 0, 0, 0, location)
+	targetSeconds := hour*3600 + minute*60 + second
+	startOffset := targetSeconds - 3*3600
+	if startOffset < 0 {
+		startOffset = 0
+	}
+	for offset := startOffset; offset <= targetSeconds+3*3600; offset++ {
+		probe := start.Add(time.Duration(offset) * time.Second)
+		wallSeconds := probe.Hour()*3600 + probe.Minute()*60 + probe.Second()
+		if probe.Year() == year && probe.Month() == month && probe.Day() == day && wallSeconds >= targetSeconds {
+			return probe
+		}
+	}
+	return candidate
+}
+
+func calcNextResetSchedule(base time.Time, period string, customSeconds int64, anchor *int64, timezone string, endUnix int64) int64 {
+	period = NormalizeResetPeriod(period)
+	if period == SubscriptionResetNever {
+		return 0
+	}
+	if period == SubscriptionResetCustom {
+		if customSeconds <= 0 || customSeconds > maxCustomResetSeconds {
+			return 0
+		}
+		baseUnix := base.Unix()
+		if baseUnix < minSupportedResetUnix || baseUnix > maxSupportedResetUnix {
+			return 0
+		}
+		if anchor == nil {
+			if baseUnix > maxSupportedResetUnix-customSeconds {
+				return 0
+			}
+			nextUnix := baseUnix + customSeconds
+			if endUnix > 0 && nextUnix >= endUnix {
+				return 0
+			}
+			return nextUnix
+		}
+		if *anchor < minSupportedResetUnix || *anchor > maxSupportedResetUnix {
+			return 0
+		}
+		nextUnix := *anchor
+		if nextUnix <= baseUnix {
+			delta := uint64(baseUnix-minSupportedResetUnix) - uint64(*anchor-minSupportedResetUnix)
+			steps := delta/uint64(customSeconds) + 1
+			remaining := uint64(maxSupportedResetUnix - *anchor)
+			if steps > remaining/uint64(customSeconds) {
+				return 0
+			}
+			nextUnix = *anchor + int64(steps)*customSeconds
+		}
+		if endUnix > 0 && nextUnix >= endUnix {
+			return 0
+		}
+		return nextUnix
+	}
+	if anchor == nil {
+		var next time.Time
+		switch period {
+		case SubscriptionResetDaily:
+			next = time.Date(base.Year(), base.Month(), base.Day(), 0, 0, 0, 0, base.Location()).AddDate(0, 0, 1)
+		case SubscriptionResetWeekly:
+			weekday := int(base.Weekday())
+			if weekday == 0 {
+				weekday = 7
+			}
+			next = time.Date(base.Year(), base.Month(), base.Day(), 0, 0, 0, 0, base.Location()).AddDate(0, 0, 8-weekday)
+		case SubscriptionResetMonthly:
+			next = time.Date(base.Year(), base.Month(), 1, 0, 0, 0, 0, base.Location()).AddDate(0, 1, 0)
+		}
+		if endUnix > 0 && next.Unix() >= endUnix {
+			return 0
+		}
+		return next.Unix()
+	}
+
+	location := resetScheduleLocation(timezone, base.Location())
+	localBase := base.In(location)
+	localAnchor := time.Unix(*anchor, 0).In(location)
+	var next time.Time
+	switch period {
+	case SubscriptionResetDaily:
+		year, month, day := localBase.Date()
+		next = anchoredWallTime(year, month, day, localAnchor.Hour(), localAnchor.Minute(), localAnchor.Second(), location)
+		if !next.After(localBase) {
+			target := time.Date(year, month, day, 12, 0, 0, 0, location).AddDate(0, 0, 1)
+			year, month, day = target.Date()
+			next = anchoredWallTime(year, month, day, localAnchor.Hour(), localAnchor.Minute(), localAnchor.Second(), location)
+		}
+	case SubscriptionResetWeekly:
+		daysUntil := (int(localAnchor.Weekday()) - int(localBase.Weekday()) + 7) % 7
+		target := time.Date(localBase.Year(), localBase.Month(), localBase.Day(), 12, 0, 0, 0, location).AddDate(0, 0, daysUntil)
+		year, month, day := target.Date()
+		next = anchoredWallTime(year, month, day, localAnchor.Hour(), localAnchor.Minute(), localAnchor.Second(), location)
+		if !next.After(localBase) {
+			target = target.AddDate(0, 0, 7)
+			year, month, day = target.Date()
+			next = anchoredWallTime(year, month, day, localAnchor.Hour(), localAnchor.Minute(), localAnchor.Second(), location)
+		}
+	case SubscriptionResetMonthly:
+		year, month := localBase.Year(), localBase.Month()
+		day := localAnchor.Day()
+		if day > daysInMonth(year, month, location) {
+			day = daysInMonth(year, month, location)
+		}
+		next = anchoredWallTime(year, month, day, localAnchor.Hour(), localAnchor.Minute(), localAnchor.Second(), location)
+		if !next.After(localBase) {
+			month++
+			if month > time.December {
+				year++
+				month = time.January
+			}
+			day = localAnchor.Day()
+			if day > daysInMonth(year, month, location) {
+				day = daysInMonth(year, month, location)
+			}
+			next = anchoredWallTime(year, month, day, localAnchor.Hour(), localAnchor.Minute(), localAnchor.Second(), location)
+		}
+	}
+	if endUnix > 0 && next.Unix() >= endUnix {
+		return 0
+	}
+	return next.Unix()
+}
+
+func effectiveResetPlan(plan *SubscriptionPlan, sub *UserSubscription) SubscriptionPlan {
+	effective := *plan
+	if sub == nil {
+		return effective
+	}
+	if sub.QuotaResetAnchor != nil {
+		effective.QuotaResetAnchor = sub.QuotaResetAnchor
+	}
+	if sub.QuotaResetTimezone != nil {
+		effective.QuotaResetTimezone = *sub.QuotaResetTimezone
+	}
+	if sub.TokenResetAnchor != nil {
+		effective.TokenResetAnchor = sub.TokenResetAnchor
+	}
+	if sub.TokenResetTimezone != nil {
+		effective.TokenResetTimezone = *sub.TokenResetTimezone
+	}
+	return effective
+}
+
 func calcNextResetTime(base time.Time, plan *SubscriptionPlan, endUnix int64) int64 {
 	if plan == nil {
 		return 0
 	}
-	period := NormalizeResetPeriod(plan.QuotaResetPeriod)
-	if period == SubscriptionResetNever {
+	return calcNextResetSchedule(base, plan.QuotaResetPeriod, plan.QuotaResetCustomSeconds, plan.QuotaResetAnchor, plan.QuotaResetTimezone, endUnix)
+}
+
+// calcNextTokenResetTime inherits the complete quota schedule when token_reset_period is empty.
+func calcNextTokenResetTime(base time.Time, plan *SubscriptionPlan, endUnix int64) int64 {
+	if plan == nil {
 		return 0
 	}
-	var next time.Time
-	switch period {
-	case SubscriptionResetDaily:
-		next = time.Date(base.Year(), base.Month(), base.Day(), 0, 0, 0, 0, base.Location()).
-			AddDate(0, 0, 1)
-	case SubscriptionResetWeekly:
-		// Align to next Monday 00:00
-		weekday := int(base.Weekday()) // Sunday=0
-		// Convert to Monday=1..Sunday=7
-		if weekday == 0 {
-			weekday = 7
-		}
-		daysUntil := 8 - weekday
-		next = time.Date(base.Year(), base.Month(), base.Day(), 0, 0, 0, 0, base.Location()).
-			AddDate(0, 0, daysUntil)
-	case SubscriptionResetMonthly:
-		// Align to first day of next month 00:00
-		next = time.Date(base.Year(), base.Month(), 1, 0, 0, 0, 0, base.Location()).
-			AddDate(0, 1, 0)
-	case SubscriptionResetCustom:
-		if plan.QuotaResetCustomSeconds <= 0 {
-			return 0
-		}
-		next = base.Add(time.Duration(plan.QuotaResetCustomSeconds) * time.Second)
-	default:
-		return 0
+	period := strings.TrimSpace(plan.TokenResetPeriod)
+	customSeconds := plan.TokenResetCustomSeconds
+	anchor := plan.TokenResetAnchor
+	timezone := plan.TokenResetTimezone
+	if period == "" {
+		period = plan.QuotaResetPeriod
+		customSeconds = plan.QuotaResetCustomSeconds
+		anchor = plan.QuotaResetAnchor
+		timezone = plan.QuotaResetTimezone
 	}
-	if endUnix > 0 && next.Unix() > endUnix {
-		return 0
-	}
-	return next.Unix()
+	return calcNextResetSchedule(base, period, customSeconds, anchor, timezone, endUnix)
 }
 
 func GetSubscriptionPlanById(id int) (*SubscriptionPlan, error) {
@@ -491,6 +730,9 @@ func CreateUserSubscriptionFromPlanTx(tx *gorm.DB, userId int, plan *Subscriptio
 	if userId <= 0 {
 		return nil, errors.New("invalid user id")
 	}
+	if !SubscriptionPlanAllowsUsers(plan) {
+		return nil, errors.New("该套餐不适用于用户订阅")
+	}
 	if plan.MaxPurchasePerUser > 0 {
 		var count int64
 		if err := tx.Model(&UserSubscription{}).
@@ -513,6 +755,12 @@ func CreateUserSubscriptionFromPlanTx(tx *gorm.DB, userId int, plan *Subscriptio
 	lastReset := int64(0)
 	if nextReset > 0 {
 		lastReset = now.Unix()
+	}
+	// Token reset schedule (independent from quota reset)
+	tokenNextReset := calcNextTokenResetTime(resetBase, plan, endUnix)
+	tokenLastReset := int64(0)
+	if tokenNextReset > 0 {
+		tokenLastReset = now.Unix()
 	}
 	upgradeGroup := strings.TrimSpace(plan.UpgradeGroup)
 	prevGroup := ""
@@ -538,6 +786,8 @@ func CreateUserSubscriptionFromPlanTx(tx *gorm.DB, userId int, plan *Subscriptio
 		PlanId:              plan.Id,
 		AmountTotal:         plan.TotalAmount,
 		AmountUsed:          0,
+		PlanAmountSnapshot:  plan.TotalAmount,
+		PlanTokensSnapshot:  plan.TotalTokens,
 		StartTime:           now.Unix(),
 		EndTime:             endUnix,
 		Status:              "active",
@@ -548,6 +798,11 @@ func CreateUserSubscriptionFromPlanTx(tx *gorm.DB, userId int, plan *Subscriptio
 		PrevUserGroup:       prevGroup,
 		DowngradeGroup:      strings.TrimSpace(plan.DowngradeGroup),
 		AllowWalletOverflow: allowWalletOverflow,
+		TokensTotal:         plan.TotalTokens,
+		TokensUsed:          0,
+		IncludeCacheTokens:  plan.IncludeCacheTokens,
+		TokenLastResetTime:  tokenLastReset,
+		TokenNextResetTime:  tokenNextReset,
 		CreatedAt:           common.GetTimestamp(),
 		UpdatedAt:           common.GetTimestamp(),
 	}
@@ -701,8 +956,71 @@ func ExpireSubscriptionOrder(tradeNo string, expectedPaymentProvider string) err
 	})
 }
 
+// UserSubscriptionResetOverride optionally overrides plan reset anchors/timezones on an instance.
+// Nil fields mean inherit the plan defaults.
+type UserSubscriptionResetOverride struct {
+	QuotaResetAnchor   *int64  `json:"quota_reset_anchor"`
+	QuotaResetTimezone *string `json:"quota_reset_timezone"`
+	TokenResetAnchor   *int64  `json:"token_reset_anchor"`
+	TokenResetTimezone *string `json:"token_reset_timezone"`
+}
+
+func validateResetTimezonePointer(value *string) error {
+	if value == nil || strings.TrimSpace(*value) == "" {
+		return nil
+	}
+	if _, err := time.LoadLocation(strings.TrimSpace(*value)); err != nil {
+		return fmt.Errorf("invalid reset timezone: %w", err)
+	}
+	return nil
+}
+
+func applyUserSubscriptionResetOverride(sub *UserSubscription, plan *SubscriptionPlan, override *UserSubscriptionResetOverride, now int64) {
+	if sub == nil || plan == nil {
+		return
+	}
+	if override != nil {
+		sub.QuotaResetAnchor = override.QuotaResetAnchor
+		if override.QuotaResetTimezone != nil {
+			tz := strings.TrimSpace(*override.QuotaResetTimezone)
+			if tz == "" {
+				sub.QuotaResetTimezone = nil
+			} else {
+				sub.QuotaResetTimezone = &tz
+			}
+		} else {
+			sub.QuotaResetTimezone = nil
+		}
+		sub.TokenResetAnchor = override.TokenResetAnchor
+		if override.TokenResetTimezone != nil {
+			tz := strings.TrimSpace(*override.TokenResetTimezone)
+			if tz == "" {
+				sub.TokenResetTimezone = nil
+			} else {
+				sub.TokenResetTimezone = &tz
+			}
+		} else {
+			sub.TokenResetTimezone = nil
+		}
+	}
+	effective := effectiveResetPlan(plan, sub)
+	sub.NextResetTime = calcNextResetTime(time.Unix(now, 0), &effective, sub.EndTime)
+	if sub.NextResetTime > 0 {
+		sub.LastResetTime = now
+	} else {
+		sub.LastResetTime = 0
+	}
+	sub.TokenNextResetTime = calcNextTokenResetTime(time.Unix(now, 0), &effective, sub.EndTime)
+	if sub.TokenNextResetTime > 0 {
+		sub.TokenLastResetTime = now
+	} else {
+		sub.TokenLastResetTime = 0
+	}
+	sub.UpdatedAt = common.GetTimestamp()
+}
+
 // Admin bind (no payment). Creates a UserSubscription from a plan.
-func AdminBindSubscription(userId int, planId int, sourceNote string) (string, error) {
+func AdminBindSubscription(userId int, planId int, sourceNote string, override ...*UserSubscriptionResetOverride) (string, error) {
 	if userId <= 0 || planId <= 0 {
 		return "", errors.New("invalid userId or planId")
 	}
@@ -710,13 +1028,36 @@ func AdminBindSubscription(userId int, planId int, sourceNote string) (string, e
 	if err != nil {
 		return "", err
 	}
+	var resetOverride *UserSubscriptionResetOverride
+	if len(override) > 0 {
+		resetOverride = override[0]
+	}
+	if resetOverride != nil {
+		if err := validateResetTimezonePointer(resetOverride.QuotaResetTimezone); err != nil {
+			return "", err
+		}
+		if err := validateResetTimezonePointer(resetOverride.TokenResetTimezone); err != nil {
+			return "", err
+		}
+	}
 	groupChanged := false
 	err = DB.Transaction(func(tx *gorm.DB) error {
-		subscription, err := CreateUserSubscriptionFromPlanTx(tx, userId, plan, "admin")
-		if err == nil {
-			groupChanged = subscription.PrevUserGroup != ""
+		sub, err := CreateUserSubscriptionFromPlanTx(tx, userId, plan, "admin")
+		if err != nil {
+			return err
 		}
-		return err
+		if resetOverride == nil {
+			if sub.PrevUserGroup != "" {
+				groupChanged = true
+			}
+			return nil
+		}
+		now := GetDBTimestamp()
+		applyUserSubscriptionResetOverride(sub, plan, resetOverride, now)
+		if sub.PrevUserGroup != "" {
+			groupChanged = true
+		}
+		return tx.Save(sub).Error
 	})
 	if err != nil {
 		return "", err
@@ -726,6 +1067,33 @@ func AdminBindSubscription(userId int, planId int, sourceNote string) (string, e
 		return fmt.Sprintf("用户分组将升级到 %s", plan.UpgradeGroup), nil
 	}
 	return "", nil
+}
+
+// AdminUpdateUserSubscriptionResetOverrides replaces instance-level reset schedule overrides.
+// Nil anchor/timezone fields clear the override and inherit the plan defaults again.
+func AdminUpdateUserSubscriptionResetOverrides(userSubscriptionId int, override UserSubscriptionResetOverride) error {
+	if userSubscriptionId <= 0 {
+		return errors.New("invalid userSubscriptionId")
+	}
+	if err := validateResetTimezonePointer(override.QuotaResetTimezone); err != nil {
+		return err
+	}
+	if err := validateResetTimezonePointer(override.TokenResetTimezone); err != nil {
+		return err
+	}
+	now := GetDBTimestamp()
+	return DB.Transaction(func(tx *gorm.DB) error {
+		var sub UserSubscription
+		if err := lockForUpdate(tx).Where("id = ?", userSubscriptionId).First(&sub).Error; err != nil {
+			return err
+		}
+		plan, err := getSubscriptionPlanByIdTx(tx, sub.PlanId)
+		if err != nil {
+			return err
+		}
+		applyUserSubscriptionResetOverride(&sub, plan, &override, now)
+		return tx.Save(&sub).Error
+	})
 }
 
 func calcSubscriptionBalanceQuota(priceAmount float64) (int, error) {
@@ -999,24 +1367,255 @@ func AdminDeleteUserSubscription(userSubscriptionId int) (string, error) {
 	return "", nil
 }
 
-func resetUserSubscriptionTx(tx *gorm.DB, sub *UserSubscription, plan *SubscriptionPlan, now int64, advanceResetTime bool) error {
+// AdminUserSubscriptionDetail is a user subscription joined with the owning
+// user's username and the plan's title for admin listing views.
+type AdminUserSubscriptionDetail struct {
+	UserSubscription
+	Username  string `json:"username"`
+	PlanTitle string `json:"plan_title"`
+}
+
+// AdminListAllUserSubscriptions returns all user subscriptions joined with the
+// owning username and plan title, with pagination and optional username / status
+// filters. When username or status is empty the corresponding filter is skipped.
+// status accepts: active, expired, cancelled (case-insensitive).
+func AdminListAllUserSubscriptions(page, pageSize int, username string, status string) ([]AdminUserSubscriptionDetail, int64, error) {
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 {
+		pageSize = 10
+	}
+	if pageSize > 100 {
+		pageSize = 100
+	}
+	var details []AdminUserSubscriptionDetail
+	var total int64
+
+	query := DB.Model(&UserSubscription{}).
+		Joins("left join users on users.id = user_subscriptions.user_id").
+		Joins("left join subscription_plans on subscription_plans.id = user_subscriptions.plan_id")
+	if username = strings.TrimSpace(username); username != "" {
+		query = query.Where("users.username LIKE ?", "%"+username+"%")
+	}
+	if status = strings.ToLower(strings.TrimSpace(status)); status != "" {
+		// Normalize American spelling; DB stores "cancelled".
+		if status == "canceled" {
+			status = "cancelled"
+		}
+		switch status {
+		case "active", "expired", "cancelled":
+			query = query.Where("user_subscriptions.status = ?", status)
+		}
+	}
+
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	// Active first, then higher usage (easier to spot heavy consumers).
+	if err := query.
+		Select("user_subscriptions.*, users.username as username, subscription_plans.title as plan_title").
+		Order("CASE WHEN user_subscriptions.status = 'active' THEN 0 ELSE 1 END, user_subscriptions.amount_used DESC, user_subscriptions.tokens_used DESC, user_subscriptions.id DESC").
+		Limit(pageSize).
+		Offset((page - 1) * pageSize).
+		Find(&details).Error; err != nil {
+		return nil, 0, err
+	}
+	return details, total, nil
+}
+
+// AdminAdjustUserSubscription adds temporary quota to a user's subscription.
+// The added amount is tracked in admin_amount_extra / admin_tokens_extra and is
+// cleared on the next reset cycle. During the current cycle, amount_total includes
+// the extra so the user can consume it immediately.
+// amountDelta > 0 increases AmountTotal, tokenDelta > 0 increases TokensTotal.
+// Both deltas may be 0 (no-op); negative values are rejected.
+func AdminAdjustUserSubscription(userSubscriptionId int, amountDelta int64, tokenDelta int64) error {
+	if userSubscriptionId <= 0 {
+		return errors.New("invalid userSubscriptionId")
+	}
+	if amountDelta < 0 || tokenDelta < 0 {
+		return errors.New("deltas must be non-negative")
+	}
+	if amountDelta == 0 && tokenDelta == 0 {
+		return nil
+	}
+	updates := map[string]interface{}{
+		"updated_at": common.GetTimestamp(),
+	}
+	if amountDelta > 0 {
+		updates["amount_total"] = gorm.Expr("amount_total + ?", amountDelta)
+		updates["admin_amount_extra"] = gorm.Expr("admin_amount_extra + ?", amountDelta)
+	}
+	if tokenDelta > 0 {
+		updates["tokens_total"] = gorm.Expr("tokens_total + ?", tokenDelta)
+		updates["admin_tokens_extra"] = gorm.Expr("admin_tokens_extra + ?", tokenDelta)
+	}
+	return DB.Model(&UserSubscription{}).
+		Where("id = ?", userSubscriptionId).
+		Updates(updates).Error
+}
+
+// AdminResetSingleUserSubscription resets selected usage dimensions and schedules.
+func AdminResetSingleUserSubscription(userSubscriptionId int, resetScope string) error {
+	if userSubscriptionId <= 0 {
+		return errors.New("invalid userSubscriptionId")
+	}
+	resetScope, err := NormalizeResetScope(resetScope)
+	if err != nil {
+		return err
+	}
+	now := GetDBTimestamp()
+	return DB.Transaction(func(tx *gorm.DB) error {
+		var sub UserSubscription
+		if err := lockForUpdate(tx).Where("id = ?", userSubscriptionId).First(&sub).Error; err != nil {
+			return err
+		}
+		plan, err := getSubscriptionPlanByIdTx(tx, sub.PlanId)
+		if err != nil {
+			return err
+		}
+		return resetUserSubscriptionTx(tx, &sub, plan, now, true, resetScope)
+	})
+}
+
+func resetUserSubscriptionTx(tx *gorm.DB, sub *UserSubscription, plan *SubscriptionPlan, now int64, advanceResetTime bool, resetScope string) error {
 	if tx == nil || sub == nil || plan == nil {
 		return errors.New("invalid reset args")
 	}
-	sub.AmountUsed = 0
-	if advanceResetTime {
-		nextReset := calcNextResetTime(time.Unix(now, 0), plan, sub.EndTime)
-		sub.NextResetTime = nextReset
-		if nextReset > 0 {
+	resetQuota := resetScope == SubscriptionResetScopeQuota || resetScope == SubscriptionResetScopeBoth
+	resetTokens := resetScope == SubscriptionResetScopeTokens || resetScope == SubscriptionResetScopeBoth
+	if resetQuota {
+		sub.AmountUsed = 0
+		// Clear admin-added temporary quota on reset
+		if sub.AdminAmountExtra > 0 {
+			sub.AmountTotal -= sub.AdminAmountExtra
+			if sub.AmountTotal < 0 {
+				sub.AmountTotal = 0
+			}
+			sub.AdminAmountExtra = 0
+		}
+	}
+	if resetTokens && sub.TokensTotal > 0 {
+		sub.TokensUsed = 0
+		// Clear admin-added temporary token quota on reset
+		if sub.AdminTokensExtra > 0 {
+			sub.TokensTotal -= sub.AdminTokensExtra
+			if sub.TokensTotal < 0 {
+				sub.TokensTotal = 0
+			}
+			sub.AdminTokensExtra = 0
+		}
+	}
+	effectivePlan := effectiveResetPlan(plan, sub)
+	if advanceResetTime && resetQuota {
+		sub.NextResetTime = calcNextResetTime(time.Unix(now, 0), &effectivePlan, sub.EndTime)
+		if sub.NextResetTime > 0 {
 			sub.LastResetTime = now
 		} else {
 			sub.LastResetTime = 0
 		}
 	}
+	if advanceResetTime && resetTokens {
+		sub.TokenNextResetTime = calcNextTokenResetTime(time.Unix(now, 0), &effectivePlan, sub.EndTime)
+		if sub.TokenNextResetTime > 0 {
+			sub.TokenLastResetTime = now
+		} else {
+			sub.TokenLastResetTime = 0
+		}
+	}
 	return tx.Save(sub).Error
 }
 
-func buildSubscriptionResetResult(plan *SubscriptionPlan, subs []UserSubscription, advanceResetTime bool) *SubscriptionResetResult {
+// RecalculatePlanResetTimes recalculates both inherited schedules transactionally.
+func RecalculatePlanResetTimes(planId int) error {
+	now := GetDBTimestamp()
+	return DB.Transaction(func(tx *gorm.DB) error {
+		return RecalculatePlanResetTimesTx(tx, planId, now)
+	})
+}
+
+func RecalculatePlanResetTimesTx(tx *gorm.DB, planId int, nowValues ...int64) error {
+	if tx == nil || planId <= 0 {
+		return errors.New("invalid plan reset recalculation args")
+	}
+	now := int64(0)
+	if len(nowValues) > 0 {
+		now = nowValues[0]
+	} else {
+		now = GetDBTimestamp()
+	}
+	var plan SubscriptionPlan
+	if err := tx.Where("id = ?", planId).First(&plan).Error; err != nil {
+		return err
+	}
+	var subs []UserSubscription
+	if err := lockForUpdate(tx).Where("plan_id = ? AND status = ? AND end_time > ?", planId, "active", now).Find(&subs).Error; err != nil {
+		return err
+	}
+	for i := range subs {
+		sub := &subs[i]
+		changed := false
+
+		// Sync plan quota changes to subscription (delta-based: preserves admin extra)
+		// When PlanAmountSnapshot is 0, this is a pre-existing subscription created
+		// before snapshot tracking was introduced. Initialize the snapshot to the
+		// current plan amount and adopt the plan amount directly (no delta).
+		if sub.PlanAmountSnapshot == 0 {
+			sub.PlanAmountSnapshot = plan.TotalAmount
+			sub.AmountTotal = plan.TotalAmount
+			changed = true
+		} else if sub.PlanAmountSnapshot != plan.TotalAmount {
+			delta := plan.TotalAmount - sub.PlanAmountSnapshot
+			sub.AmountTotal += delta
+			if sub.AmountTotal < 0 {
+				sub.AmountTotal = 0
+			}
+			sub.PlanAmountSnapshot = plan.TotalAmount
+			changed = true
+		}
+		if sub.PlanTokensSnapshot == 0 {
+			sub.PlanTokensSnapshot = plan.TotalTokens
+			sub.TokensTotal = plan.TotalTokens
+			changed = true
+		} else if sub.PlanTokensSnapshot != plan.TotalTokens {
+			delta := plan.TotalTokens - sub.PlanTokensSnapshot
+			sub.TokensTotal += delta
+			if sub.TokensTotal < 0 {
+				sub.TokensTotal = 0
+			}
+			sub.PlanTokensSnapshot = plan.TotalTokens
+			changed = true
+		}
+
+		quotaInherited := sub.QuotaResetAnchor == nil && sub.QuotaResetTimezone == nil
+		tokenInherited := sub.TokenResetAnchor == nil && sub.TokenResetTimezone == nil
+		if quotaInherited {
+			sub.NextResetTime = calcNextResetTime(time.Unix(now, 0), &plan, sub.EndTime)
+			changed = true
+		}
+		if tokenInherited {
+			effective := plan
+			if strings.TrimSpace(plan.TokenResetPeriod) == "" && !quotaInherited {
+				effective = effectiveResetPlan(&plan, sub)
+			}
+			sub.TokenNextResetTime = calcNextTokenResetTime(time.Unix(now, 0), &effective, sub.EndTime)
+			changed = true
+		}
+		if !changed {
+			continue
+		}
+		if err := tx.Save(sub).Error; err != nil {
+			return fmt.Errorf("recalculate subscription %d reset times: %w", sub.Id, err)
+		}
+	}
+	if !tx.Migrator().HasTable(&ChannelSubscriptionPool{}) {
+		return nil
+	}
+	return recalculateChannelPoolResetTimesTx(tx, &plan, now)
+}
+
+func buildSubscriptionResetResult(plan *SubscriptionPlan, subs []UserSubscription, advanceResetTime bool, resetScope string) *SubscriptionResetResult {
 	userIds := make([]int, 0, len(subs))
 	seenUsers := make(map[int]struct{}, len(subs))
 	for _, sub := range subs {
@@ -1032,12 +1631,13 @@ func buildSubscriptionResetResult(plan *SubscriptionPlan, subs []UserSubscriptio
 		ResetCount:       len(subs),
 		UserCount:        len(userIds),
 		AdvanceResetTime: advanceResetTime,
+		ResetScope:       resetScope,
 		PlanTitle:        plan.Title,
 		AffectedUserIds:  userIds,
 	}
 }
 
-func adminResetUserSubscriptionsByPlanTx(tx *gorm.DB, userId int, plan *SubscriptionPlan, now int64, advanceResetTime bool) (*SubscriptionResetResult, error) {
+func adminResetUserSubscriptionsByPlanTx(tx *gorm.DB, userId int, plan *SubscriptionPlan, now int64, advanceResetTime bool, resetScope string) (*SubscriptionResetResult, error) {
 	if tx == nil || plan == nil {
 		return nil, errors.New("invalid reset args")
 	}
@@ -1052,14 +1652,14 @@ func adminResetUserSubscriptionsByPlanTx(tx *gorm.DB, userId int, plan *Subscrip
 		return nil, errors.New("该用户没有有效的此套餐订阅")
 	}
 	for i := range subs {
-		if err := resetUserSubscriptionTx(tx, &subs[i], plan, now, advanceResetTime); err != nil {
+		if err := resetUserSubscriptionTx(tx, &subs[i], plan, now, advanceResetTime, resetScope); err != nil {
 			return nil, err
 		}
 	}
-	return buildSubscriptionResetResult(plan, subs, advanceResetTime), nil
+	return buildSubscriptionResetResult(plan, subs, advanceResetTime, resetScope), nil
 }
 
-func adminResetPlanSubscriptionsTx(tx *gorm.DB, plan *SubscriptionPlan, now int64, advanceResetTime bool) (*SubscriptionResetResult, error) {
+func adminResetPlanSubscriptionsTx(tx *gorm.DB, plan *SubscriptionPlan, now int64, advanceResetTime bool, resetScope string) (*SubscriptionResetResult, error) {
 	if tx == nil || plan == nil {
 		return nil, errors.New("invalid reset args")
 	}
@@ -1071,25 +1671,34 @@ func adminResetPlanSubscriptionsTx(tx *gorm.DB, plan *SubscriptionPlan, now int6
 		return nil, err
 	}
 	for i := range subs {
-		if err := resetUserSubscriptionTx(tx, &subs[i], plan, now, advanceResetTime); err != nil {
+		if err := resetUserSubscriptionTx(tx, &subs[i], plan, now, advanceResetTime, resetScope); err != nil {
 			return nil, err
 		}
 	}
-	return buildSubscriptionResetResult(plan, subs, advanceResetTime), nil
+	return buildSubscriptionResetResult(plan, subs, advanceResetTime, resetScope), nil
 }
 
-func AdminResetUserSubscriptionsByPlan(userId int, planId int, advanceResetTime bool) (*SubscriptionResetResult, error) {
+func AdminResetUserSubscriptionsByPlan(userId int, planId int, advanceResetTime bool, resetScope ...string) (*SubscriptionResetResult, error) {
 	if userId <= 0 || planId <= 0 {
 		return nil, errors.New("invalid userId or planId")
 	}
+	scope := SubscriptionResetScopeBoth
+	if len(resetScope) > 0 {
+		scope = resetScope[0]
+	}
+	var err error
+	scope, err = NormalizeResetScope(scope)
+	if err != nil {
+		return nil, err
+	}
 	var result *SubscriptionResetResult
 	now := GetDBTimestamp()
-	err := DB.Transaction(func(tx *gorm.DB) error {
+	err = DB.Transaction(func(tx *gorm.DB) error {
 		plan, err := getSubscriptionPlanByIdTx(tx, planId)
 		if err != nil {
 			return err
 		}
-		result, err = adminResetUserSubscriptionsByPlanTx(tx, userId, plan, now, advanceResetTime)
+		result, err = adminResetUserSubscriptionsByPlanTx(tx, userId, plan, now, advanceResetTime, scope)
 		return err
 	})
 	if err != nil {
@@ -1098,18 +1707,27 @@ func AdminResetUserSubscriptionsByPlan(userId int, planId int, advanceResetTime 
 	return result, nil
 }
 
-func AdminResetPlanSubscriptions(planId int, advanceResetTime bool) (*SubscriptionResetResult, error) {
+func AdminResetPlanSubscriptions(planId int, advanceResetTime bool, resetScope ...string) (*SubscriptionResetResult, error) {
 	if planId <= 0 {
 		return nil, errors.New("invalid planId")
 	}
+	scope := SubscriptionResetScopeBoth
+	if len(resetScope) > 0 {
+		scope = resetScope[0]
+	}
+	var err error
+	scope, err = NormalizeResetScope(scope)
+	if err != nil {
+		return nil, err
+	}
 	var result *SubscriptionResetResult
 	now := GetDBTimestamp()
-	err := DB.Transaction(func(tx *gorm.DB) error {
+	err = DB.Transaction(func(tx *gorm.DB) error {
 		plan, err := getSubscriptionPlanByIdTx(tx, planId)
 		if err != nil {
 			return err
 		}
-		result, err = adminResetPlanSubscriptionsTx(tx, plan, now, advanceResetTime)
+		result, err = adminResetPlanSubscriptionsTx(tx, plan, now, advanceResetTime, scope)
 		return err
 	})
 	if err != nil {
@@ -1124,6 +1742,14 @@ type SubscriptionPreConsumeResult struct {
 	AmountTotal        int64
 	AmountUsedBefore   int64
 	AmountUsedAfter    int64
+	TokensTotal        int64
+	TokensUsedBefore   int64
+	TokensUsedAfter    int64
+	PreConsumedTokens  int64
+	// IncludeCacheTokens is the snapshot from the selected user subscription;
+	// text settlement uses it to decide whether cache tokens count toward the
+	// subscription token quota.
+	IncludeCacheTokens bool
 }
 
 // ExpireDueSubscriptions marks expired subscriptions and handles group downgrade.
@@ -1231,9 +1857,11 @@ type SubscriptionPreConsumeRecord struct {
 	UserId             int    `json:"user_id" gorm:"index"`
 	UserSubscriptionId int    `json:"user_subscription_id" gorm:"index"`
 	PreConsumed        int64  `json:"pre_consumed" gorm:"type:bigint;not null;default:0"`
-	Status             string `json:"status" gorm:"type:varchar(32);index"` // consumed/refunded
-	CreatedAt          int64  `json:"created_at" gorm:"bigint"`
-	UpdatedAt          int64  `json:"updated_at" gorm:"bigint;index"`
+	// Token amount pre-consumed (for idempotent token tracking)
+	PreConsumedTokens int64  `json:"pre_consumed_tokens" gorm:"type:bigint;default:0"`
+	Status            string `json:"status" gorm:"type:varchar(32);index"` // consumed/refunded
+	CreatedAt         int64  `json:"created_at" gorm:"bigint"`
+	UpdatedAt         int64  `json:"updated_at" gorm:"bigint;index"`
 }
 
 func (r *SubscriptionPreConsumeRecord) BeforeCreate(tx *gorm.DB) error {
@@ -1258,17 +1886,18 @@ func maybeResetUserSubscriptionWithPlanTx(tx *gorm.DB, sub *UserSubscription, pl
 	if NormalizeResetPeriod(plan.QuotaResetPeriod) == SubscriptionResetNever {
 		return nil
 	}
+	effectivePlan := effectiveResetPlan(plan, sub)
 	baseUnix := sub.LastResetTime
 	if baseUnix <= 0 {
 		baseUnix = sub.StartTime
 	}
 	base := time.Unix(baseUnix, 0)
-	next := calcNextResetTime(base, plan, sub.EndTime)
+	next := calcNextResetTime(base, &effectivePlan, sub.EndTime)
 	advanced := false
 	for next > 0 && next <= now {
 		advanced = true
 		base = time.Unix(next, 0)
-		next = calcNextResetTime(base, plan, sub.EndTime)
+		next = calcNextResetTime(base, &effectivePlan, sub.EndTime)
 	}
 	if !advanced {
 		if sub.NextResetTime == 0 && next > 0 {
@@ -1279,13 +1908,98 @@ func maybeResetUserSubscriptionWithPlanTx(tx *gorm.DB, sub *UserSubscription, pl
 		return nil
 	}
 	sub.AmountUsed = 0
+	// Clear admin-added temporary quota on automatic reset
+	if sub.AdminAmountExtra > 0 {
+		sub.AmountTotal -= sub.AdminAmountExtra
+		if sub.AmountTotal < 0 {
+			sub.AmountTotal = 0
+		}
+		sub.AdminAmountExtra = 0
+	}
 	sub.LastResetTime = base.Unix()
 	sub.NextResetTime = next
 	return tx.Save(sub).Error
 }
 
+// maybeResetUserSubscriptionTokensWithPlanTx resets the token quota usage when
+// TokenNextResetTime has passed. Token reset is independent from quota reset and
+// may use a different period. No-op when the subscription has no token limit or
+// no token reset schedule.
+func maybeResetUserSubscriptionTokensWithPlanTx(tx *gorm.DB, sub *UserSubscription, plan *SubscriptionPlan, now int64) error {
+	if tx == nil || sub == nil || plan == nil {
+		return errors.New("invalid token reset args")
+	}
+	// Nothing to reset when there is no token limit.
+	if sub.TokensTotal <= 0 {
+		return nil
+	}
+	effectivePlan := effectiveResetPlan(plan, sub)
+	// Determine the effective token reset period.
+	tokenPeriod := strings.TrimSpace(effectivePlan.TokenResetPeriod)
+	if tokenPeriod == "" {
+		tokenPeriod = NormalizeResetPeriod(effectivePlan.QuotaResetPeriod)
+	} else {
+		tokenPeriod = NormalizeResetPeriod(tokenPeriod)
+	}
+	if tokenPeriod == SubscriptionResetNever {
+		return nil
+	}
+	// Not yet due. But verify the next reset time matches the current plan's
+	// token reset period — if the plan was updated after subscription creation,
+	// the stored token_next_reset_time may be stale (computed from the old period).
+	if sub.TokenNextResetTime > 0 && sub.TokenNextResetTime > now {
+		// Recalculate what the next reset should be based on the current plan
+		expectedBase := sub.TokenLastResetTime
+		if expectedBase <= 0 {
+			expectedBase = sub.StartTime
+		}
+		expectedNext := calcNextTokenResetTime(time.Unix(expectedBase, 0), &effectivePlan, sub.EndTime)
+		if expectedNext > 0 && expectedNext != sub.TokenNextResetTime {
+			// Plan's token reset period changed since last calculation — update
+			sub.TokenNextResetTime = expectedNext
+			return tx.Save(sub).Error
+		}
+		return nil
+	}
+	baseUnix := sub.TokenLastResetTime
+	if baseUnix <= 0 {
+		baseUnix = sub.StartTime
+	}
+	base := time.Unix(baseUnix, 0)
+	next := calcNextTokenResetTime(base, &effectivePlan, sub.EndTime)
+	advanced := false
+	for next > 0 && next <= now {
+		advanced = true
+		base = time.Unix(next, 0)
+		next = calcNextTokenResetTime(base, &effectivePlan, sub.EndTime)
+	}
+	if !advanced {
+		if sub.TokenNextResetTime == 0 && next > 0 {
+			sub.TokenNextResetTime = next
+			sub.TokenLastResetTime = base.Unix()
+			return tx.Save(sub).Error
+		}
+		return nil
+	}
+	sub.TokensUsed = 0
+	// Clear admin-added temporary token quota on automatic reset
+	if sub.AdminTokensExtra > 0 {
+		sub.TokensTotal -= sub.AdminTokensExtra
+		if sub.TokensTotal < 0 {
+			sub.TokensTotal = 0
+		}
+		sub.AdminTokensExtra = 0
+	}
+	sub.TokenLastResetTime = base.Unix()
+	sub.TokenNextResetTime = next
+	return tx.Save(sub).Error
+}
+
 // PreConsumeUserSubscription pre-consumes from any active subscription total quota.
-func PreConsumeUserSubscription(requestId string, userId int, modelName string, quotaType int, amount int64) (*SubscriptionPreConsumeResult, error) {
+// tokenAmount is the estimated token consumption for this request (0 disables token checks).
+// planId > 0 restricts candidate subscriptions to those with the given plan_id (API key binding);
+// planId == 0 means no plan filter.
+func PreConsumeUserSubscription(requestId string, userId int, modelName string, quotaType int, amount int64, tokenAmount int64, planId int) (*SubscriptionPreConsumeResult, error) {
 	if userId <= 0 {
 		return nil, errors.New("invalid userId")
 	}
@@ -1294,6 +2008,9 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 	}
 	if amount <= 0 {
 		return nil, errors.New("amount must be > 0")
+	}
+	if tokenAmount < 0 {
+		tokenAmount = 0
 	}
 	now := GetDBTimestamp()
 
@@ -1318,12 +2035,21 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 			returnValue.AmountTotal = sub.AmountTotal
 			returnValue.AmountUsedBefore = sub.AmountUsed
 			returnValue.AmountUsedAfter = sub.AmountUsed
+			returnValue.TokensTotal = sub.TokensTotal
+			returnValue.TokensUsedBefore = sub.TokensUsed
+			returnValue.TokensUsedAfter = sub.TokensUsed
+			returnValue.PreConsumedTokens = existing.PreConsumedTokens
+			returnValue.IncludeCacheTokens = sub.IncludeCacheTokens
 			return nil
 		}
 
 		var subs []UserSubscription
-		if err := lockForUpdate(tx).
-			Where("user_id = ? AND status = ? AND end_time > ?", userId, "active", now).
+		subQuery := lockForUpdate(tx).
+			Where("user_id = ? AND status = ? AND end_time > ?", userId, "active", now)
+		if planId > 0 {
+			subQuery = subQuery.Where("plan_id = ?", planId)
+		}
+		if err := subQuery.
 			Order("end_time asc, id asc").
 			Find(&subs).Error; err != nil {
 			return errors.New("no active subscription")
@@ -1340,10 +2066,28 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 			if err := maybeResetUserSubscriptionWithPlanTx(tx, &sub, plan, now); err != nil {
 				return err
 			}
+			// Also check token quota reset independently.
+			if err := maybeResetUserSubscriptionTokensWithPlanTx(tx, &sub, plan, now); err != nil {
+				return err
+			}
 			usedBefore := sub.AmountUsed
-			if sub.AmountTotal > 0 {
-				remain := sub.AmountTotal - usedBefore
-				if remain < amount {
+			// Quota (money) check: only blocks when the subscription has a quota
+			// limit AND no token limit. When a token limit exists, tokens are the
+			// primary billing unit — the money quota is tracked but does not block.
+			// Only block when quota is fully used (used >= total), not when the
+			// pre-consume estimate would exceed remaining — the last request should
+			// still be allowed.
+			if sub.AmountTotal > 0 && sub.TokensTotal == 0 {
+				if usedBefore >= sub.AmountTotal {
+					continue
+				}
+			}
+			// Token quota check: only block when tokens are fully used (used >= total).
+			// As long as there is remaining quota, allow the request even if the
+			// pre-consume estimate exceeds it — the settle path will clamp to total.
+			tokensUsedBefore := sub.TokensUsed
+			if sub.TokensTotal > 0 {
+				if tokensUsedBefore >= sub.TokensTotal {
 					continue
 				}
 			}
@@ -1352,6 +2096,7 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 				UserId:             userId,
 				UserSubscriptionId: sub.Id,
 				PreConsumed:        amount,
+				PreConsumedTokens:  tokenAmount,
 				Status:             "consumed",
 			}
 			if err := tx.Create(record).Error; err != nil {
@@ -1365,11 +2110,19 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 					returnValue.AmountTotal = sub.AmountTotal
 					returnValue.AmountUsedBefore = sub.AmountUsed
 					returnValue.AmountUsedAfter = sub.AmountUsed
+					returnValue.TokensTotal = sub.TokensTotal
+					returnValue.TokensUsedBefore = sub.TokensUsed
+					returnValue.TokensUsedAfter = sub.TokensUsed
+					returnValue.PreConsumedTokens = dup.PreConsumedTokens
+					returnValue.IncludeCacheTokens = sub.IncludeCacheTokens
 					return nil
 				}
 				return err
 			}
 			sub.AmountUsed += amount
+			if tokenAmount > 0 {
+				sub.TokensUsed += tokenAmount
+			}
 			if err := tx.Save(&sub).Error; err != nil {
 				return err
 			}
@@ -1378,6 +2131,11 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 			returnValue.AmountTotal = sub.AmountTotal
 			returnValue.AmountUsedBefore = usedBefore
 			returnValue.AmountUsedAfter = sub.AmountUsed
+			returnValue.TokensTotal = sub.TokensTotal
+			returnValue.TokensUsedBefore = tokensUsedBefore
+			returnValue.TokensUsedAfter = sub.TokensUsed
+			returnValue.PreConsumedTokens = tokenAmount
+			returnValue.IncludeCacheTokens = sub.IncludeCacheTokens
 			return nil
 		}
 		return fmt.Errorf("subscription quota insufficient, need=%d", amount)
@@ -1402,11 +2160,12 @@ func RefundSubscriptionPreConsume(requestId string) error {
 		if record.Status == "refunded" {
 			return nil
 		}
-		if record.PreConsumed <= 0 {
+		if record.PreConsumed <= 0 && record.PreConsumedTokens <= 0 {
 			record.Status = "refunded"
 			return tx.Save(&record).Error
 		}
-		if err := PostConsumeUserSubscriptionDelta(record.UserSubscriptionId, -record.PreConsumed); err != nil {
+		// Refund both quota amount and pre-consumed tokens (tokenDelta is negative).
+		if err := PostConsumeUserSubscriptionDelta(record.UserSubscriptionId, -record.PreConsumed, -record.PreConsumedTokens); err != nil {
 			return err
 		}
 		record.Status = "refunded"
@@ -1414,14 +2173,20 @@ func RefundSubscriptionPreConsume(requestId string) error {
 	})
 }
 
-// ResetDueSubscriptions resets subscriptions whose next_reset_time has passed.
+// ResetDueSubscriptions resets subscriptions whose next_reset_time or
+// token_next_reset_time has passed. Quota and token resets are independent and
+// may use different periods; both are checked within the same transaction.
 func ResetDueSubscriptions(limit int) (int, error) {
 	if limit <= 0 {
 		limit = 200
 	}
 	now := GetDBTimestamp()
 	var subs []UserSubscription
-	if err := DB.Where("next_reset_time > 0 AND next_reset_time <= ? AND status = ?", now, "active").
+	// Match subscriptions whose quota OR token reset time is due.
+	if err := DB.Where(
+		"status = ? AND ((next_reset_time > 0 AND next_reset_time <= ?) OR (token_next_reset_time > 0 AND token_next_reset_time <= ?))",
+		"active", now, now,
+	).
 		Order("next_reset_time asc").
 		Limit(limit).
 		Find(&subs).Error; err != nil {
@@ -1440,14 +2205,28 @@ func ResetDueSubscriptions(limit int) (int, error) {
 		err = DB.Transaction(func(tx *gorm.DB) error {
 			var locked UserSubscription
 			if err := lockForUpdate(tx).
-				Where("id = ? AND next_reset_time > 0 AND next_reset_time <= ?", subCopy.Id, now).
+				Where("id = ? AND status = ?", subCopy.Id, "active").
 				First(&locked).Error; err != nil {
 				return nil
 			}
-			if err := maybeResetUserSubscriptionWithPlanTx(tx, &locked, plan, now); err != nil {
-				return err
+			changed := false
+			// Quota reset
+			if locked.NextResetTime > 0 && locked.NextResetTime <= now {
+				if err := maybeResetUserSubscriptionWithPlanTx(tx, &locked, plan, now); err != nil {
+					return err
+				}
+				changed = true
 			}
-			resetCount++
+			// Token reset (independent)
+			if locked.TokenNextResetTime > 0 && locked.TokenNextResetTime <= now {
+				if err := maybeResetUserSubscriptionTokensWithPlanTx(tx, &locked, plan, now); err != nil {
+					return err
+				}
+				changed = true
+			}
+			if changed {
+				resetCount++
+			}
 			return nil
 		})
 		if err != nil {
@@ -1497,11 +2276,12 @@ func GetSubscriptionPlanInfoByUserSubscriptionId(userSubscriptionId int) (*Subsc
 }
 
 // Update subscription used amount by delta (positive consume more, negative refund).
-func PostConsumeUserSubscriptionDelta(userSubscriptionId int, delta int64) error {
+// tokenDelta adjusts the token usage in the same transaction (positive consume more, negative refund).
+func PostConsumeUserSubscriptionDelta(userSubscriptionId int, delta int64, tokenDelta int64) error {
 	if userSubscriptionId <= 0 {
 		return errors.New("invalid userSubscriptionId")
 	}
-	if delta == 0 {
+	if delta == 0 && tokenDelta == 0 {
 		return nil
 	}
 	return DB.Transaction(func(tx *gorm.DB) error {
@@ -1515,10 +2295,23 @@ func PostConsumeUserSubscriptionDelta(userSubscriptionId int, delta int64) error
 		if newUsed < 0 {
 			newUsed = 0
 		}
+		// Clamp to AmountTotal instead of erroring, so users can use their
+		// full quota without being rejected at the last request.
 		if sub.AmountTotal > 0 && newUsed > sub.AmountTotal {
-			return fmt.Errorf("subscription used exceeds total, used=%d total=%d", newUsed, sub.AmountTotal)
+			newUsed = sub.AmountTotal
 		}
 		sub.AmountUsed = newUsed
+		// Adjust token usage (independent from quota amount)
+		if tokenDelta != 0 {
+			newTokensUsed := sub.TokensUsed + tokenDelta
+			if newTokensUsed < 0 {
+				newTokensUsed = 0
+			}
+			if sub.TokensTotal > 0 && newTokensUsed > sub.TokensTotal {
+				newTokensUsed = sub.TokensTotal
+			}
+			sub.TokensUsed = newTokensUsed
+		}
 		return tx.Save(&sub).Error
 	})
 }

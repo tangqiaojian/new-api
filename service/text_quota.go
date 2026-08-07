@@ -394,6 +394,29 @@ func usageSemanticFromUsage(relayInfo *relaycommon.RelayInfo, usage *dto.Usage) 
 	return "openai"
 }
 
+// subscriptionTokenQuotaUsage computes how many tokens to charge against a
+// subscription's token quota for one request.
+//
+// Formula matches dashboard model token stats (usedata_daily):
+//
+//	total = prompt + completion
+//	when includeCache: total += cache_tokens (from usage / log other.cache_tokens)
+//
+// Do NOT special-case OpenAI "prompt already includes cache": the product's
+// "include cache" toggle always means "add cache_tokens on top of prompt+completion",
+// same as the daily/model analytics panels. Providers may report prompt and cache
+// with overlapping or separate semantics; we follow the logged fields consistently.
+func subscriptionTokenQuotaUsage(promptTokens, completionTokens, cacheTokens int, includeCache bool) int64 {
+	actual := int64(promptTokens) + int64(completionTokens)
+	if includeCache && cacheTokens > 0 {
+		actual += int64(cacheTokens)
+	}
+	if actual < 0 {
+		return 0
+	}
+	return actual
+}
+
 func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usage *dto.Usage, extraContent []string) {
 	originUsage := usage
 	billingUsage := effectiveBillingUsage(usage)
@@ -448,8 +471,30 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 		model.UpdateChannelUsedQuota(relayInfo.ChannelId, summary.Quota)
 	}
 
+	// Subscription token quota tracking is performed via the channel pool
+	// settle call below for channel-bound traffic. Per-subscription token
+	// accounting is wired through BillingSession once relay_info token
+	// snapshot fields are introduced; for now we mirror the dashboard's
+	// "include cache" semantics (prompt + completion + optional cache) when
+	// reporting channel pool usage.
+	cacheForSub := summary.CacheTokens
+	if billingUsage != nil && billingUsage.PromptTokensDetails.CachedTokens > 0 {
+		cacheForSub = billingUsage.PromptTokensDetails.CachedTokens
+	}
+	promptForSub := summary.PromptTokens
+	completionForSub := summary.CompletionTokens
+	// Prefer raw usage columns so token quota tracks log prompt/completion fields.
+	if billingUsage != nil {
+		if billingUsage.PromptTokens > 0 || billingUsage.CompletionTokens > 0 {
+			promptForSub = billingUsage.PromptTokens
+			completionForSub = billingUsage.CompletionTokens
+		}
+	}
+
 	if err := SettleBilling(ctx, relayInfo, summary.Quota); err != nil {
 		logger.LogError(ctx, "error settling billing: "+err.Error())
+	} else if err := SettleChannelPoolActualUsage(ctx, relayInfo.ChannelId, relayInfo.RequestId, summary.Quota, promptForSub, completionForSub, cacheForSub); err != nil {
+		logger.LogError(ctx, fmt.Sprintf("error settling channel pool usage (channel=%d, request=%s): %s", relayInfo.ChannelId, relayInfo.RequestId, err.Error()))
 	}
 
 	logModel := summary.ModelName

@@ -283,6 +283,9 @@ func migrateDB() error {
 		&Checkin{},
 		&SubscriptionOrder{},
 		&UserSubscription{},
+		&ChannelSubscriptionPool{},
+		&ChannelSubscriptionPoolChannel{},
+		&ChannelPoolSettlement{},
 		&SubscriptionPreConsumeRecord{},
 		&CustomOAuthProvider{},
 		&UserOAuthBinding{},
@@ -311,7 +314,7 @@ func migrateDB() error {
 			return err
 		}
 	}
-	return nil
+	return backfillSubscriptionPlanTypeUser()
 }
 
 func migrateDBFast() error {
@@ -346,6 +349,9 @@ func migrateDBFast() error {
 		{&Checkin{}, "Checkin"},
 		{&SubscriptionOrder{}, "SubscriptionOrder"},
 		{&UserSubscription{}, "UserSubscription"},
+		{&ChannelSubscriptionPool{}, "ChannelSubscriptionPool"},
+		{&ChannelSubscriptionPoolChannel{}, "ChannelSubscriptionPoolChannel"},
+		{&ChannelPoolSettlement{}, "ChannelPoolSettlement"},
 		{&SubscriptionPreConsumeRecord{}, "SubscriptionPreConsumeRecord"},
 		{&CustomOAuthProvider{}, "CustomOAuthProvider"},
 		{&UserOAuthBinding{}, "UserOAuthBinding"},
@@ -392,8 +398,24 @@ func migrateDBFast() error {
 			return err
 		}
 	}
+	if err := backfillSubscriptionPlanTypeUser(); err != nil {
+		return err
+	}
 	common.SysLog("database migrated")
 	return nil
+}
+
+// backfillSubscriptionPlanTypeUser sets empty legacy plan_type rows to "user".
+func backfillSubscriptionPlanTypeUser() error {
+	if !DB.Migrator().HasTable(&SubscriptionPlan{}) {
+		return nil
+	}
+	if !DB.Migrator().HasColumn(&SubscriptionPlan{}, "plan_type") {
+		return nil
+	}
+	return DB.Model(&SubscriptionPlan{}).
+		Where("plan_type IS NULL OR plan_type = ''").
+		Update("plan_type", SubscriptionPlanTypeUser).Error
 }
 
 func migrateLOGDB() error {
@@ -525,6 +547,15 @@ func ensureSubscriptionPlanTableSQLite() error {
 ` + "`total_amount`" + ` bigint NOT NULL DEFAULT 0,
 ` + "`quota_reset_period`" + ` varchar(16) DEFAULT 'never',
 ` + "`quota_reset_custom_seconds`" + ` bigint DEFAULT 0,
+` + "`total_tokens`" + ` bigint NOT NULL DEFAULT 0,
+` + "`include_cache_tokens`" + ` numeric DEFAULT 0,
+` + "`token_reset_period`" + ` varchar(16) DEFAULT '',
+` + "`token_reset_custom_seconds`" + ` bigint DEFAULT 0,
+` + "`plan_type`" + ` varchar(16) DEFAULT 'user',
+` + "`quota_reset_anchor`" + ` bigint,
+` + "`quota_reset_timezone`" + ` varchar(64) DEFAULT '',
+` + "`token_reset_anchor`" + ` bigint,
+` + "`token_reset_timezone`" + ` varchar(64) DEFAULT '',
 ` + "`created_at`" + ` bigint,
 ` + "`updated_at`" + ` bigint,
 PRIMARY KEY (` + "`id`" + `)
@@ -562,6 +593,15 @@ PRIMARY KEY (` + "`id`" + `)
 		{Name: "total_amount", DDL: "`total_amount` bigint NOT NULL DEFAULT 0"},
 		{Name: "quota_reset_period", DDL: "`quota_reset_period` varchar(16) DEFAULT 'never'"},
 		{Name: "quota_reset_custom_seconds", DDL: "`quota_reset_custom_seconds` bigint DEFAULT 0"},
+		{Name: "total_tokens", DDL: "`total_tokens` bigint NOT NULL DEFAULT 0"},
+		{Name: "include_cache_tokens", DDL: "`include_cache_tokens` numeric DEFAULT 0"},
+		{Name: "token_reset_period", DDL: "`token_reset_period` varchar(16) DEFAULT ''"},
+		{Name: "token_reset_custom_seconds", DDL: "`token_reset_custom_seconds` bigint DEFAULT 0"},
+		{Name: "plan_type", DDL: "`plan_type` varchar(16) DEFAULT 'user'"},
+		{Name: "quota_reset_anchor", DDL: "`quota_reset_anchor` bigint"},
+		{Name: "quota_reset_timezone", DDL: "`quota_reset_timezone` varchar(64) DEFAULT ''"},
+		{Name: "token_reset_anchor", DDL: "`token_reset_anchor` bigint"},
+		{Name: "token_reset_timezone", DDL: "`token_reset_timezone` varchar(64) DEFAULT ''"},
 		{Name: "created_at", DDL: "`created_at` bigint"},
 		{Name: "updated_at", DDL: "`updated_at` bigint"},
 	}

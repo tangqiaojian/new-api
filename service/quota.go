@@ -230,9 +230,14 @@ func PostWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, mod
 
 	if err := SettleBilling(ctx, relayInfo, quota); err != nil {
 		logger.LogError(ctx, "error settling billing: "+err.Error())
+	} else if err := SettleChannelPoolActualUsage(ctx, relayInfo.ChannelId, relayInfo.RequestId, quota, usage.InputTokens, usage.OutputTokens, 0); err != nil {
+		logger.LogError(ctx, fmt.Sprintf("error settling channel pool usage (channel=%d, request=%s): %s", relayInfo.ChannelId, relayInfo.RequestId, err.Error()))
 	}
 
-	logModel := modelName
+	logModel := relayInfo.OriginModelName
+	if logModel == "" {
+		logModel = modelName
+	}
 	if extraContent != "" {
 		logContent += ", " + extraContent
 	}
@@ -353,6 +358,8 @@ func PostAudioConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, u
 
 	if err := SettleBilling(ctx, relayInfo, quota); err != nil {
 		logger.LogError(ctx, "error settling billing: "+err.Error())
+	} else if err := SettleChannelPoolActualUsage(ctx, relayInfo.ChannelId, relayInfo.RequestId, quota, usage.PromptTokens, usage.CompletionTokens, usage.PromptTokensDetails.CachedTokens); err != nil {
+		logger.LogError(ctx, fmt.Sprintf("error settling channel pool usage (channel=%d, request=%s): %s", relayInfo.ChannelId, relayInfo.RequestId, err.Error()))
 	}
 
 	logModel := relayInfo.OriginModelName
@@ -417,7 +424,7 @@ func PostConsumeQuota(relayInfo *relaycommon.RelayInfo, quota int, preConsumedQu
 		}
 		delta := int64(quota)
 		if delta != 0 {
-			if err := model.PostConsumeUserSubscriptionDelta(relayInfo.SubscriptionId, delta); err != nil {
+			if err := model.PostConsumeUserSubscriptionDelta(relayInfo.SubscriptionId, delta, 0); err != nil {
 				return err
 			}
 			relayInfo.SubscriptionPostDelta += delta
