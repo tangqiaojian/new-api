@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
@@ -13,6 +14,7 @@ import (
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 
 	"github.com/bytedance/gopkg/util/gopool"
+	"github.com/samber/lo"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -92,10 +94,16 @@ type User struct {
 	TelegramId       string                     `json:"telegram_id" gorm:"column:telegram_id;index"`
 	VerificationCode string                     `json:"verification_code" gorm:"-:all"`                         // this field is only for Email verification, don't save it to database!
 	AccessToken      *string                    `json:"-" gorm:"type:char(32);column:access_token;uniqueIndex"` // this token is for system management
-	Quota            int                        `json:"quota" gorm:"type:int;default:0"`
-	UsedQuota        int                        `json:"used_quota" gorm:"type:int;default:0;column:used_quota"` // used quota
-	RequestCount     int                        `json:"request_count" gorm:"type:int;default:0;"`               // request number
-	Group            string                     `json:"group" gorm:"type:varchar(64);default:'default'"`
+	Quota              int                        `json:"quota" gorm:"type:int;default:0"`
+	UsedQuota          int                        `json:"used_quota" gorm:"type:int;default:0;column:used_quota"` // used quota
+	RequestCount       int                        `json:"request_count" gorm:"type:int;default:0;"`                               // request number
+	WeeklyQuota        int                        `json:"weekly_quota" gorm:"type:int;default:0;column:weekly_quota"`             // 周额度上限，0表示不限
+	WeeklyQuotaUsed    int                        `json:"weekly_quota_used" gorm:"type:int;default:0;column:weekly_quota_used"`   // 本周已用周额度
+	WeeklyQuotaResetAt int64                      `json:"weekly_quota_reset_at" gorm:"default:0;column:weekly_quota_reset_at"`    // 下次重置时间(unix timestamp)
+	RateLimitTotal     int                        `json:"rate_limit_total" gorm:"type:int;default:0;column:rate_limit_total"`     // 每分钟总请求数限制，0=按group默认
+	RateLimitSuccess   int                        `json:"rate_limit_success" gorm:"type:int;default:0;column:rate_limit_success"` // 每分钟成功请求数限制，0=按group默认
+	Group              string                     `json:"group" gorm:"type:varchar(64);default:'default'"`
+	Groups             string                     `json:"groups" gorm:"type:varchar(512);default:''"` // 逗号分隔的多个分组，为空时回退到 Group
 	AffCode          string                     `json:"aff_code" gorm:"type:varchar(32);column:aff_code;uniqueIndex"`
 	AffCount         int                        `json:"aff_count" gorm:"type:int;default:0;column:aff_count"`
 	AffQuota         int                        `json:"aff_quota" gorm:"type:int;default:0;column:aff_quota"`           // 邀请剩余额度
@@ -114,16 +122,22 @@ type User struct {
 
 func (user *User) ToBaseUser() *UserBase {
 	cache := &UserBase{
-		Id:          user.Id,
-		Group:       user.Group,
-		Quota:       user.Quota,
-		Status:      user.Status,
-		Role:        user.Role,
-		Username:    user.Username,
-		Setting:     user.Setting,
-		Email:       user.Email,
-		AuthVersion: user.AuthVersion,
-		CacheSchema: userCacheSchemaVersion,
+		Id:                 user.Id,
+		Group:              user.Group,
+		Groups:             user.Groups,
+		Quota:              user.Quota,
+		Status:             user.Status,
+		Role:               user.Role,
+		Username:           user.Username,
+		Setting:            user.Setting,
+		Email:              user.Email,
+		AuthVersion:        user.AuthVersion,
+		CacheSchema:        userCacheSchemaVersion,
+		WeeklyQuota:        user.WeeklyQuota,
+		WeeklyQuotaUsed:    user.WeeklyQuotaUsed,
+		WeeklyQuotaResetAt: user.WeeklyQuotaResetAt,
+		RateLimitTotal:     user.RateLimitTotal,
+		RateLimitSuccess:   user.RateLimitSuccess,
 	}
 	return cache
 }
@@ -505,6 +519,26 @@ func HardDeleteUserById(id int) error {
 	return user.HardDelete()
 }
 
+// BatchHardDeleteUsers hard-deletes a batch of users along with their OAuth
+// bindings. Callers are responsible for authorization (role/self checks);
+// each chunk is bounded to keep MySQL/SQLite IN-list sizes reasonable.
+func BatchHardDeleteUsers(ids []int) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	return DB.Transaction(func(tx *gorm.DB) error {
+		for _, chunk := range lo.Chunk(ids, 200) {
+			if err := tx.Where("user_id IN ?", chunk).Delete(&UserOAuthBinding{}).Error; err != nil {
+				return err
+			}
+			if err := tx.Unscoped().Where("id IN ?", chunk).Delete(&User{}).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
 func inviteUser(inviterId int) error {
 	result := DB.Model(&User{}).Where("id = ?", inviterId).Updates(map[string]interface{}{
 		"aff_count":   gorm.Expr("aff_count + ?", 1),
@@ -817,6 +851,7 @@ func (user *User) EditWithTx(tx *gorm.DB, updatePassword bool) error {
 		"username":     newUser.Username,
 		"display_name": newUser.DisplayName,
 		"group":        newUser.Group,
+		"groups":       newUser.Groups,
 		"remark":       newUser.Remark,
 	}
 	if updatePassword {
@@ -827,7 +862,13 @@ func (user *User) EditWithTx(tx *gorm.DB, updatePassword bool) error {
 	if err = tx.First(&current, user.Id).Error; err != nil {
 		return err
 	}
-	authChanged := (updatePassword && current.Password != newUser.Password) || current.Group != newUser.Group
+	// Auth-sensitive changes bump the auth version so existing dashboard
+	// sessions are revoked. Group and Groups both gate data access (channel
+	// pools, model lists, billing ratios), so a Groups-only change must also
+	// bump the version.
+	authChanged := (updatePassword && current.Password != newUser.Password) ||
+		current.Group != newUser.Group ||
+		current.Groups != newUser.Groups
 	if authChanged {
 		newUser.AuthVersion, err = IncrementUserAuthVersionWithTx(tx, user.Id)
 		if err != nil {
@@ -1220,6 +1261,47 @@ func GetUserGroup(id int, fromDB bool) (group string, err error) {
 	return group, nil
 }
 
+// GetGroups 解析用户的 Groups 字段（逗号分隔），去空白、去空、去重。
+// 若 Groups 为空则回退到单个 Group 字段，保证向后兼容。
+func (user *User) GetGroups() []string {
+	return parseUserGroups(user.Groups, user.Group)
+}
+
+// GetGroups 解析 UserBase 缓存中的多分组。
+func (user *UserBase) GetGroups() []string {
+	return parseUserGroups(user.Groups, user.Group)
+}
+
+// HasExplicitGroups 报告用户是否被显式分配了多分组（Groups 字段非空）。
+// 用于区分"严格白名单"与"回退到单组"两种语义。
+func (user *User) HasExplicitGroups() bool {
+	return strings.TrimSpace(user.Groups) != ""
+}
+
+// HasExplicitGroups 报告缓存中的用户是否被显式分配了多分组。
+func (user *UserBase) HasExplicitGroups() bool {
+	return strings.TrimSpace(user.Groups) != ""
+}
+
+// parseUserGroups 把逗号分隔的 groups 字符串解析为去重后的分组切片。
+// 若解析结果为空，则回退到单个 fallbackGroup。
+func parseUserGroups(groups string, fallbackGroup string) []string {
+	var result []string
+	seen := make(map[string]bool)
+	for _, g := range strings.Split(groups, ",") {
+		g = strings.TrimSpace(g)
+		if g == "" || seen[g] {
+			continue
+		}
+		seen[g] = true
+		result = append(result, g)
+	}
+	if len(result) == 0 && fallbackGroup != "" {
+		result = []string{fallbackGroup}
+	}
+	return result
+}
+
 // GetUserSetting gets setting from Redis first, falls back to DB if needed
 func GetUserSetting(id int, fromDB bool) (settingMap dto.UserSetting, err error) {
 	var setting string
@@ -1446,4 +1528,101 @@ func RootUserExists() bool {
 		return false
 	}
 	return true
+}
+
+// CalcNextWeeklyResetTime 计算下一个周一 00:00 的 unix 时间戳。
+func CalcNextWeeklyResetTime() int64 {
+	now := time.Now()
+	weekday := now.Weekday()
+	// Sunday = 0, Monday = 1, ..., Saturday = 6
+	daysUntilMonday := int(time.Monday - weekday)
+	if daysUntilMonday <= 0 {
+		daysUntilMonday += 7
+	}
+	nextMonday := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()).AddDate(0, 0, daysUntilMonday)
+	return nextMonday.Unix()
+}
+
+// CheckAndResetWeeklyQuota 检查用户的周额度是否需要重置，如果需要则重置。
+// 返回 (weeklyQuotaLimit, weeklyQuotaUsed, error)。
+func CheckAndResetWeeklyQuota(userId int) (int, int, error) {
+	var user User
+	if err := DB.Where("id = ?", userId).First(&user).Error; err != nil {
+		return 0, 0, err
+	}
+	// 周额度上限为 0 表示不限制
+	if user.WeeklyQuota <= 0 {
+		return 0, 0, nil
+	}
+	now := time.Now().Unix()
+	if user.WeeklyQuotaResetAt <= 0 || now >= user.WeeklyQuotaResetAt {
+		// 需要重置
+		nextReset := CalcNextWeeklyResetTime()
+		if err := DB.Model(&User{}).Where("id = ?", userId).Updates(map[string]interface{}{
+			"weekly_quota_used":     0,
+			"weekly_quota_reset_at": nextReset,
+		}).Error; err != nil {
+			return user.WeeklyQuota, user.WeeklyQuotaUsed, err
+		}
+		return user.WeeklyQuota, 0, nil
+	}
+	return user.WeeklyQuota, user.WeeklyQuotaUsed, nil
+}
+
+// IncreaseWeeklyQuotaUsed 增加用户周额度已用量。如果超过上限则返回错误。
+func IncreaseWeeklyQuotaUsed(userId int, quota int) error {
+	if quota <= 0 {
+		return nil
+	}
+	// 先检查并重置（如果需要）
+	limit, used, err := CheckAndResetWeeklyQuota(userId)
+	if err != nil {
+		return err
+	}
+	if limit <= 0 {
+		// 不限制周额度
+		return DB.Model(&User{}).Where("id = ?", userId).
+			Update("weekly_quota_used", gorm.Expr("weekly_quota_used + ?", quota)).Error
+	}
+	if used+quota > limit {
+		return fmt.Errorf("周额度不足, 本周已用: %s, 周额度上限: %s, 本次需要: %s",
+			logger.LogQuota(used), logger.LogQuota(limit), logger.LogQuota(quota))
+	}
+	return DB.Model(&User{}).Where("id = ? AND weekly_quota_used + ? <= weekly_quota", userId, quota).
+		Update("weekly_quota_used", gorm.Expr("weekly_quota_used + ?", quota)).Error
+}
+
+// SetUserWeeklyQuota 设置用户的周额度上限（管理员操作）。
+func SetUserWeeklyQuota(userId int, weeklyQuota int) error {
+	nextReset := CalcNextWeeklyResetTime()
+	return DB.Model(&User{}).Where("id = ?", userId).Updates(map[string]interface{}{
+		"weekly_quota":          weeklyQuota,
+		"weekly_quota_used":     0,
+		"weekly_quota_reset_at": nextReset,
+	}).Error
+}
+
+// SetUserRateLimit 设置用户级每分钟请求限制（0 表示按 group 默认）。
+func SetUserRateLimit(userId int, total int, success int) error {
+	return DB.Model(&User{}).Where("id = ?", userId).Updates(map[string]interface{}{
+		"rate_limit_total":   total,
+		"rate_limit_success": success,
+	}).Error
+}
+
+// ResetDueWeeklyQuotas 批量重置到期用户的周额度。返回重置的用户数。
+func ResetDueWeeklyQuotas(batchSize int) (int, error) {
+	now := time.Now().Unix()
+	nextReset := CalcNextWeeklyResetTime()
+	result := DB.Model(&User{}).
+		Where("weekly_quota > 0 AND weekly_quota_reset_at > 0 AND weekly_quota_reset_at <= ?", now).
+		Limit(batchSize).
+		Updates(map[string]interface{}{
+			"weekly_quota_used":     0,
+			"weekly_quota_reset_at": nextReset,
+		})
+	if result.Error != nil {
+		return 0, result.Error
+	}
+	return int(result.RowsAffected), nil
 }

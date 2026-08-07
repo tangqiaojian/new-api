@@ -20,6 +20,7 @@ const (
 	ContextKeyTokenModelLimit        ContextKey = "token_model_limit"
 	ContextKeyTokenCrossGroupRetry   ContextKey = "token_cross_group_retry"
 	ContextKeyTokenAutoGroups        ContextKey = "token_auto_groups"
+	ContextKeyTokenBoundPlanId       ContextKey = "token_bound_plan_id"
 
 	/* channel related keys */
 	ContextKeyChannelId                ContextKey = "channel_id"
@@ -50,8 +51,16 @@ const (
 	ContextKeyUserStatus  ContextKey = "user_status"
 	ContextKeyUserEmail   ContextKey = "user_email"
 	ContextKeyUserGroup   ContextKey = "user_group"
+	ContextKeyUserGroups  ContextKey = "user_groups"
 	ContextKeyUsingGroup  ContextKey = "group"
 	ContextKeyUserName    ContextKey = "username"
+	// Multi-group / weekly-quota / rate-limit context keys are populated from the
+	// user cache (WriteContext) and consumed by group/permission checks downstream.
+	ContextKeyUserWeeklyQuota        ContextKey = "user_weekly_quota"
+	ContextKeyUserWeeklyQuotaUsed    ContextKey = "user_weekly_quota_used"
+	ContextKeyUserWeeklyQuotaResetAt ContextKey = "user_weekly_quota_reset_at"
+	ContextKeyUserRateLimitTotal     ContextKey = "user_rate_limit_total"
+	ContextKeyUserRateLimitSuccess   ContextKey = "user_rate_limit_success"
 
 	ContextKeyLocalCountTokens ContextKey = "local_count_tokens"
 

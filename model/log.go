@@ -113,7 +113,26 @@ func assignDisplayLogIds(logs []*Log, startIdx int) {
 	}
 }
 
+// stripSuperAdminOnlyLogFields removes fields that are reserved for super
+// admins from a log's parsed `other` map. Non-super-admin users never see
+// them, so they are stripped before returning logs through user-facing APIs.
+func stripSuperAdminOnlyLogFields(otherMap map[string]interface{}, userRole int) {
+	if otherMap == nil || userRole >= common.RoleRootUser {
+		return
+	}
+	delete(otherMap, "request_headers")
+	delete(otherMap, "request_body")
+	delete(otherMap, "is_model_mapped")
+	delete(otherMap, "upstream_model_name")
+}
+
 func formatUserLogs(logs []*Log, startIdx int) {
+	formatUserLogsAsRole(logs, startIdx, 0)
+}
+
+// formatUserLogsAsRole applies the user-facing scrubbing for logs. userRole
+// controls whether super-admin-only fields are additionally stripped.
+func formatUserLogsAsRole(logs []*Log, startIdx int, userRole int) {
 	for i := range logs {
 		logs[i].ChannelName = ""
 		var otherMap map[string]interface{}
@@ -125,10 +144,28 @@ func formatUserLogs(logs []*Log, startIdx int) {
 			delete(otherMap, "audit_info")
 			// delete(otherMap, "reject_reason")
 			// delete(otherMap, "stream_status")
+			stripSuperAdminOnlyLogFields(otherMap, userRole)
 		}
 		logs[i].Other = common.MapToJsonStr(otherMap)
 	}
 	assignDisplayLogIds(logs, startIdx)
+}
+
+// FilterSuperAdminFields removes super-admin-only fields from logs in place
+// when the requesting user is not a super admin. It does not touch the other
+// admin-only fields (admin_info/audit_info) that are already removed by
+// formatUserLogs; it is intended for admin log views that show otherwise-full
+// logs but still need to hide super-admin-only debug fields from non-root admins.
+func FilterSuperAdminFields(logs []*Log, userRole int) {
+	if userRole >= common.RoleRootUser {
+		return
+	}
+	for i := range logs {
+		var otherMap map[string]interface{}
+		otherMap, _ = common.StrToMap(logs[i].Other)
+		stripSuperAdminOnlyLogFields(otherMap, userRole)
+		logs[i].Other = common.MapToJsonStr(otherMap)
+	}
 }
 
 func GetLogByTokenId(tokenId int) (logs []*Log, err error) {
@@ -615,11 +652,17 @@ type Stat struct {
 	Tpm   int `json:"tpm"`
 }
 
-func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, channel int, group string) (stat Stat, err error) {
+func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, channel int, group string, includeCache bool) (stat Stat, err error) {
 	tx := LOG_DB.Table("logs").Select("COALESCE(sum(quota), 0) quota")
 
-	// 为rpm和tpm创建单独的查询
-	rpmTpmQuery := LOG_DB.Table("logs").Select("count(*) rpm, COALESCE(sum(prompt_tokens), 0) + COALESCE(sum(completion_tokens), 0) tpm")
+	// 为rpm和tpm创建单独的查询。tpm = sum(prompt_tokens) + sum(completion_tokens)，
+	// 当 includeCache 为 true 时再加上从 other JSON 列解析出的 cache_tokens。
+	tpmSelect := "count(*) rpm, COALESCE(sum(prompt_tokens), 0) + COALESCE(sum(completion_tokens), 0)"
+	if includeCache {
+		tpmSelect += " + " + logCacheTokensSumExpr()
+	}
+	tpmSelect += " tpm"
+	rpmTpmQuery := LOG_DB.Table("logs").Select(tpmSelect)
 
 	if tx, err = applyExplicitLogTextFilter(tx, "username", username); err != nil {
 		return stat, err
@@ -734,4 +777,27 @@ func DeleteOldLogBatch(ctx context.Context, targetTimestamp int64, limit int) (i
 		return 0, result.Error
 	}
 	return result.RowsAffected, nil
+}
+
+// logCacheTokensSumExpr returns a dialect-specific SQL expression that sums the
+// `cache_tokens` value stored under the `other` JSON column of the logs table.
+// Used by SumUsedQuota to optionally include cache tokens in the tpm metric.
+// The expression is wrapped in COALESCE so NULL/missing keys contribute 0.
+func logCacheTokensSumExpr() string {
+	const key = "cache_tokens"
+	switch {
+	case common.UsingLogDatabase(common.DatabaseTypeClickHouse):
+		// ClickHouse: other is a String; JSONExtractInt parses a 64-bit int.
+		return "COALESCE(SUM(JSONExtractInt(other, '" + key + "')), 0)"
+	case common.UsingLogDatabase(common.DatabaseTypePostgreSQL):
+		// PostgreSQL: other is text; cast to jsonb and extract. NULLIF + btrim
+		// guards against empty/whitespace values that would fail the jsonb cast.
+		return "COALESCE(SUM(CAST((NULLIF(btrim(other), '')::jsonb)->>'" + key + "' AS BIGINT)), 0)"
+	case common.UsingLogDatabase(common.DatabaseTypeSQLite):
+		// SQLite: json_extract returns a value cast to INTEGER.
+		return "COALESCE(SUM(CAST(json_extract(other, '$." + key + "') AS INTEGER)), 0)"
+	default:
+		// MySQL: JSON_EXTRACT returns a JSON value cast to SIGNED.
+		return "COALESCE(SUM(CAST(JSON_EXTRACT(other, '$." + key + "') AS SIGNED)), 0)"
+	}
 }

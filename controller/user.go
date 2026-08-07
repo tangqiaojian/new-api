@@ -510,31 +510,37 @@ func buildSelfUserData(user *model.User) map[string]interface{} {
 	permissions := calculateUserPermissions(user.Role)
 	permissions["admin_permissions"] = authz.Capabilities(user.Id, user.Role)
 	return map[string]interface{}{
-		"id":                user.Id,
-		"username":          user.Username,
-		"display_name":      user.DisplayName,
-		"role":              user.Role,
-		"status":            user.Status,
-		"email":             user.Email,
-		"github_id":         user.GitHubId,
-		"discord_id":        user.DiscordId,
-		"oidc_id":           user.OidcId,
-		"wechat_id":         user.WeChatId,
-		"telegram_id":       user.TelegramId,
-		"group":             user.Group,
-		"quota":             user.Quota,
-		"used_quota":        user.UsedQuota,
-		"request_count":     user.RequestCount,
-		"aff_code":          user.AffCode,
-		"aff_count":         user.AffCount,
-		"aff_quota":         user.AffQuota,
-		"aff_history_quota": user.AffHistoryQuota,
-		"inviter_id":        user.InviterId,
-		"linux_do_id":       user.LinuxDOId,
-		"setting":           user.Setting,
-		"stripe_customer":   user.StripeCustomer,
-		"sidebar_modules":   userSetting.SidebarModules, // 正确提取sidebar_modules字段
-		"permissions":       permissions,
+		"id":                    user.Id,
+		"username":              user.Username,
+		"display_name":          user.DisplayName,
+		"role":                  user.Role,
+		"status":                user.Status,
+		"email":                 user.Email,
+		"github_id":             user.GitHubId,
+		"discord_id":            user.DiscordId,
+		"oidc_id":               user.OidcId,
+		"wechat_id":             user.WeChatId,
+		"telegram_id":           user.TelegramId,
+		"group":                 user.Group,
+		"groups":                user.Groups,
+		"quota":                 user.Quota,
+		"used_quota":            user.UsedQuota,
+		"request_count":         user.RequestCount,
+		"aff_code":              user.AffCode,
+		"aff_count":             user.AffCount,
+		"aff_quota":             user.AffQuota,
+		"aff_history_quota":     user.AffHistoryQuota,
+		"inviter_id":            user.InviterId,
+		"linux_do_id":           user.LinuxDOId,
+		"setting":               user.Setting,
+		"stripe_customer":       user.StripeCustomer,
+		"sidebar_modules":       userSetting.SidebarModules, // 正确提取sidebar_modules字段
+		"weekly_quota":          user.WeeklyQuota,
+		"weekly_quota_used":     user.WeeklyQuotaUsed,
+		"weekly_quota_reset_at": user.WeeklyQuotaResetAt,
+		"rate_limit_total":      user.RateLimitTotal,
+		"rate_limit_success":    user.RateLimitSuccess,
+		"permissions":           permissions,
 	}
 }
 
@@ -638,18 +644,23 @@ func GetUserModels(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	groups := service.GetUserUsableGroups(user.Group)
+	// 用户可能被分配多个分组，用严格白名单计算其可用分组集合
+	groups := service.GetUserUsableGroupsByUser(user)
 	group := c.Query("group")
 	var groupsToQuery []string
 	switch {
 	case group == "":
+		// 未指定 group：返回用户全部可用分组下模型的并集（严格白名单）
 		for g := range groups {
+			if g == "auto" {
+				continue
+			}
 			groupsToQuery = append(groupsToQuery, g)
 		}
 	case group == "auto":
-		if _, ok := groups[group]; ok {
-			groupsToQuery = service.GetUserAutoGroup(user.Group)
-		}
+		// auto 是一个虚拟分组：始终可访问，按用户可用自动分组顺序合并各分组的模型。
+		// 注意不能把 "auto" 直接传给 GetGroupEnabledModels，ability 表里没有名为 auto 的组。
+		groupsToQuery = service.GetUserAutoGroupByUser(user)
 	default:
 		if _, ok := groups[group]; ok {
 			groupsToQuery = []string{group}
@@ -698,6 +709,26 @@ func UpdateUser(c *gin.Context) {
 	}
 	if updatedUser.Password == "$I_LOVE_U" {
 		updatedUser.Password = "" // rollback to what it should be
+	}
+	// 规范化多分组：与主 group 对齐，保证严格白名单与缓存一致
+	updatedUser.Groups = strings.TrimSpace(updatedUser.Groups)
+	if updatedUser.Groups != "" {
+		parts := make([]string, 0)
+		for _, g := range strings.Split(updatedUser.Groups, ",") {
+			g = strings.TrimSpace(g)
+			if g != "" {
+				parts = append(parts, g)
+			}
+		}
+		updatedUser.Groups = strings.Join(parts, ",")
+		if len(parts) > 0 {
+			// 主 group 始终取多分组中的第一个，避免 UI 只改 MultiSelect 时 group 字段陈旧
+			updatedUser.Group = parts[0]
+		}
+	} else if strings.TrimSpace(updatedUser.Group) != "" {
+		// 仅有主 group 时同步写入 groups，使后续严格白名单生效
+		updatedUser.Group = strings.TrimSpace(updatedUser.Group)
+		updatedUser.Groups = updatedUser.Group
 	}
 	updatePassword := updatedUser.Password != ""
 	authzTouched := false
@@ -979,6 +1010,141 @@ func DeleteUser(c *gin.Context) {
 	return
 }
 
+// UserBatchRequest is the body shape for batch user management endpoints.
+type UserBatchRequest struct {
+	Ids []int `json:"ids"`
+}
+
+// BatchDeleteUsers hard-deletes a batch of users. Callers may only target users
+// strictly below their own role, and never themselves; ids that fail the role
+// check are skipped rather than aborting the whole batch.
+func BatchDeleteUsers(c *gin.Context) {
+	req := UserBatchRequest{}
+	if err := c.ShouldBindJSON(&req); err != nil || len(req.Ids) == 0 {
+		common.ApiError(c, fmt.Errorf("invalid request: ids required"))
+		return
+	}
+	myRole := c.GetInt("role")
+	myId := c.GetInt("id")
+
+	// Filter out users with equal or higher role and self
+	filteredIds := make([]int, 0, len(req.Ids))
+	for _, id := range req.Ids {
+		if id == myId {
+			continue
+		}
+		user, err := model.GetUserById(id, false)
+		if err != nil {
+			continue
+		}
+		if user.Role >= myRole {
+			continue
+		}
+		filteredIds = append(filteredIds, id)
+	}
+
+	if len(filteredIds) == 0 {
+		common.ApiError(c, fmt.Errorf("no valid users to delete"))
+		return
+	}
+
+	err := model.BatchHardDeleteUsers(filteredIds)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+
+	recordManageAudit(c, "user.delete_batch", map[string]interface{}{
+		"count": len(filteredIds),
+		"ids":   filteredIds,
+	})
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "",
+		"data":    len(filteredIds),
+	})
+}
+
+// BatchManageUsers applies enable/disable actions across a batch of users.
+// Users at or above the caller's role and the caller themselves are skipped.
+func BatchManageUsers(c *gin.Context) {
+	req := UserBatchRequest{}
+	if err := c.ShouldBindJSON(&req); err != nil || len(req.Ids) == 0 {
+		common.ApiError(c, fmt.Errorf("invalid request: ids required"))
+		return
+	}
+	action := c.Query("action")
+	if action == "" {
+		common.ApiError(c, fmt.Errorf("action is required"))
+		return
+	}
+
+	myRole := c.GetInt("role")
+	myId := c.GetInt("id")
+
+	successCount := 0
+	failCount := 0
+
+	for _, id := range req.Ids {
+		if id == myId {
+			failCount++
+			continue
+		}
+		user, err := model.GetUserById(id, false)
+		if err != nil {
+			failCount++
+			continue
+		}
+		if user.Role >= myRole {
+			failCount++
+			continue
+		}
+
+		switch action {
+		case "enable":
+			user.Status = common.UserStatusEnabled
+		case "disable":
+			if user.Role == common.RoleRootUser {
+				failCount++
+				continue
+			}
+			user.Status = common.UserStatusDisabled
+		default:
+			failCount++
+			continue
+		}
+
+		if err := user.Update(false); err != nil {
+			failCount++
+			continue
+		}
+		if action == "disable" {
+			if err := model.InvalidateUserCache(user.Id); err != nil {
+				common.SysLog(fmt.Sprintf("failed to invalidate user cache for user %d: %s", user.Id, err.Error()))
+			}
+			if err := model.InvalidateUserTokensCache(user.Id); err != nil {
+				common.SysLog(fmt.Sprintf("failed to invalidate tokens cache for user %d: %s", user.Id, err.Error()))
+			}
+		}
+		successCount++
+	}
+
+	recordManageAudit(c, fmt.Sprintf("user.%s_batch", action), map[string]interface{}{
+		"success_count": successCount,
+		"fail_count":    failCount,
+	})
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "",
+		"data": gin.H{
+			"success_count": successCount,
+			"fail_count":    failCount,
+		},
+	})
+}
+
 func DeleteSelf(c *gin.Context) {
 	id := c.GetInt("id")
 	user, _ := model.GetUserById(id, false)
@@ -1021,11 +1187,36 @@ func CreateUser(c *gin.Context) {
 		return
 	}
 	// Even for admin users, we cannot fully trust them!
+	// 规范化分组：主 group 与多分组 groups 保持一致，便于严格白名单生效
+	primaryGroup := strings.TrimSpace(user.Group)
+	groupsStr := strings.TrimSpace(user.Groups)
+	if groupsStr != "" {
+		parts := make([]string, 0)
+		for _, g := range strings.Split(groupsStr, ",") {
+			g = strings.TrimSpace(g)
+			if g != "" {
+				parts = append(parts, g)
+			}
+		}
+		groupsStr = strings.Join(parts, ",")
+		if primaryGroup == "" && len(parts) > 0 {
+			primaryGroup = parts[0]
+		}
+	}
+	if primaryGroup == "" {
+		primaryGroup = "default"
+	}
+	if groupsStr == "" {
+		// 创建时若只给了主 group，也写入 groups，走严格白名单
+		groupsStr = primaryGroup
+	}
 	cleanUser := model.User{
 		Username:    user.Username,
 		Password:    user.Password,
 		DisplayName: user.DisplayName,
 		Role:        user.Role, // 保持管理员设置的角色
+		Group:       primaryGroup,
+		Groups:      groupsStr,
 	}
 	authzTouched := false
 	if err := model.DB.Transaction(func(tx *gorm.DB) error {
@@ -1200,6 +1391,44 @@ func ManageUser(c *gin.Context) {
 			common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 			return
 		}
+		c.JSON(http.StatusOK, gin.H{
+			"success": true,
+			"message": "",
+		})
+		return
+	case "set_weekly_quota":
+		if err := model.SetUserWeeklyQuota(user.Id, req.Value); err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		if err := model.InvalidateUserCache(user.Id); err != nil {
+			common.SysLog(fmt.Sprintf("failed to invalidate user cache for user %d: %s", user.Id, err.Error()))
+		}
+		recordManageAuditFor(c, user.Id, "user.set_weekly_quota", map[string]interface{}{
+			"weekly_quota": req.Value,
+		})
+		c.JSON(http.StatusOK, gin.H{
+			"success": true,
+			"message": "",
+		})
+		return
+	case "set_rate_limit":
+		// req.Mode 复用为成功请求数限制；req.Value 为总请求数限制。
+		successCount := 0
+		if req.Mode != "" {
+			successCount, _ = strconv.Atoi(req.Mode)
+		}
+		if err := model.SetUserRateLimit(user.Id, req.Value, successCount); err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		if err := model.InvalidateUserCache(user.Id); err != nil {
+			common.SysLog(fmt.Sprintf("failed to invalidate user cache for user %d: %s", user.Id, err.Error()))
+		}
+		recordManageAuditFor(c, user.Id, "user.set_rate_limit", map[string]interface{}{
+			"rate_limit_total":   req.Value,
+			"rate_limit_success": successCount,
+		})
 		c.JSON(http.StatusOK, gin.H{
 			"success": true,
 			"message": "",

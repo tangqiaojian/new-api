@@ -11,11 +11,15 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-const userCacheSchemaVersion = 2
+// userCacheSchemaVersion is bumped whenever the cached UserBase shape changes
+// so that older Redis hashes are detected and repopulated from the database.
+// v3 adds Groups, WeeklyQuota*, and RateLimit* fields.
+const userCacheSchemaVersion = 3
 
 type UserBase struct {
 	Id          int    `json:"id"`
 	Group       string `json:"group"`
+	Groups      string `json:"groups"`
 	Email       string `json:"email"`
 	Quota       int    `json:"quota"`
 	Status      int    `json:"status"`
@@ -24,15 +28,30 @@ type UserBase struct {
 	Setting     string `json:"setting"`
 	AuthVersion int64  `json:"-"`
 	CacheSchema int    `json:"-"`
+	// 周额度和用户级限流缓存字段，供中间件在请求开始时通过 WriteContext 注入。
+	WeeklyQuota        int   `json:"weekly_quota"`
+	WeeklyQuotaUsed    int   `json:"weekly_quota_used"`
+	WeeklyQuotaResetAt int64 `json:"weekly_quota_reset_at"`
+	RateLimitTotal     int   `json:"rate_limit_total"`
+	RateLimitSuccess   int   `json:"rate_limit_success"`
 }
 
 func (user *UserBase) WriteContext(c *gin.Context) {
 	common.SetContextKey(c, constant.ContextKeyUserGroup, user.Group)
+	// 始终写入分配分组列表（多分组或回退到主 Group），下游统一走严格白名单
+	if groups := user.GetGroups(); len(groups) > 0 {
+		common.SetContextKey(c, constant.ContextKeyUserGroups, groups)
+	}
 	common.SetContextKey(c, constant.ContextKeyUserQuota, user.Quota)
 	common.SetContextKey(c, constant.ContextKeyUserStatus, user.Status)
 	common.SetContextKey(c, constant.ContextKeyUserEmail, user.Email)
 	common.SetContextKey(c, constant.ContextKeyUserName, user.Username)
 	common.SetContextKey(c, constant.ContextKeyUserSetting, user.GetSetting())
+	common.SetContextKey(c, constant.ContextKeyUserWeeklyQuota, user.WeeklyQuota)
+	common.SetContextKey(c, constant.ContextKeyUserWeeklyQuotaUsed, user.WeeklyQuotaUsed)
+	common.SetContextKey(c, constant.ContextKeyUserWeeklyQuotaResetAt, user.WeeklyQuotaResetAt)
+	common.SetContextKey(c, constant.ContextKeyUserRateLimitTotal, user.RateLimitTotal)
+	common.SetContextKey(c, constant.ContextKeyUserRateLimitSuccess, user.RateLimitSuccess)
 }
 
 func (user *UserBase) GetSetting() dto.UserSetting {
@@ -255,6 +274,20 @@ func RefreshUserGroupCache(userId int) error {
 
 func updateUserEmailCache(userId int, email string) error {
 	return updateUserCacheField(userId, "Email", email)
+}
+
+// updateUserGroupsCache refreshes the multi-group cache field. It goes through
+// updateUserCacheField so the auth-version fence still protects it: a stale
+// snapshot cannot lower the cached group list below the committed version.
+func updateUserGroupsCache(userId int, groups string) error {
+	return updateUserCacheField(userId, "Groups", groups)
+}
+
+// UpdateUserGroupsCache is the exported version of updateUserGroupsCache for
+// callers in controller/service that need to refresh the multi-group field
+// after an admin edit without rewriting the whole user hash.
+func UpdateUserGroupsCache(userId int, groups string) error {
+	return updateUserGroupsCache(userId, groups)
 }
 
 func updateUserNameCache(userId int, username string) error {

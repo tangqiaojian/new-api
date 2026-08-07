@@ -54,6 +54,22 @@ func Distribute() func(c *gin.Context) {
 				abortWithOpenAiMessage(c, http.StatusForbidden, i18n.T(c, i18n.MsgDistributorChannelDisabled))
 				return
 			}
+			// Pinned channels may belong to a subscription pool that is currently
+			// exhausted; reject early so the client sees a clear pool-exhausted
+			// error instead of a stale pinned-channel selection.
+			available, availabilityErr := model.IsChannelSubscriptionPoolAvailable(channel.Id)
+			if availabilityErr != nil {
+				abortWithOpenAiMessage(c, http.StatusServiceUnavailable, fmt.Sprintf("failed to check channel subscription pool: %s", availabilityErr.Error()))
+				return
+			}
+			if !available {
+				usingGroup := common.GetContextKeyString(c, constant.ContextKeyUsingGroup)
+				if modelRequest.Group != "" {
+					usingGroup = modelRequest.Group
+				}
+				abortWithOpenAiMessage(c, http.StatusServiceUnavailable, i18n.T(c, i18n.MsgDistributorChannelPoolExhausted, map[string]any{"Group": usingGroup, "Model": modelRequest.Model}), types.ErrorCodeChannelPoolExhausted)
+				return
+			}
 		} else {
 			// Select a channel for the user
 			// check token model mapping
@@ -93,7 +109,13 @@ func Distribute() func(c *gin.Context) {
 						return
 					}
 					if playgroundRequest.Group != "" {
-						if !service.GroupInUserUsableGroups(usingGroup, playgroundRequest.Group) && playgroundRequest.Group != usingGroup {
+						// 用户可能被分配多个分组，计算其完整可用分组集合（严格白名单）后校验
+						userId := c.GetInt("id")
+						usableGroups := map[string]string{usingGroup: ""}
+						if userCache, cacheErr := model.GetUserCache(userId); cacheErr == nil && userCache != nil {
+							usableGroups = service.GetUserUsableGroupsByUser(userCache)
+						}
+						if _, ok := usableGroups[playgroundRequest.Group]; !ok && playgroundRequest.Group != usingGroup {
 							abortWithOpenAiMessage(c, http.StatusForbidden, i18n.T(c, i18n.MsgDistributorGroupAccessDenied))
 							return
 						}
@@ -105,7 +127,24 @@ func Distribute() func(c *gin.Context) {
 				if preferredChannelID, found := service.GetPreferredChannelByAffinity(c, modelRequest.Model, usingGroup); found {
 					affinityUsable := false
 					preferred, err := model.CacheGetChannel(preferredChannelID)
-					if err == nil && preferred != nil && preferred.Status == common.ChannelStatusEnabled &&
+					// If the cached channel read fails, fall through to the random
+					// selector and clear affinity. If it succeeds, additionally
+					// verify the channel's subscription pool still has capacity;
+					// an exhausted pool should not be reused as an affinity target.
+					if err != nil {
+						preferred = nil
+						service.ClearCurrentChannelAffinityCache(c)
+					} else {
+						available, availabilityErr := model.IsChannelSubscriptionPoolAvailable(preferredChannelID)
+						if availabilityErr != nil {
+							abortWithOpenAiMessage(c, http.StatusServiceUnavailable, fmt.Sprintf("failed to check channel subscription pool: %s", availabilityErr.Error()))
+							return
+						}
+						if !available {
+							preferred = nil
+						}
+					}
+					if preferred != nil && preferred.Status == common.ChannelStatusEnabled &&
 						channelSupportsRequestPath(preferred, c.Request.URL.Path, modelRequest.Model) {
 						if usingGroup == "auto" {
 							userGroup := common.GetContextKeyString(c, constant.ContextKeyUserGroup)
