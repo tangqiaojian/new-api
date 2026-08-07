@@ -21,30 +21,37 @@ import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
 import { ConfirmDialog } from '@/components/confirm-dialog'
-import { Switch } from '@/components/ui/switch'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 
 import { resetPlanSubscriptions } from '../../api'
+import type { SubscriptionResetScope } from '../../types'
 import { useSubscriptions } from '../subscriptions-provider'
 
 export function ResetSubscriptionsDialog() {
   const { t } = useTranslation()
   const { open, setOpen, currentRow, triggerRefresh } = useSubscriptions()
-  const [advanceResetTime, setAdvanceResetTime] = useState(true)
+  const [resetScope, setResetScope] = useState<SubscriptionResetScope>('both')
   const [resetting, setResetting] = useState(false)
   const isOpen = open === 'reset-subscriptions'
-  const plan = currentRow?.plan
-  const planLabel = plan?.title || (plan?.id ? `#${plan.id}` : '-')
 
   useEffect(() => {
-    if (isOpen) setAdvanceResetTime(true)
+    if (isOpen) setResetScope('both')
   }, [isOpen])
+  const plan = currentRow?.plan
+  const planLabel = plan?.title || (plan?.id ? `#${plan.id}` : '-')
 
   const handleConfirm = async () => {
     if (!plan?.id) return
     setResetting(true)
     try {
       const res = await resetPlanSubscriptions(plan.id, {
-        advance_reset_time: advanceResetTime,
+        reset_scope: resetScope,
       })
       if (res.success) {
         toast.success(
@@ -75,14 +82,21 @@ export function ResetSubscriptionsDialog() {
       disabled={!plan?.id}
       isLoading={resetting}
     >
-      <label className='flex items-center justify-between gap-3 rounded-md border px-3 py-2 text-sm'>
-        <span>{t('Advance next reset time')}</span>
-        <Switch
-          checked={advanceResetTime}
-          onCheckedChange={(checked) => setAdvanceResetTime(!!checked)}
-          aria-label={t('Advance next reset time')}
-        />
-      </label>
+      <Select
+        value={resetScope}
+        onValueChange={(value) =>
+          setResetScope(value as SubscriptionResetScope)
+        }
+      >
+        <SelectTrigger aria-label={t('Reset scope')}>
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value='quota'>{t('Quota only')}</SelectItem>
+          <SelectItem value='tokens'>{t('Tokens only')}</SelectItem>
+          <SelectItem value='both'>{t('Quota and tokens')}</SelectItem>
+        </SelectContent>
+      </Select>
     </ConfirmDialog>
   )
 }

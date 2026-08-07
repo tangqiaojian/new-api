@@ -348,8 +348,9 @@ func usageSemanticFromUsage(relayInfo *relaycommon.RelayInfo, usage *dto.Usage) 
 // subscription's token quota for one request.
 //
 // Formula matches dashboard model token stats (usedata_daily):
-//   total = prompt + completion
-//   when includeCache: total += cache_tokens (from usage / log other.cache_tokens)
+//
+//	total = prompt + completion
+//	when includeCache: total += cache_tokens (from usage / log other.cache_tokens)
 //
 // Do NOT special-case OpenAI "prompt already includes cache": the product's
 // "include cache" toggle always means "add cache_tokens on top of prompt+completion",
@@ -444,6 +445,8 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 
 	if err := SettleBillingWithTokens(ctx, relayInfo, summary.Quota, actualTokens); err != nil {
 		logger.LogError(ctx, "error settling billing: "+err.Error())
+	} else if err := SettleChannelPoolActualUsage(ctx, relayInfo.ChannelId, relayInfo.RequestId, summary.Quota, promptForSub, completionForSub, cacheForSub); err != nil {
+		logger.LogError(ctx, fmt.Sprintf("error settling channel pool usage (channel=%d, request=%s): %s", relayInfo.ChannelId, relayInfo.RequestId, err.Error()))
 	}
 
 	logModel := summary.ModelName
@@ -527,6 +530,12 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 		// reliable total input value and tagged the usage source. Do not infer it from
 		// prompt/cache fields here, otherwise old upstream payloads may be double-counted.
 		other["input_tokens_total"] = billingUsage.InputTokens
+	}
+	if billingUsage != nil && billingUsage.CompletionTokenDetails.ReasoningTokens > 0 {
+		// reasoning_tokens: upstream-reported thinking token count (OpenAI
+		// completion_tokens_details / Gemini thoughtsTokenCount). Informational only —
+		// billing already includes it in completion_tokens.
+		other["reasoning_tokens"] = billingUsage.CompletionTokenDetails.ReasoningTokens
 	}
 	if tieredBillingApplied {
 		InjectTieredBillingInfo(other, relayInfo, tieredResult)

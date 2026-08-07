@@ -53,6 +53,9 @@ func OaiResponsesHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http
 			usage.PromptTokensDetails.CachedTokens = responsesResponse.Usage.InputTokensDetails.CachedTokens
 			usage.PromptTokensDetails.CacheWriteTokens = responsesResponse.Usage.InputTokensDetails.CacheWriteTokens
 		}
+		if responsesResponse.Usage.CompletionTokenDetails.ReasoningTokens != 0 {
+			usage.CompletionTokenDetails.ReasoningTokens = responsesResponse.Usage.CompletionTokenDetails.ReasoningTokens
+		}
 	}
 	if info == nil || info.ResponsesUsageInfo == nil || info.ResponsesUsageInfo.BuiltInTools == nil {
 		return &usage, nil
@@ -106,6 +109,9 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 					if streamResponse.Response.Usage.InputTokensDetails != nil {
 						usage.PromptTokensDetails.CachedTokens = streamResponse.Response.Usage.InputTokensDetails.CachedTokens
 						usage.PromptTokensDetails.CacheWriteTokens = streamResponse.Response.Usage.InputTokensDetails.CacheWriteTokens
+					}
+					if streamResponse.Response.Usage.CompletionTokenDetails.ReasoningTokens != 0 {
+						usage.CompletionTokenDetails.ReasoningTokens = streamResponse.Response.Usage.CompletionTokenDetails.ReasoningTokens
 					}
 				}
 				if streamResponse.Response.HasImageGenerationCall() {

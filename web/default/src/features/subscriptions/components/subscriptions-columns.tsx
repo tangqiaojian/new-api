@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { type ColumnDef } from '@tanstack/react-table'
+import type { ColumnDef } from '@tanstack/react-table'
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -24,9 +24,13 @@ import { BadgeCell } from '@/components/data-table'
 import { GroupBadge } from '@/components/group-badge'
 import { StatusBadge } from '@/components/status-badge'
 import { TableId } from '@/components/table-id'
-import { formatChineseNumber, formatCompactNumber, formatQuota } from '@/lib/format'
+import {
+  formatChineseNumber,
+  formatCompactNumber,
+  formatQuota,
+} from '@/lib/format'
 
-import { formatDuration, formatResetPeriod } from '../lib'
+import { formatDuration, formatPlanType, formatResetSummary } from '../lib'
 import type { PlanRecord } from '../types'
 import { DataTableRowActions } from './data-table-row-actions'
 
@@ -85,15 +89,26 @@ export function useSubscriptionsColumns(): ColumnDef<PlanRecord>[] {
         size: 100,
       },
       {
+        id: 'plan_type',
+        header: t('Plan type'),
+        meta: { mobileHidden: true },
+        cell: ({ row }) => (
+          <span className='text-muted-foreground'>
+            {formatPlanType(row.original.plan.plan_type, t)}
+          </span>
+        ),
+        size: 110,
+      },
+      {
         id: 'reset',
         header: t('Quota Reset'),
         meta: { mobileHidden: true },
         cell: ({ row }) => (
           <span className='text-muted-foreground'>
-            {formatResetPeriod(row.original.plan, t)}
+            {formatResetSummary(row.original.plan, t)}
           </span>
         ),
-        size: 100,
+        size: 180,
       },
       {
         accessorFn: (row) => row.plan.sort_order,

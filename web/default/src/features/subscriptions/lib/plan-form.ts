@@ -49,6 +49,11 @@ export function getPlanFormSchema(t: TFunction) {
     include_cache_tokens: z.boolean(),
     token_reset_period: z.string(),
     token_reset_custom_seconds: z.coerce.number().min(0),
+    plan_type: z.enum(['user', 'channel', 'both']),
+    quota_reset_anchor: z.date().optional(),
+    quota_reset_timezone: z.string(),
+    token_reset_anchor: z.date().optional(),
+    token_reset_timezone: z.string(),
     upgrade_group: z.string().optional(),
     downgrade_group: z.string().optional(),
     stripe_price_id: z.string().optional(),
@@ -78,6 +83,11 @@ export const PLAN_FORM_DEFAULTS: PlanFormValues = {
   include_cache_tokens: false,
   token_reset_period: '',
   token_reset_custom_seconds: 0,
+  plan_type: 'user',
+  quota_reset_anchor: undefined,
+  quota_reset_timezone: '',
+  token_reset_anchor: undefined,
+  token_reset_timezone: '',
   upgrade_group: '',
   downgrade_group: '',
   stripe_price_id: '',
@@ -105,6 +115,15 @@ export function planToFormValues(plan: SubscriptionPlan): PlanFormValues {
     include_cache_tokens: plan.include_cache_tokens === true,
     token_reset_period: plan.token_reset_period || '',
     token_reset_custom_seconds: Number(plan.token_reset_custom_seconds || 0),
+    plan_type: plan.plan_type || 'user',
+    quota_reset_anchor: plan.quota_reset_anchor
+      ? new Date(plan.quota_reset_anchor * 1000)
+      : undefined,
+    quota_reset_timezone: plan.quota_reset_timezone || '',
+    token_reset_anchor: plan.token_reset_anchor
+      ? new Date(plan.token_reset_anchor * 1000)
+      : undefined,
+    token_reset_timezone: plan.token_reset_timezone || '',
     upgrade_group: plan.upgrade_group || '',
     downgrade_group: plan.downgrade_group || '',
     stripe_price_id: plan.stripe_price_id || '',
@@ -114,6 +133,19 @@ export function planToFormValues(plan: SubscriptionPlan): PlanFormValues {
 }
 
 export function formValuesToPlanPayload(values: PlanFormValues): PlanPayload {
+  const browserTimezone =
+    typeof Intl !== 'undefined'
+      ? Intl.DateTimeFormat().resolvedOptions().timeZone
+      : ''
+  const tokenInherits =
+    !values.token_reset_period || values.token_reset_period === ''
+  const quotaHasAnchor =
+    values.quota_reset_period !== 'never' && !!values.quota_reset_anchor
+  const tokenHasAnchor =
+    !tokenInherits &&
+    values.token_reset_period !== 'never' &&
+    !!values.token_reset_anchor
+
   return {
     plan: {
       ...values,
@@ -128,11 +160,23 @@ export function formValuesToPlanPayload(values: PlanFormValues): PlanPayload {
           : 0,
       total_tokens: Number(values.total_tokens || 0),
       include_cache_tokens: !!values.include_cache_tokens,
-      token_reset_period: values.token_reset_period || '',
+      token_reset_period: tokenInherits ? '' : values.token_reset_period,
       token_reset_custom_seconds:
-        values.token_reset_period === 'custom'
+        !tokenInherits && values.token_reset_period === 'custom'
           ? Number(values.token_reset_custom_seconds || 0)
           : 0,
+      quota_reset_anchor: quotaHasAnchor
+        ? Math.floor((values.quota_reset_anchor?.getTime() ?? 0) / 1000)
+        : null,
+      quota_reset_timezone: quotaHasAnchor
+        ? values.quota_reset_timezone || browserTimezone
+        : '',
+      token_reset_anchor: tokenHasAnchor
+        ? Math.floor((values.token_reset_anchor?.getTime() ?? 0) / 1000)
+        : null,
+      token_reset_timezone: tokenHasAnchor
+        ? values.token_reset_timezone || browserTimezone
+        : '',
       sort_order: Number(values.sort_order || 0),
       max_purchase_per_user: Number(values.max_purchase_per_user || 0),
       total_amount: parseQuotaFromDollars(Number(values.total_amount || 0)),

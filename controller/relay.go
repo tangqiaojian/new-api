@@ -519,6 +519,15 @@ func RelayTask(c *gin.Context) {
 		var channel *model.Channel
 
 		if lockedCh, ok := relayInfo.LockedChannel.(*model.Channel); ok && lockedCh != nil {
+			available, availabilityErr := model.IsChannelSubscriptionPoolAvailable(lockedCh.Id)
+			if availabilityErr != nil {
+				taskErr = service.TaskErrorWrapperLocal(availabilityErr, "check_locked_channel_pool_failed", http.StatusServiceUnavailable)
+				break
+			}
+			if !available {
+				taskErr = service.TaskErrorWrapperLocal(model.ErrChannelPoolNotFound, "locked_channel_pool_exhausted", http.StatusServiceUnavailable)
+				break
+			}
 			channel = lockedCh
 			if retryParam.GetRetry() > 0 {
 				if setupErr := middleware.SetupContextForSelectedChannel(c, channel, relayInfo.OriginModelName); setupErr != nil {
@@ -593,6 +602,9 @@ func RelayTask(c *gin.Context) {
 			PerCallBilling:  common.StringsContains(constant.TaskPricePatches, relayInfo.OriginModelName) || relayInfo.PriceData.UsePrice,
 		}
 		task.Quota = result.Quota
+		if poolErr := service.SettleTaskChannelPoolUsage(c, task, result.Quota, 0); poolErr != nil {
+			logger.LogError(c, fmt.Sprintf("initial task channel pool settlement failed (task=%s, channel=%d): %s", task.TaskID, task.ChannelId, poolErr.Error()))
+		}
 		task.Data = result.TaskData
 		task.Action = relayInfo.Action
 		if insertErr := task.Insert(); insertErr != nil {

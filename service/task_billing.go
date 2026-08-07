@@ -165,6 +165,9 @@ func taskModelName(task *model.Task) string {
 func RefundTaskQuota(ctx context.Context, task *model.Task, reason string) {
 	quota := task.Quota
 	if quota == 0 {
+		if err := SettleTaskChannelPoolUsage(ctx, task, 0, 0); err != nil {
+			logger.LogError(ctx, fmt.Sprintf("任务渠道订阅池退款失败 task %s: %s", task.TaskID, err.Error()))
+		}
 		return
 	}
 
@@ -176,6 +179,9 @@ func RefundTaskQuota(ctx context.Context, task *model.Task, reason string) {
 
 	// 2. 退还令牌额度
 	taskAdjustTokenQuota(ctx, task, -quota)
+	if err := SettleTaskChannelPoolUsage(ctx, task, 0, 0); err != nil {
+		logger.LogError(ctx, fmt.Sprintf("任务渠道订阅池退款失败 task %s: %s", task.TaskID, err.Error()))
+	}
 
 	// 3. 记录日志
 	other := taskBillingOther(task)
@@ -208,6 +214,9 @@ func RecalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int
 	if quotaDelta == 0 {
 		logger.LogInfo(ctx, fmt.Sprintf("任务 %s 预扣费准确（%s，%s）",
 			task.TaskID, logger.LogQuota(actualQuota), reason))
+		if err := SettleTaskChannelPoolUsage(ctx, task, actualQuota, 0); err != nil {
+			logger.LogError(ctx, fmt.Sprintf("任务渠道订阅池结算失败 task %s: %s", task.TaskID, err.Error()))
+		}
 		return
 	}
 
@@ -231,6 +240,9 @@ func RecalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int
 	task.Quota = actualQuota
 	if err := task.UpdateQuota(); err != nil {
 		logger.LogError(ctx, fmt.Sprintf("差额结算回写 quota 失败 task %s: %s", task.TaskID, err.Error()))
+	}
+	if err := SettleTaskChannelPoolUsage(ctx, task, actualQuota, 0); err != nil {
+		logger.LogError(ctx, fmt.Sprintf("任务渠道订阅池结算失败 task %s: %s", task.TaskID, err.Error()))
 	}
 
 	var logType int

@@ -24,13 +24,20 @@ import type {
   PlanPayload,
   UserSubscriptionRecord,
   CreateUserSubscriptionRequest,
+  UpdateUserSubscriptionRequest,
   ResetUserSubscriptionsRequest,
   ResetPlanSubscriptionsRequest,
+  ResetSingleSubscriptionRequest,
   SubscriptionResetResult,
   SubscriptionPayResponse,
   SubscriptionPayRequest,
   SelfSubscriptionData,
   AdminUserSubscriptionList,
+  ChannelPoolList,
+  ChannelPoolPayload,
+  ChannelPoolOccupancy,
+  ChannelSubscriptionPool,
+  SubscriptionResetScope,
 } from './types'
 
 // ============================================================================
@@ -86,6 +93,17 @@ export async function createUserSubscription(
 ): Promise<ApiResponse<{ message?: string }>> {
   const res = await api.post(
     `/api/subscription/admin/users/${userId}/subscriptions`,
+    data
+  )
+  return res.data
+}
+
+export async function updateUserSubscription(
+  subId: number,
+  data: UpdateUserSubscriptionRequest
+): Promise<ApiResponse> {
+  const res = await api.put(
+    `/api/subscription/admin/user_subscriptions/${subId}`,
     data
   )
   return res.data
@@ -161,10 +179,12 @@ export async function adminAdjustSubscription(
 }
 
 export async function adminResetSubscription(
-  id: number
+  id: number,
+  data: ResetSingleSubscriptionRequest
 ): Promise<ApiResponse> {
   const res = await api.post(
-    `/api/subscription/admin/user_subscriptions/${id}/reset`
+    `/api/subscription/admin/user_subscriptions/${id}/reset`,
+    data
   )
   return res.data
 }
@@ -274,5 +294,55 @@ export async function updateBillingPreference(
 
 export async function getGroups(): Promise<ApiResponse<string[]>> {
   const res = await api.get('/api/group')
+  return res.data
+}
+
+// ============================================================================
+// Admin Channel Pool Management
+// ============================================================================
+
+export async function listChannelPools(params: {
+  p: number
+  size: number
+}): Promise<ApiResponse<ChannelPoolList>> {
+  const res = await api.get('/api/subscription/admin/channel-pools', { params })
+  return res.data
+}
+
+export async function listChannelPoolOccupancies(): Promise<
+  ApiResponse<ChannelPoolOccupancy[]>
+> {
+  const res = await api.get('/api/subscription/admin/channel-pools/occupancies')
+  return res.data
+}
+
+export async function createChannelPool(
+  data: ChannelPoolPayload & { plan_id: number }
+): Promise<ApiResponse<ChannelSubscriptionPool>> {
+  const res = await api.post('/api/subscription/admin/channel-pools', data)
+  return res.data
+}
+
+export async function updateChannelPool(
+  id: number,
+  data: Omit<ChannelPoolPayload, 'plan_id'>
+): Promise<ApiResponse<ChannelSubscriptionPool>> {
+  const res = await api.put(`/api/subscription/admin/channel-pools/${id}`, data)
+  return res.data
+}
+
+export async function cancelChannelPool(id: number): Promise<ApiResponse> {
+  const res = await api.delete(`/api/subscription/admin/channel-pools/${id}`)
+  return res.data
+}
+
+export async function resetChannelPool(
+  id: number,
+  scope: SubscriptionResetScope
+): Promise<ApiResponse> {
+  const res = await api.post(
+    `/api/subscription/admin/channel-pools/${id}/reset`,
+    { scope }
+  )
   return res.data
 }

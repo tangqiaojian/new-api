@@ -29,6 +29,7 @@ import { useForm, type Resolver } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
+import { DateTimePicker } from '@/components/datetime-picker'
 import {
   SideDrawerSection,
   sideDrawerContentClassName,
@@ -320,6 +321,31 @@ export function SubscriptionsMutateDrawer({
                         placeholder={t('e.g. Suitable for light usage')}
                       />
                     </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='plan_type'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Plan type')}</FormLabel>
+                    <Select value={field.value} onValueChange={field.onChange}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value='user'>{t('User')}</SelectItem>
+                        <SelectItem value='channel'>{t('Channel')}</SelectItem>
+                        <SelectItem value='both'>
+                          {t('User and channel')}
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -704,7 +730,13 @@ export function SubscriptionsMutateDrawer({
                           value: o.value,
                           label: o.label,
                         }))}
-                        onValueChange={field.onChange}
+                        onValueChange={(value) => {
+                          field.onChange(value)
+                          if (value === 'never') {
+                            form.setValue('quota_reset_anchor', undefined)
+                            form.setValue('quota_reset_timezone', '')
+                          }
+                        }}
                         value={field.value}
                       >
                         <FormControl>
@@ -751,6 +783,39 @@ export function SubscriptionsMutateDrawer({
                   )}
                 />
               </div>
+
+              {resetPeriod !== 'never' && (
+                <div className='grid grid-cols-1 gap-3 sm:grid-cols-2'>
+                  <FormField
+                    control={form.control}
+                    name='quota_reset_anchor'
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('Quota reset anchor')}</FormLabel>
+                        <FormControl>
+                          <DateTimePicker
+                            value={field.value}
+                            onChange={(date) => {
+                              field.onChange(date)
+                              form.setValue(
+                                'quota_reset_timezone',
+                                date
+                                  ? Intl.DateTimeFormat().resolvedOptions()
+                                      .timeZone
+                                  : ''
+                              )
+                            }}
+                          />
+                        </FormControl>
+                        <FormDescription>
+                          {t('Leave empty to use legacy reset boundaries')}
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+              )}
             </SideDrawerSection>
 
             {/* Token Quota */}
@@ -776,7 +841,9 @@ export function SubscriptionsMutateDrawer({
                           type='number'
                           min={0}
                           onChange={(e) =>
-                            field.onChange(parseInt(e.target.value, 10) || 0)
+                            field.onChange(
+                              Number.parseInt(e.target.value, 10) || 0
+                            )
                           }
                         />
                       </FormControl>
@@ -838,9 +905,14 @@ export function SubscriptionsMutateDrawer({
                           })),
                         ]}
                         value={field.value || '__same__'}
-                        onValueChange={(v) =>
-                          field.onChange(v === '__same__' ? '' : v)
-                        }
+                        onValueChange={(v) => {
+                          const period = v === '__same__' ? '' : v
+                          field.onChange(period)
+                          if (!period || period === 'never') {
+                            form.setValue('token_reset_anchor', undefined)
+                            form.setValue('token_reset_timezone', '')
+                          }
+                        }}
                       >
                         <FormControl>
                           <SelectTrigger>
@@ -883,7 +955,9 @@ export function SubscriptionsMutateDrawer({
                           min={0}
                           disabled={tokenResetPeriod !== 'custom'}
                           onChange={(e) =>
-                            field.onChange(parseInt(e.target.value, 10) || 0)
+                            field.onChange(
+                              Number.parseInt(e.target.value, 10) || 0
+                            )
                           }
                         />
                       </FormControl>
@@ -892,6 +966,34 @@ export function SubscriptionsMutateDrawer({
                   )}
                 />
               </div>
+
+              {tokenResetPeriod && tokenResetPeriod !== 'never' && (
+                <FormField
+                  control={form.control}
+                  name='token_reset_anchor'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('Token reset anchor')}</FormLabel>
+                      <FormControl>
+                        <DateTimePicker
+                          value={field.value}
+                          onChange={(date) => {
+                            field.onChange(date)
+                            form.setValue(
+                              'token_reset_timezone',
+                              date
+                                ? Intl.DateTimeFormat().resolvedOptions()
+                                    .timeZone
+                                : ''
+                            )
+                          }}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
             </SideDrawerSection>
 
             {/* Payment Config */}

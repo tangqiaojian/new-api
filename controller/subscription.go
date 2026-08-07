@@ -1,9 +1,11 @@
 package controller
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
@@ -36,7 +38,7 @@ func GetSubscriptionPlans(c *gin.Context) {
 	}
 
 	var plans []model.SubscriptionPlan
-	if err := model.DB.Where("enabled = ?", true).Order("sort_order desc, id desc").Find(&plans).Error; err != nil {
+	if err := model.DB.Where("enabled = ? AND (plan_type = ? OR plan_type = ? OR plan_type = '')", true, model.SubscriptionPlanTypeUser, model.SubscriptionPlanTypeBoth).Order("sort_order desc, id desc").Find(&plans).Error; err != nil {
 		common.ApiError(c, err)
 		return
 	}
@@ -138,6 +140,29 @@ type AdminUpsertSubscriptionPlanRequest struct {
 	Plan model.SubscriptionPlan `json:"plan"`
 }
 
+func validateSubscriptionPlanSettings(plan *model.SubscriptionPlan) error {
+	planType, err := model.NormalizeSubscriptionPlanType(plan.PlanType)
+	if err != nil {
+		return err
+	}
+	plan.PlanType = planType
+	plan.QuotaResetTimezone = strings.TrimSpace(plan.QuotaResetTimezone)
+	plan.TokenResetTimezone = strings.TrimSpace(plan.TokenResetTimezone)
+	for _, anchor := range []*int64{plan.QuotaResetAnchor, plan.TokenResetAnchor} {
+		if anchor != nil && (*anchor < -62135596800 || *anchor > 253402300799) {
+			return errors.New("reset anchor is outside the supported Unix range")
+		}
+	}
+	for _, timezone := range []string{plan.QuotaResetTimezone, plan.TokenResetTimezone} {
+		if timezone != "" {
+			if _, err := time.LoadLocation(timezone); err != nil {
+				return fmt.Errorf("invalid reset timezone: %w", err)
+			}
+		}
+	}
+	return nil
+}
+
 func AdminCreateSubscriptionPlan(c *gin.Context) {
 	if !requirePaymentCompliance(c) {
 		return
@@ -214,6 +239,10 @@ func AdminCreateSubscriptionPlan(c *gin.Context) {
 	}
 	if req.Plan.TotalTokens < 0 {
 		common.ApiErrorMsg(c, "token 总额度不能为负数")
+		return
+	}
+	if err := validateSubscriptionPlanSettings(&req.Plan); err != nil {
+		common.ApiErrorMsg(c, err.Error())
 		return
 	}
 	err := model.DB.Create(&req.Plan).Error
@@ -304,6 +333,12 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 		return
 	}
 
+	if err := validateSubscriptionPlanSettings(&req.Plan); err != nil {
+		common.ApiErrorMsg(c, err.Error())
+		return
+	}
+
+	now := model.GetDBTimestamp()
 	err := model.DB.Transaction(func(tx *gorm.DB) error {
 		// update plan (allow zero values updates with map)
 		updateMap := map[string]interface{}{
@@ -329,6 +364,11 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 			"include_cache_tokens":       req.Plan.IncludeCacheTokens,
 			"token_reset_period":         tokenResetPeriod,
 			"token_reset_custom_seconds": req.Plan.TokenResetCustomSeconds,
+			"plan_type":                  req.Plan.PlanType,
+			"quota_reset_anchor":         req.Plan.QuotaResetAnchor,
+			"quota_reset_timezone":       req.Plan.QuotaResetTimezone,
+			"token_reset_anchor":         req.Plan.TokenResetAnchor,
+			"token_reset_timezone":       req.Plan.TokenResetTimezone,
 			"updated_at":                 common.GetTimestamp(),
 		}
 		if req.Plan.AllowBalancePay != nil {
@@ -349,6 +389,9 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 				"include_cache_tokens": req.Plan.IncludeCacheTokens,
 				"updated_at":           common.GetTimestamp(),
 			}).Error; err != nil {
+			return err
+		}
+		if err := model.RecalculatePlanResetTimesTx(tx, id, now); err != nil {
 			return err
 		}
 		return nil
@@ -432,19 +475,30 @@ func AdminListUserSubscriptions(c *gin.Context) {
 }
 
 type AdminCreateUserSubscriptionRequest struct {
-	PlanId int `json:"plan_id"`
+	PlanId             int     `json:"plan_id"`
+	QuotaResetAnchor   *int64  `json:"quota_reset_anchor"`
+	QuotaResetTimezone *string `json:"quota_reset_timezone"`
+	TokenResetAnchor   *int64  `json:"token_reset_anchor"`
+	TokenResetTimezone *string `json:"token_reset_timezone"`
+}
+
+type AdminUpdateUserSubscriptionRequest struct {
+	QuotaResetAnchor   *int64  `json:"quota_reset_anchor"`
+	QuotaResetTimezone *string `json:"quota_reset_timezone"`
+	TokenResetAnchor   *int64  `json:"token_reset_anchor"`
+	TokenResetTimezone *string `json:"token_reset_timezone"`
 }
 
 type AdminResetSubscriptionRequest struct {
-	PlanId           int   `json:"plan_id"`
-	AdvanceResetTime *bool `json:"advance_reset_time"`
+	PlanId     int    `json:"plan_id"`
+	ResetScope string `json:"reset_scope"`
 }
 
-func resolveAdvanceResetTime(value *bool) bool {
-	if value == nil {
-		return true
+func requireResetScope(scope string) (string, error) {
+	if strings.TrimSpace(scope) == "" {
+		return "", errors.New("reset_scope is required")
 	}
-	return *value
+	return model.NormalizeResetScope(scope)
 }
 
 func recordSubscriptionResetUserLogs(result *model.SubscriptionResetResult, adminInfo map[string]interface{}) {
@@ -473,7 +527,17 @@ func AdminCreateUserSubscription(c *gin.Context) {
 		common.ApiErrorMsg(c, "参数错误")
 		return
 	}
-	msg, err := model.AdminBindSubscription(userId, req.PlanId, "")
+	override := &model.UserSubscriptionResetOverride{
+		QuotaResetAnchor:   req.QuotaResetAnchor,
+		QuotaResetTimezone: req.QuotaResetTimezone,
+		TokenResetAnchor:   req.TokenResetAnchor,
+		TokenResetTimezone: req.TokenResetTimezone,
+	}
+	if override.QuotaResetAnchor == nil && override.QuotaResetTimezone == nil &&
+		override.TokenResetAnchor == nil && override.TokenResetTimezone == nil {
+		override = nil
+	}
+	msg, err := model.AdminBindSubscription(userId, req.PlanId, "", override)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -482,6 +546,36 @@ func AdminCreateUserSubscription(c *gin.Context) {
 		common.ApiSuccess(c, gin.H{"message": msg})
 		return
 	}
+	common.ApiSuccess(c, nil)
+}
+
+// AdminUpdateUserSubscription updates optional instance-level reset anchor overrides.
+func AdminUpdateUserSubscription(c *gin.Context) {
+	if !requirePaymentCompliance(c) {
+		return
+	}
+	subId, _ := strconv.Atoi(c.Param("id"))
+	if subId <= 0 {
+		common.ApiErrorMsg(c, "无效的订阅ID")
+		return
+	}
+	var req AdminUpdateUserSubscriptionRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ApiErrorMsg(c, "参数错误")
+		return
+	}
+	if err := model.AdminUpdateUserSubscriptionResetOverrides(subId, model.UserSubscriptionResetOverride{
+		QuotaResetAnchor:   req.QuotaResetAnchor,
+		QuotaResetTimezone: req.QuotaResetTimezone,
+		TokenResetAnchor:   req.TokenResetAnchor,
+		TokenResetTimezone: req.TokenResetTimezone,
+	}); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	recordManageAudit(c, "subscription.user_subscription_update_reset_override", map[string]interface{}{
+		"user_subscription_id": subId,
+	})
 	common.ApiSuccess(c, nil)
 }
 
@@ -500,20 +594,24 @@ func AdminResetUserSubscriptionsByPlan(c *gin.Context) {
 		common.ApiErrorMsg(c, "参数错误")
 		return
 	}
-	advanceResetTime := resolveAdvanceResetTime(req.AdvanceResetTime)
-	result, err := model.AdminResetUserSubscriptionsByPlan(userId, req.PlanId, advanceResetTime)
+	resetScope, err := requireResetScope(req.ResetScope)
+	if err != nil {
+		common.ApiErrorMsg(c, "重置范围必须为 quota、tokens 或 both")
+		return
+	}
+	result, err := model.AdminResetUserSubscriptionsByPlan(userId, req.PlanId, true, resetScope)
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
 	recordSubscriptionResetUserLogs(result, auditOperatorInfo(c))
 	recordManageAuditFor(c, userId, "subscription.user_plan_reset", map[string]interface{}{
-		"target_user_id":     userId,
-		"plan_id":            result.PlanId,
-		"plan_title":         result.PlanTitle,
-		"reset_count":        result.ResetCount,
-		"user_count":         result.UserCount,
-		"advance_reset_time": result.AdvanceResetTime,
+		"target_user_id": userId,
+		"plan_id":        result.PlanId,
+		"plan_title":     result.PlanTitle,
+		"reset_count":    result.ResetCount,
+		"user_count":     result.UserCount,
+		"reset_scope":    result.ResetScope,
 	})
 	common.ApiSuccess(c, result)
 }
@@ -529,21 +627,25 @@ func AdminResetPlanSubscriptions(c *gin.Context) {
 		common.ApiErrorMsg(c, "参数错误")
 		return
 	}
-	advanceResetTime := resolveAdvanceResetTime(req.AdvanceResetTime)
-	result, err := model.AdminResetPlanSubscriptions(planId, advanceResetTime)
+	resetScope, err := requireResetScope(req.ResetScope)
+	if err != nil {
+		common.ApiErrorMsg(c, "重置范围必须为 quota、tokens 或 both")
+		return
+	}
+	result, err := model.AdminResetPlanSubscriptions(planId, true, resetScope)
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
 	recordSubscriptionResetUserLogs(result, auditOperatorInfo(c))
-	common.SysLog(fmt.Sprintf("admin reset subscription plan %d quota: reset_count=%d user_count=%d advance_reset_time=%t",
-		result.PlanId, result.ResetCount, result.UserCount, result.AdvanceResetTime))
+	common.SysLog(fmt.Sprintf("admin reset subscription plan %d scope=%s: reset_count=%d user_count=%d",
+		result.PlanId, result.ResetScope, result.ResetCount, result.UserCount))
 	recordManageAudit(c, "subscription.plan_reset", map[string]interface{}{
-		"plan_id":            result.PlanId,
-		"plan_title":         result.PlanTitle,
-		"reset_count":        result.ResetCount,
-		"user_count":         result.UserCount,
-		"advance_reset_time": result.AdvanceResetTime,
+		"plan_id":     result.PlanId,
+		"plan_title":  result.PlanTitle,
+		"reset_count": result.ResetCount,
+		"user_count":  result.UserCount,
+		"reset_scope": result.ResetScope,
 	})
 	common.ApiSuccess(c, result)
 }
@@ -650,7 +752,17 @@ func AdminResetSingleSubscription(c *gin.Context) {
 		common.ApiErrorMsg(c, "无效的订阅ID")
 		return
 	}
-	if err := model.AdminResetSingleUserSubscription(subId); err != nil {
+	var req AdminResetSubscriptionRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ApiErrorMsg(c, "参数错误")
+		return
+	}
+	resetScope, err := requireResetScope(req.ResetScope)
+	if err != nil {
+		common.ApiErrorMsg(c, "重置范围必须为 quota、tokens 或 both")
+		return
+	}
+	if err := model.AdminResetSingleUserSubscription(subId, resetScope); err != nil {
 		common.ApiError(c, err)
 		return
 	}

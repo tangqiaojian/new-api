@@ -13,13 +13,13 @@ type ChannelModelStats struct {
 	RequestCount     int     `json:"request_count"`
 	PromptTokens     int     `json:"prompt_tokens"`
 	CompletionTokens int     `json:"completion_tokens"`
-	CachedTokens    int     `json:"cached_tokens"`
-	AvgFirstByteMs  float64 `json:"avg_first_byte_ms"`
-	AvgSpeedTokPerS float64 `json:"avg_speed_tok_per_s"`
-	CacheHitRatio   float64 `json:"cache_hit_ratio"`
-	SuccessRate     float64 `json:"success_rate"`
-	TotalTokens     int     `json:"total_tokens"`
-	Quota           int     `json:"quota"`
+	CachedTokens     int     `json:"cached_tokens"`
+	AvgFirstByteMs   float64 `json:"avg_first_byte_ms"`
+	AvgSpeedTokPerS  float64 `json:"avg_speed_tok_per_s"`
+	CacheHitRatio    float64 `json:"cache_hit_ratio"`
+	SuccessRate      float64 `json:"success_rate"`
+	TotalTokens      int     `json:"total_tokens"`
+	Quota            int     `json:"quota"`
 }
 
 // channelStatsOtherCol returns the quoted column name for `other` based on log database dialect.
@@ -46,8 +46,12 @@ func channelStatsJsonExtractInt(key string) string {
 		// ClickHouse: JSONExtractInt extracts numeric values; cache_tokens is an integer
 		return "JSONExtractInt(" + otherCol + ", '" + key + "')"
 	case common.UsingLogDatabase(common.DatabaseTypePostgreSQL):
-		// PostgreSQL: other is text, must cast to jsonb first
-		return "CAST((" + otherCol + "::jsonb)->>'" + key + "' AS INTEGER)"
+		// PostgreSQL: other is text, must cast to jsonb first. NULLIF + btrim
+		// guards against empty/whitespace values, which would make the jsonb cast
+		// throw and fail the whole aggregation (json_extract on the other dialects
+		// tolerates invalid JSON by returning NULL). Other malformed values are
+		// not expected: the writer only ever stores Marshal output or "".
+		return "CAST((NULLIF(btrim(" + otherCol + "), '')::jsonb)->>'" + key + "' AS INTEGER)"
 	case common.UsingLogDatabase(common.DatabaseTypeSQLite):
 		// SQLite: CAST(json_extract(other, '$.key') AS INTEGER)
 		return "CAST(json_extract(" + otherCol + ", '$." + key + "') AS INTEGER)"
@@ -75,8 +79,10 @@ func channelStatsJsonExtractString(key string) string {
 		// ClickHouse: JSONExtractString returns a String (empty when missing)
 		return "JSONExtractString(" + otherCol + ", '" + key + "')"
 	case common.UsingLogDatabase(common.DatabaseTypePostgreSQL):
-		// PostgreSQL: other is text, cast to jsonb; ->> yields text, COALESCE for NULL
-		return "COALESCE((" + otherCol + "::jsonb)->>'" + key + "', '')"
+		// PostgreSQL: other is text, cast to jsonb; ->> yields text, COALESCE for NULL.
+		// NULLIF + btrim guards against empty/whitespace values that would make the
+		// jsonb cast throw.
+		return "COALESCE((NULLIF(btrim(" + otherCol + "), '')::jsonb)->>'" + key + "', '')"
 	case common.UsingLogDatabase(common.DatabaseTypeSQLite):
 		// SQLite: json_extract returns the raw scalar (text); COALESCE for NULL
 		return "COALESCE(json_extract(" + otherCol + ", '$." + key + "'), '')"
@@ -109,8 +115,9 @@ func channelStatsJsonExtractFloat(key string) string {
 		// ClickHouse: JSONExtractFloat extracts numeric values; frt is a float64
 		return "JSONExtractFloat(" + otherCol + ", '" + key + "')"
 	case common.UsingLogDatabase(common.DatabaseTypePostgreSQL):
-		// PostgreSQL: other is text, must cast to jsonb first
-		return "CAST((" + otherCol + "::jsonb)->>'" + key + "' AS DOUBLE PRECISION)"
+		// PostgreSQL: other is text, must cast to jsonb first. NULLIF + btrim
+		// guards against empty/whitespace values that would make the jsonb cast throw.
+		return "CAST((NULLIF(btrim(" + otherCol + "), '')::jsonb)->>'" + key + "' AS DOUBLE PRECISION)"
 	case common.UsingLogDatabase(common.DatabaseTypeSQLite):
 		// SQLite: CAST(json_extract(other, '$.key') AS REAL)
 		return "CAST(json_extract(" + otherCol + ", '$." + key + "') AS REAL)"
@@ -132,8 +139,10 @@ func channelStatsSuccessExpr() string {
 		// ClickHouse: status == 'ok' or field not present (non-stream)
 		return "CASE WHEN JSONExtractString(" + otherCol + ", 'stream_status', 'status') = 'error' THEN 0 ELSE 1 END"
 	case common.UsingLogDatabase(common.DatabaseTypePostgreSQL):
-		// PostgreSQL: other is text, must cast to jsonb for JSON path operators
-		return "CASE WHEN (" + otherCol + "::jsonb)->'stream_status'->>'status' = 'error' THEN 0 ELSE 1 END"
+		// PostgreSQL: other is text, must cast to jsonb for JSON path operators.
+		// NULLIF + btrim guards against empty/whitespace values that would make the
+		// jsonb cast throw.
+		return "CASE WHEN (NULLIF(btrim(" + otherCol + "), '')::jsonb)->'stream_status'->>'status' = 'error' THEN 0 ELSE 1 END"
 	case common.UsingLogDatabase(common.DatabaseTypeSQLite):
 		// SQLite: json_extract(other, '$.stream_status.status') = 'error' → failure
 		return "CASE WHEN json_extract(" + otherCol + ", '$.stream_status.status') = 'error' THEN 0 ELSE 1 END"

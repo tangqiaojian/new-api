@@ -16,14 +16,24 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
 import { ConfirmDialog } from '@/components/confirm-dialog'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 
 import { adminResetSubscription } from '../../api'
-import type { AdminUserSubscriptionItem } from '../../types'
+import type {
+  AdminUserSubscriptionItem,
+  SubscriptionResetScope,
+} from '../../types'
 
 interface ResetSubscriptionConfirmProps {
   open: boolean
@@ -40,12 +50,19 @@ export function ResetSubscriptionConfirm({
 }: ResetSubscriptionConfirmProps) {
   const { t } = useTranslation()
   const [loading, setLoading] = useState(false)
+  const [resetScope, setResetScope] = useState<SubscriptionResetScope>('both')
+
+  useEffect(() => {
+    if (open) setResetScope('both')
+  }, [open])
 
   const handleConfirm = async () => {
     if (!subscription) return
     setLoading(true)
     try {
-      const result = await adminResetSubscription(subscription.id)
+      const result = await adminResetSubscription(subscription.id, {
+        reset_scope: resetScope,
+      })
       if (result.success) {
         toast.success(t('Subscription usage has been reset'))
         onOpenChange(false)
@@ -73,6 +90,22 @@ export function ResetSubscriptionConfirm({
       handleConfirm={handleConfirm}
       isLoading={loading}
       disabled={!subscription}
-    />
+    >
+      <Select
+        value={resetScope}
+        onValueChange={(value) =>
+          setResetScope(value as SubscriptionResetScope)
+        }
+      >
+        <SelectTrigger aria-label={t('Reset scope')}>
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value='quota'>{t('Quota only')}</SelectItem>
+          <SelectItem value='tokens'>{t('Tokens only')}</SelectItem>
+          <SelectItem value='both'>{t('Quota and tokens')}</SelectItem>
+        </SelectContent>
+      </Select>
+    </ConfirmDialog>
   )
 }

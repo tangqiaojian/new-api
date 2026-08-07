@@ -179,8 +179,17 @@ func SetApiRouter(router *gin.Engine) {
 			subscriptionAdminRoute.POST("/users/:id/subscriptions/reset", controller.AdminResetUserSubscriptionsByPlan)
 			subscriptionAdminRoute.POST("/user_subscriptions/:id/adjust", controller.AdminAdjustSubscription)
 			subscriptionAdminRoute.POST("/user_subscriptions/:id/reset", controller.AdminResetSingleSubscription)
+			subscriptionAdminRoute.PUT("/user_subscriptions/:id", controller.AdminUpdateUserSubscription)
 			subscriptionAdminRoute.POST("/user_subscriptions/:id/invalidate", controller.AdminInvalidateUserSubscription)
 			subscriptionAdminRoute.DELETE("/user_subscriptions/:id", controller.AdminDeleteUserSubscription)
+
+			subscriptionAdminRoute.GET("/channel-pools", controller.AdminListChannelSubscriptionPools)
+			subscriptionAdminRoute.GET("/channel-pools/occupancies", controller.AdminListChannelPoolOccupancies)
+			subscriptionAdminRoute.POST("/channel-pools", controller.AdminCreateChannelSubscriptionPool)
+			subscriptionAdminRoute.GET("/channel-pools/:id", controller.AdminGetChannelSubscriptionPool)
+			subscriptionAdminRoute.PUT("/channel-pools/:id", controller.AdminUpdateChannelSubscriptionPool)
+			subscriptionAdminRoute.DELETE("/channel-pools/:id", controller.AdminCancelChannelSubscriptionPool)
+			subscriptionAdminRoute.POST("/channel-pools/:id/reset", controller.AdminResetChannelSubscriptionPool)
 		}
 
 		// Subscription payment callbacks (no auth)

@@ -68,8 +68,8 @@ export function AddQuotaDialog({
     }
   }, [open])
 
-  const amountValue = parseFloat(amount) || 0
-  const tokenValue = parseInt(tokens, 10) || 0
+  const amountValue = Number.parseFloat(amount) || 0
+  const tokenValue = Number.parseInt(tokens, 10) || 0
 
   // amount_delta is in quota units (dollars * quotaPerUnit).
   const amountDelta = parseQuotaFromDollars(amountValue)
@@ -94,9 +94,7 @@ export function AddQuotaDialog({
         toast.error(result.message || t('Failed to adjust quota'))
       }
     } catch (e: unknown) {
-      toast.error(
-        e instanceof Error ? e.message : t('Failed to adjust quota')
-      )
+      toast.error(e instanceof Error ? e.message : t('Failed to adjust quota'))
     } finally {
       setLoading(false)
     }

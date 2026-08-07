@@ -118,7 +118,6 @@ func GetRandomSatisfiedChannel(group string, model string, retry int, requestPat
 	}
 
 	channelSyncLock.RLock()
-	defer channelSyncLock.RUnlock()
 
 	// First, try to find channels with the exact model name.
 	channels := filterChannelsByRequestPathAndModel(group2model2channels[group][model], requestPath, model)
@@ -128,6 +127,17 @@ func GetRandomSatisfiedChannel(group string, model string, retry int, requestPat
 		normalizedModel := ratio_setting.FormatMatchingModelName(model)
 		channels = filterChannelsByRequestPathAndModel(group2model2channels[group][normalizedModel], requestPath, model)
 	}
+	channels = append([]int(nil), channels...)
+	channelSyncLock.RUnlock()
+
+	var err error
+	channels, err = filterChannelIdsBySubscriptionPool(channels)
+	if err != nil {
+		return nil, fmt.Errorf("filter channels by subscription pool: %w", err)
+	}
+
+	channelSyncLock.RLock()
+	defer channelSyncLock.RUnlock()
 
 	if len(channels) == 0 {
 		return nil, nil

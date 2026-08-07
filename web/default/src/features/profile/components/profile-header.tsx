@@ -119,10 +119,13 @@ export function ProfileHeader({ profile, loading }: ProfileHeaderProps) {
             value: `${formatQuota(profile.weekly_quota_used || 0)} / ${formatQuota(profile.weekly_quota)}`,
             description: profile.weekly_quota_reset_at
               ? t('Resets at {{date}}', {
-                  date: new Date(profile.weekly_quota_reset_at * 1000).toLocaleDateString(),
+                  date: new Date(
+                    profile.weekly_quota_reset_at * 1000
+                  ).toLocaleDateString(),
                 })
               : t('Resets every Monday'),
             icon: Timer,
+            tone: 'chart-2' as const,
           },
         ]
       : []),
@@ -177,7 +180,9 @@ export function ProfileHeader({ profile, loading }: ProfileHeaderProps) {
         </div>
       </CardContent>
       <div className='border-t'>
-        <div className={`divide-border/60 grid divide-x ${stats.length === 4 ? 'grid-cols-4' : 'grid-cols-3'}`}>
+        <div
+          className={`divide-border/60 grid divide-x ${stats.length === 4 ? 'grid-cols-4' : 'grid-cols-3'}`}
+        >
           {stats.map((item) => (
             <div key={item.label} className='min-w-0 px-3 py-3 sm:px-5 sm:py-4'>
               <div className='flex items-center gap-2'>

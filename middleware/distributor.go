@@ -53,6 +53,22 @@ func Distribute() func(c *gin.Context) {
 				abortWithOpenAiMessage(c, http.StatusForbidden, i18n.T(c, i18n.MsgDistributorChannelDisabled))
 				return
 			}
+			available, availabilityErr := model.IsChannelSubscriptionPoolAvailable(channel.Id)
+			if availabilityErr != nil {
+				abortWithOpenAiMessage(c, http.StatusServiceUnavailable, fmt.Sprintf("failed to check channel subscription pool: %s", availabilityErr.Error()))
+				return
+			}
+			if !available {
+				// A pinned-channel request usually carries no group field; fall back
+				// to the group the token was resolved into (same as the generic
+				// no_available_channel message below).
+				usingGroup := common.GetContextKeyString(c, constant.ContextKeyUsingGroup)
+				if modelRequest.Group != "" {
+					usingGroup = modelRequest.Group
+				}
+				abortWithOpenAiMessage(c, http.StatusServiceUnavailable, i18n.T(c, i18n.MsgDistributorChannelPoolExhausted, map[string]any{"Group": usingGroup, "Model": modelRequest.Model}), types.ErrorCodeChannelPoolExhausted)
+				return
+			}
 		} else {
 			// Select a channel for the user
 			// check token model mapping
@@ -110,7 +126,19 @@ func Distribute() func(c *gin.Context) {
 				if preferredChannelID, found := service.GetPreferredChannelByAffinity(c, modelRequest.Model, usingGroup); found {
 					affinityUsable := false
 					preferred, err := model.CacheGetChannel(preferredChannelID)
-					if err == nil && preferred != nil && preferred.Status == common.ChannelStatusEnabled &&
+					if err != nil {
+						service.ClearCurrentChannelAffinityCache(c)
+					} else {
+						available, availabilityErr := model.IsChannelSubscriptionPoolAvailable(preferredChannelID)
+						if availabilityErr != nil {
+							abortWithOpenAiMessage(c, http.StatusServiceUnavailable, fmt.Sprintf("failed to check channel subscription pool: %s", availabilityErr.Error()))
+							return
+						}
+						if !available {
+							preferred = nil
+						}
+					}
+					if preferred != nil && preferred.Status == common.ChannelStatusEnabled &&
 						channelSupportsRequestPath(preferred, c.Request.URL.Path, modelRequest.Model) {
 						if usingGroup == "auto" {
 							autoGroups := service.GetUserAutoGroupFromCtx(c)

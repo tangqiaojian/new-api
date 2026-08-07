@@ -24,6 +24,7 @@ import { SectionPageLayout } from '@/components/layout'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
+import { ChannelPoolsPanel } from './components/channel-pools-panel'
 import { SubscriptionsDialogs } from './components/subscriptions-dialogs'
 import { SubscriptionsPrimaryButtons } from './components/subscriptions-primary-buttons'
 import {
@@ -64,17 +65,15 @@ function SubscriptionsContent() {
             className='flex h-full min-h-0 flex-col gap-3'
           >
             <TabsList className='self-start'>
-              <TabsTrigger value='plans'>
-                {t('Subscription Plans')}
-              </TabsTrigger>
+              <TabsTrigger value='plans'>{t('Subscription Plans')}</TabsTrigger>
               <TabsTrigger value='user-subscriptions'>
                 {t('User Subscriptions')}
               </TabsTrigger>
+              <TabsTrigger value='channel-pools'>
+                {t('Channel Pools')}
+              </TabsTrigger>
             </TabsList>
-            <TabsContent
-              value='plans'
-              className='min-h-0 flex-1 outline-none'
-            >
+            <TabsContent value='plans' className='min-h-0 flex-1 outline-none'>
               <div className='flex h-full min-h-0 flex-col gap-4'>
                 {!complianceConfirmed ? (
                   <Alert variant='destructive' className='shrink-0'>
@@ -95,6 +94,12 @@ function SubscriptionsContent() {
               className='min-h-0 flex-1 outline-none'
             >
               <UserSubscriptionsPanel />
+            </TabsContent>
+            <TabsContent
+              value='channel-pools'
+              className='min-h-0 flex-1 outline-none'
+            >
+              <ChannelPoolsPanel />
             </TabsContent>
           </Tabs>
         </SectionPageLayout.Content>

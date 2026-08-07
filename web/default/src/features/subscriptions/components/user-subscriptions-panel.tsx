@@ -18,10 +18,10 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useCallback, useState } from 'react'
 
+import type { AdminUserSubscriptionItem } from '../types'
 import { AddQuotaDialog } from './dialogs/add-quota-dialog'
 import { ResetSubscriptionConfirm } from './dialogs/reset-subscription-confirm'
 import { UserSubscriptionsTable } from './user-subscriptions-table'
-import type { AdminUserSubscriptionItem } from '../types'
 
 /**
  * Wraps the user-subscriptions table with its own dialog state so the
@@ -31,8 +31,9 @@ export function UserSubscriptionsPanel() {
   const [refreshTrigger, setRefreshTrigger] = useState(0)
   const [addQuotaRow, setAddQuotaRow] =
     useState<AdminUserSubscriptionItem | null>(null)
-  const [resetRow, setResetRow] =
-    useState<AdminUserSubscriptionItem | null>(null)
+  const [resetRow, setResetRow] = useState<AdminUserSubscriptionItem | null>(
+    null
+  )
 
   const triggerRefresh = useCallback(() => {
     setRefreshTrigger((prev) => prev + 1)

@@ -16,13 +16,17 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { Ban, Plus, RotateCcw, Trash2 } from 'lucide-react'
+import { Ban, Pencil, Plus, RotateCcw, Trash2 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
 import { ConfirmDialog } from '@/components/confirm-dialog'
-import { DataTableRowActionMenu, StaticDataTable } from '@/components/data-table'
+import {
+  DataTableRowActionMenu,
+  StaticDataTable,
+} from '@/components/data-table'
+import { DateTimePicker } from '@/components/datetime-picker'
 import {
   sideDrawerContentClassName,
   sideDrawerFormClassName,
@@ -36,6 +40,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuShortcut,
 } from '@/components/ui/dropdown-menu'
+import { Label } from '@/components/ui/label'
 import {
   Select,
   SelectContent,
@@ -51,19 +56,36 @@ import {
   SheetTitle,
   SheetDescription,
 } from '@/components/ui/sheet'
-import { Switch } from '@/components/ui/switch'
 import { formatQuota } from '@/lib/format'
 
 import {
   getAdminPlans,
   getUserSubscriptions,
   createUserSubscription,
+  updateUserSubscription,
   invalidateUserSubscription,
   deleteUserSubscription,
   resetUserSubscriptionsByPlan,
 } from '../../api'
 import { formatTimestamp } from '../../lib'
-import type { PlanRecord, UserSubscriptionRecord } from '../../types'
+import type {
+  PlanRecord,
+  SubscriptionResetScope,
+  UserSubscription,
+  UserSubscriptionRecord,
+} from '../../types'
+
+function browserTimezone(): string {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone
+}
+
+function unixToDate(value?: number | null): Date | undefined {
+  return value ? new Date(value * 1000) : undefined
+}
+
+function dateToUnix(value?: Date): number | null {
+  return value ? Math.floor(value.getTime() / 1000) : null
+}
 
 interface Props {
   open: boolean
@@ -114,8 +136,14 @@ export function UserSubscriptionsDialog(props: Props) {
   const [plans, setPlans] = useState<PlanRecord[]>([])
   const [subs, setSubs] = useState<UserSubscriptionRecord[]>([])
   const [selectedPlanId, setSelectedPlanId] = useState<string>('')
+  const [createQuotaAnchor, setCreateQuotaAnchor] = useState<Date | undefined>()
+  const [createTokenAnchor, setCreateTokenAnchor] = useState<Date | undefined>()
+  const [editSub, setEditSub] = useState<UserSubscription | null>(null)
+  const [editQuotaAnchor, setEditQuotaAnchor] = useState<Date | undefined>()
+  const [editTokenAnchor, setEditTokenAnchor] = useState<Date | undefined>()
+  const [savingOverride, setSavingOverride] = useState(false)
   const [resetting, setResetting] = useState(false)
-  const [advanceResetTime, setAdvanceResetTime] = useState(true)
+  const [resetScope, setResetScope] = useState<SubscriptionResetScope>('both')
   const [resetAction, setResetAction] = useState<{
     planId: number
     planTitle: string
@@ -153,6 +181,8 @@ export function UserSubscriptionsDialog(props: Props) {
   useEffect(() => {
     if (props.open && props.user?.id) {
       setSelectedPlanId('')
+      setCreateQuotaAnchor(undefined)
+      setCreateTokenAnchor(undefined)
       loadData()
     }
   }, [props.open, props.user?.id, loadData])
@@ -164,12 +194,19 @@ export function UserSubscriptionsDialog(props: Props) {
     }
     setCreating(true)
     try {
+      const timezone = browserTimezone()
       const res = await createUserSubscription(props.user.id, {
         plan_id: Number(selectedPlanId),
+        quota_reset_anchor: dateToUnix(createQuotaAnchor),
+        quota_reset_timezone: createQuotaAnchor ? timezone : null,
+        token_reset_anchor: dateToUnix(createTokenAnchor),
+        token_reset_timezone: createTokenAnchor ? timezone : null,
       })
       if (res.success) {
         toast.success(res.data?.message || t('Added successfully'))
         setSelectedPlanId('')
+        setCreateQuotaAnchor(undefined)
+        setCreateTokenAnchor(undefined)
         await loadData()
         props.onSuccess?.()
       }
@@ -177,6 +214,38 @@ export function UserSubscriptionsDialog(props: Props) {
       toast.error(t('Request failed'))
     } finally {
       setCreating(false)
+    }
+  }
+
+  const openEditOverride = (sub: UserSubscription) => {
+    setEditSub(sub)
+    setEditQuotaAnchor(unixToDate(sub.quota_reset_anchor))
+    setEditTokenAnchor(unixToDate(sub.token_reset_anchor))
+  }
+
+  const handleSaveOverride = async () => {
+    if (!editSub) return
+    setSavingOverride(true)
+    try {
+      const timezone = browserTimezone()
+      const res = await updateUserSubscription(editSub.id, {
+        quota_reset_anchor: dateToUnix(editQuotaAnchor),
+        quota_reset_timezone: editQuotaAnchor ? timezone : null,
+        token_reset_anchor: dateToUnix(editTokenAnchor),
+        token_reset_timezone: editTokenAnchor ? timezone : null,
+      })
+      if (res.success) {
+        toast.success(t('Update succeeded'))
+        setEditSub(null)
+        await loadData()
+        props.onSuccess?.()
+      } else {
+        toast.error(res.message || t('Request failed'))
+      }
+    } catch {
+      toast.error(t('Request failed'))
+    } finally {
+      setSavingOverride(false)
     }
   }
 
@@ -211,7 +280,7 @@ export function UserSubscriptionsDialog(props: Props) {
     try {
       const res = await resetUserSubscriptionsByPlan(props.user.id, {
         plan_id: resetAction.planId,
-        advance_reset_time: advanceResetTime,
+        reset_scope: resetScope,
       })
       if (res.success) {
         toast.success(
@@ -242,41 +311,81 @@ export function UserSubscriptionsDialog(props: Props) {
           </SheetHeader>
 
           <div className={sideDrawerFormClassName()}>
-            <div className='flex gap-2'>
-              <Select
-                items={plans.map((p) => ({
-                  value: String(p.plan.id),
-                  label: (
-                    <>
-                      {p.plan.title}($
-                      {Number(p.plan.price_amount || 0).toFixed(2)})
-                    </>
-                  ),
-                }))}
-                value={selectedPlanId}
-                onValueChange={(v) => v !== null && setSelectedPlanId(v)}
-              >
-                <SelectTrigger className='flex-1'>
-                  <SelectValue placeholder={t('Select subscription plan')} />
-                </SelectTrigger>
-                <SelectContent alignItemWithTrigger={false}>
-                  <SelectGroup>
-                    {plans.map((p) => (
-                      <SelectItem key={p.plan.id} value={String(p.plan.id)}>
-                        {p.plan.title} ($
-                        {Number(p.plan.price_amount || 0).toFixed(2)})
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
-              <Button
-                onClick={handleCreate}
-                disabled={creating || !selectedPlanId}
-              >
-                <Plus className='mr-1 h-4 w-4' />
-                {t('Add subscription')}
-              </Button>
+            <div className='space-y-3 rounded-md border p-3'>
+              <div className='flex gap-2'>
+                <Select
+                  items={plans
+                    .filter(
+                      (p) =>
+                        p.plan.enabled &&
+                        (p.plan.plan_type === 'user' ||
+                          p.plan.plan_type === 'both' ||
+                          !p.plan.plan_type)
+                    )
+                    .map((p) => ({
+                      value: String(p.plan.id),
+                      label: (
+                        <>
+                          {p.plan.title}($
+                          {Number(p.plan.price_amount || 0).toFixed(2)})
+                        </>
+                      ),
+                    }))}
+                  value={selectedPlanId}
+                  onValueChange={(v) => v !== null && setSelectedPlanId(v)}
+                >
+                  <SelectTrigger className='flex-1'>
+                    <SelectValue placeholder={t('Select subscription plan')} />
+                  </SelectTrigger>
+                  <SelectContent alignItemWithTrigger={false}>
+                    <SelectGroup>
+                      {plans
+                        .filter(
+                          (p) =>
+                            p.plan.enabled &&
+                            (p.plan.plan_type === 'user' ||
+                              p.plan.plan_type === 'both' ||
+                              !p.plan.plan_type)
+                        )
+                        .map((p) => (
+                          <SelectItem key={p.plan.id} value={String(p.plan.id)}>
+                            {p.plan.title} ($
+                            {Number(p.plan.price_amount || 0).toFixed(2)})
+                          </SelectItem>
+                        ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+                <Button
+                  onClick={handleCreate}
+                  disabled={creating || !selectedPlanId}
+                >
+                  <Plus className='mr-1 h-4 w-4' />
+                  {t('Add subscription')}
+                </Button>
+              </div>
+              <div className='grid gap-3 sm:grid-cols-2'>
+                <div className='space-y-1.5'>
+                  <Label>{t('Quota reset anchor')}</Label>
+                  <DateTimePicker
+                    value={createQuotaAnchor}
+                    onChange={setCreateQuotaAnchor}
+                  />
+                  <p className='text-muted-foreground text-xs'>
+                    {t('Leave empty to inherit the plan schedule.')}
+                  </p>
+                </div>
+                <div className='space-y-1.5'>
+                  <Label>{t('Token reset anchor')}</Label>
+                  <DateTimePicker
+                    value={createTokenAnchor}
+                    onChange={setCreateTokenAnchor}
+                  />
+                  <p className='text-muted-foreground text-xs'>
+                    {t('Leave empty to inherit the plan schedule.')}
+                  </p>
+                </div>
+              </div>
             </div>
 
             <StaticDataTable
@@ -363,8 +472,17 @@ export function UserSubscriptionsDialog(props: Props) {
                       <DataTableRowActionMenu ariaLabel={t('Actions')}>
                         <DropdownMenuItem
                           disabled={!isActive}
+                          onClick={() => openEditOverride(sub)}
+                        >
+                          {t('Edit reset anchors')}
+                          <DropdownMenuShortcut>
+                            <Pencil size={16} />
+                          </DropdownMenuShortcut>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          disabled={!isActive}
                           onClick={() => {
-                            setAdvanceResetTime(true)
+                            setResetScope('both')
                             setResetAction({
                               planId: sub.plan_id,
                               planTitle:
@@ -452,14 +570,52 @@ export function UserSubscriptionsDialog(props: Props) {
           handleConfirm={handleResetConfirm}
           isLoading={resetting}
         >
-          <label className='flex items-center justify-between gap-3 rounded-md border px-3 py-2 text-sm'>
-            <span>{t('Advance next reset time')}</span>
-            <Switch
-              checked={advanceResetTime}
-              onCheckedChange={(checked) => setAdvanceResetTime(!!checked)}
-              aria-label={t('Advance next reset time')}
-            />
-          </label>
+          <Select
+            value={resetScope}
+            onValueChange={(value) =>
+              setResetScope(value as SubscriptionResetScope)
+            }
+          >
+            <SelectTrigger aria-label={t('Reset scope')}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value='quota'>{t('Quota only')}</SelectItem>
+              <SelectItem value='tokens'>{t('Tokens only')}</SelectItem>
+              <SelectItem value='both'>{t('Quota and tokens')}</SelectItem>
+            </SelectContent>
+          </Select>
+        </ConfirmDialog>
+      )}
+
+      {editSub && (
+        <ConfirmDialog
+          open
+          onOpenChange={(v) => !v && setEditSub(null)}
+          title={t('Edit reset anchors')}
+          desc={t(
+            'Optional instance overrides. Leave empty to inherit the plan schedule.'
+          )}
+          confirmText={t('Save changes')}
+          handleConfirm={handleSaveOverride}
+          isLoading={savingOverride}
+        >
+          <div className='grid gap-3 sm:grid-cols-2'>
+            <div className='space-y-1.5'>
+              <Label>{t('Quota reset anchor')}</Label>
+              <DateTimePicker
+                value={editQuotaAnchor}
+                onChange={setEditQuotaAnchor}
+              />
+            </div>
+            <div className='space-y-1.5'>
+              <Label>{t('Token reset anchor')}</Label>
+              <DateTimePicker
+                value={editTokenAnchor}
+                onChange={setEditTokenAnchor}
+              />
+            </div>
+          </div>
         </ConfirmDialog>
       )}
     </>

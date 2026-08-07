@@ -103,7 +103,7 @@ func fillDailyTokenCacheTokens(data []*DailyTokenData, startTime, endTime int64,
 	}
 	dateExpr := dailyTokenDateExpression()
 	query := LOG_DB.Table("logs").
-		Select("user_id, username, " + dateExpr + " as date, other").
+		Select("user_id, username, "+dateExpr+" as date, other").
 		Where("type = ? AND created_at >= ? AND created_at <= ?", LogTypeConsume, startTime, endTime)
 	for i := 0; i < len(whereClauses); i++ {
 		query = query.Where(whereClauses[i], whereArgs[i])
@@ -140,7 +140,7 @@ func fillDailyModelTokenCacheTokens(data []*DailyModelTokenData, startTime, endT
 	}
 	dateExpr := dailyTokenDateExpression()
 	query := LOG_DB.Table("logs").
-		Select("model_name, " + dateExpr + " as date, other").
+		Select("model_name, "+dateExpr+" as date, other").
 		Where("type = ? AND created_at >= ? AND created_at <= ?", LogTypeConsume, startTime, endTime)
 	for i := 0; i < len(whereClauses); i++ {
 		query = query.Where(whereClauses[i], whereArgs[i])
@@ -169,23 +169,6 @@ func fillDailyModelTokenCacheTokens(data []*DailyModelTokenData, startTime, endT
 	}
 }
 
-// applyExcludeCache 从 token 统计里扣除缓存 token（不含缓存模式），并清零缓存字段
-func applyExcludeCacheDailyToken(data []*DailyTokenData) {
-	for _, d := range data {
-		d.PromptTokens -= d.CachedTokens
-		d.TotalTokens -= d.CachedTokens
-		d.CachedTokens = 0
-	}
-}
-
-func applyExcludeCacheDailyModelToken(data []*DailyModelTokenData) {
-	for _, d := range data {
-		d.PromptTokens -= d.CachedTokens
-		d.TotalTokens -= d.CachedTokens
-		d.CachedTokens = 0
-	}
-}
-
 // GetDailyTokenDataByUserId returns daily token usage for a specific user.
 // When includeCache is true, cached_tokens are included in total_tokens.
 func GetDailyTokenDataByUserId(userId int, startTime int64, endTime int64, includeCache bool) ([]*DailyTokenData, error) {
@@ -204,10 +187,6 @@ func GetDailyTokenDataByUserId(userId int, startTime int64, endTime int64, inclu
 
 	fillDailyTokenCacheTokens(data, startTime, endTime,
 		[]string{"user_id = ?"}, []interface{}{userId})
-
-	if !includeCache {
-		applyExcludeCacheDailyToken(data)
-	}
 
 	return data, nil
 }
@@ -242,11 +221,6 @@ func GetAllDailyTokenData(startTime int64, endTime int64, username string, inclu
 		whereArgs = append(whereArgs, username)
 	}
 	fillDailyTokenCacheTokens(data, startTime, endTime, whereClauses, whereArgs)
-
-	if !includeCache {
-		applyExcludeCacheDailyToken(data)
-	}
-
 	return data, nil
 }
 
@@ -268,11 +242,6 @@ func GetDailyModelTokenDataByUserId(userId int, startTime int64, endTime int64, 
 
 	fillDailyModelTokenCacheTokens(data, startTime, endTime,
 		[]string{"user_id = ?"}, []interface{}{userId})
-
-	if !includeCache {
-		applyExcludeCacheDailyModelToken(data)
-	}
-
 	return data, nil
 }
 
@@ -293,10 +262,5 @@ func GetAllDailyModelTokenData(startTime int64, endTime int64, includeCache bool
 	}
 
 	fillDailyModelTokenCacheTokens(data, startTime, endTime, nil, nil)
-
-	if !includeCache {
-		applyExcludeCacheDailyModelToken(data)
-	}
-
 	return data, nil
 }

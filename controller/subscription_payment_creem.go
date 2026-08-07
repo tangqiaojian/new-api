@@ -46,6 +46,10 @@ func SubscriptionRequestCreemPay(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	if !model.SubscriptionPlanAllowsUsers(plan) {
+		common.ApiErrorMsg(c, "该套餐不适用于用户订阅")
+		return
+	}
 	if !plan.Enabled {
 		common.ApiErrorMsg(c, "套餐未启用")
 		return

@@ -43,6 +43,11 @@ export const subscriptionPlanSchema = z.object({
   include_cache_tokens: z.boolean().default(false),
   token_reset_period: z.string().default(''),
   token_reset_custom_seconds: z.number().int().min(0).default(0),
+  plan_type: z.enum(['user', 'channel', 'both']).default('user'),
+  quota_reset_anchor: z.number().int().nullable().optional(),
+  quota_reset_timezone: z.string().default(''),
+  token_reset_anchor: z.number().int().nullable().optional(),
+  token_reset_timezone: z.string().default(''),
   upgrade_group: z.string().optional(),
   downgrade_group: z.string().optional(),
   stripe_price_id: z.string().optional(),
@@ -70,7 +75,14 @@ export const userSubscriptionSchema = z.object({
   end_time: z.number(),
   amount_total: z.number(),
   amount_used: z.number(),
+  tokens_total: z.number().optional(),
+  tokens_used: z.number().optional(),
   next_reset_time: z.number().optional(),
+  token_next_reset_time: z.number().optional(),
+  quota_reset_anchor: z.number().int().nullable().optional(),
+  quota_reset_timezone: z.string().nullable().optional(),
+  token_reset_anchor: z.number().int().nullable().optional(),
+  token_reset_timezone: z.string().nullable().optional(),
 })
 
 export type UserSubscription = z.infer<typeof userSubscriptionSchema>
@@ -119,15 +131,32 @@ export interface SubscriptionPayResponse {
 
 export interface CreateUserSubscriptionRequest {
   plan_id: number
+  quota_reset_anchor?: number | null
+  quota_reset_timezone?: string | null
+  token_reset_anchor?: number | null
+  token_reset_timezone?: string | null
 }
+
+export interface UpdateUserSubscriptionRequest {
+  quota_reset_anchor?: number | null
+  quota_reset_timezone?: string | null
+  token_reset_anchor?: number | null
+  token_reset_timezone?: string | null
+}
+
+export type SubscriptionResetScope = 'quota' | 'tokens' | 'both'
 
 export interface ResetUserSubscriptionsRequest {
   plan_id: number
-  advance_reset_time: boolean
+  reset_scope: SubscriptionResetScope
 }
 
 export interface ResetPlanSubscriptionsRequest {
-  advance_reset_time: boolean
+  reset_scope: SubscriptionResetScope
+}
+
+export interface ResetSingleSubscriptionRequest {
+  reset_scope: SubscriptionResetScope
 }
 
 export interface SubscriptionResetResult {
@@ -135,7 +164,7 @@ export interface SubscriptionResetResult {
   matched_count: number
   reset_count: number
   user_count: number
-  advance_reset_time: boolean
+  reset_scope: SubscriptionResetScope
 }
 
 // ============================================================================
@@ -170,6 +199,8 @@ export interface AdminUserSubscriptionItem {
   plan_title: string
   amount_total: number
   amount_used: number
+  admin_amount_extra: number
+  admin_tokens_extra: number
   tokens_total: number
   tokens_used: number
   status: string
@@ -184,4 +215,80 @@ export interface AdminUserSubscriptionList {
   total: number
   page: number
   page_size: number
+}
+
+// ============================================================================
+// Admin Channel Pool Management
+// ============================================================================
+
+export const channelPoolStatusSchema = z.enum([
+  'active',
+  'expired',
+  'cancelled',
+])
+
+export const channelPoolMemberSchema = z.object({
+  id: z.number(),
+  pool_id: z.number(),
+  channel_id: z.number(),
+  created_at: z.number(),
+})
+
+export const channelSubscriptionPoolSchema = z.object({
+  id: z.number(),
+  name: z.string(),
+  plan_id: z.number(),
+  plan_title: z.string(),
+  amount_total: z.number(),
+  amount_used: z.number(),
+  tokens_total: z.number(),
+  tokens_used: z.number(),
+  include_cache_tokens: z.boolean(),
+  start_time: z.number(),
+  end_time: z.number(),
+  status: channelPoolStatusSchema,
+  quota_reset_period: z.string(),
+  quota_reset_custom_seconds: z.number(),
+  quota_reset_anchor: z.number().nullable().optional(),
+  quota_reset_timezone: z.string().nullable().optional(),
+  quota_reset_overridden: z.boolean(),
+  quota_last_reset_time: z.number(),
+  quota_next_reset_time: z.number(),
+  token_reset_period: z.string(),
+  token_reset_custom_seconds: z.number(),
+  token_reset_anchor: z.number().nullable().optional(),
+  token_reset_timezone: z.string().nullable().optional(),
+  token_reset_overridden: z.boolean(),
+  token_last_reset_time: z.number(),
+  token_next_reset_time: z.number(),
+  created_at: z.number(),
+  updated_at: z.number(),
+  channels: z.array(channelPoolMemberSchema).default([]),
+})
+
+export type ChannelSubscriptionPool = z.infer<
+  typeof channelSubscriptionPoolSchema
+>
+
+export interface ChannelPoolList {
+  items: ChannelSubscriptionPool[]
+  total: number
+  page: number
+  page_size: number
+}
+
+export interface ChannelPoolPayload {
+  name: string
+  plan_id?: number
+  channel_ids: number[]
+  quota_reset_anchor?: number | null
+  quota_reset_timezone?: string | null
+  token_reset_anchor?: number | null
+  token_reset_timezone?: string | null
+}
+
+export interface ChannelPoolOccupancy {
+  channel_id: number
+  pool_id: number
+  pool_name: string
 }

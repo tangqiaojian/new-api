@@ -88,6 +88,8 @@ var channelReadOnlyFields = map[string]struct{}{
 	"balance":              {},
 	"balance_updated_time": {},
 	"used_quota":           {},
+	// aggregated from logs, never persisted; the edit endpoint must ignore it
+	"cache_hit_ratio": {},
 }
 
 func clearChannelReadOnlyFields(channel *PatchChannel, requestData map[string]any) {

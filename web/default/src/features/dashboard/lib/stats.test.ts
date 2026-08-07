@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest'
+import assert from 'node:assert/strict'
+import { describe, it } from 'node:test'
 
 import { aggregateTodayModelTokens } from './stats'
 
@@ -37,22 +38,22 @@ describe('aggregateTodayModelTokens', () => {
       },
     ])
 
-    expect(summary.totalTokens).toBe(525)
-    expect(summary.promptTokens).toBe(350)
-    expect(summary.completionTokens).toBe(175)
-    expect(summary.requestCount).toBe(6)
-    expect(summary.models).toHaveLength(2)
-    expect(summary.models[0].modelName).toBe('claude-sonnet')
-    expect(summary.models[0].totalTokens).toBe(300)
-    expect(summary.models[1].modelName).toBe('gpt-4o')
-    expect(summary.models[1].totalTokens).toBe(225)
-    expect(summary.models[0].share).toBeCloseTo(300 / 525)
-    expect(summary.models[1].share).toBeCloseTo(225 / 525)
+    assert.equal(summary.totalTokens, 525)
+    assert.equal(summary.promptTokens, 350)
+    assert.equal(summary.completionTokens, 175)
+    assert.equal(summary.requestCount, 6)
+    assert.equal(summary.models.length, 2)
+    assert.equal(summary.models[0].modelName, 'claude-sonnet')
+    assert.equal(summary.models[0].totalTokens, 300)
+    assert.equal(summary.models[1].modelName, 'gpt-4o')
+    assert.equal(summary.models[1].totalTokens, 225)
+    assert.ok(Math.abs(summary.models[0].share - 300 / 525) < 1e-9)
+    assert.ok(Math.abs(summary.models[1].share - 225 / 525) < 1e-9)
   })
 
   it('returns empty summary for empty input', () => {
     const summary = aggregateTodayModelTokens([])
-    expect(summary.totalTokens).toBe(0)
-    expect(summary.models).toEqual([])
+    assert.equal(summary.totalTokens, 0)
+    assert.deepEqual(summary.models, [])
   })
 })

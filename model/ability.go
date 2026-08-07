@@ -107,43 +107,76 @@ func getChannelQuery(group string, model string, retry int) (*gorm.DB, error) {
 
 func GetChannel(group string, model string, retry int, requestPath string) (*Channel, error) {
 	var abilities []Ability
-
-	var err error = nil
-	channelQuery, err := getChannelQuery(group, model, retry)
-	if err != nil {
-		return nil, err
-	}
-	if common.UsingMainDatabase(common.DatabaseTypeSQLite) || common.UsingMainDatabase(common.DatabaseTypePostgreSQL) {
-		err = channelQuery.Order("weight DESC").Find(&abilities).Error
-	} else {
-		err = channelQuery.Order("weight DESC").Find(&abilities).Error
-	}
-	if err != nil {
+	if err := DB.Where(commonGroupCol+" = ? and model = ? and enabled = ?", group, model, true).
+		Order("priority DESC").Order("weight DESC").Find(&abilities).Error; err != nil {
 		return nil, err
 	}
 	abilities = filterAbilitiesByRequestPathAndModel(abilities, requestPath, model)
-	channel := Channel{}
-	if len(abilities) > 0 {
-		// Randomly choose one
-		weightSum := uint(0)
-		for _, ability_ := range abilities {
-			weightSum += ability_.Weight + 10
+	channelIds := make([]int, 0, len(abilities))
+	for _, ability := range abilities {
+		channelIds = append(channelIds, ability.ChannelId)
+	}
+	eligibleIds, err := filterChannelIdsBySubscriptionPool(channelIds)
+	if err != nil {
+		return nil, fmt.Errorf("filter abilities by subscription pool: %w", err)
+	}
+	eligibleSet := make(map[int]struct{}, len(eligibleIds))
+	for _, channelId := range eligibleIds {
+		eligibleSet[channelId] = struct{}{}
+	}
+	filtered := make([]Ability, 0, len(abilities))
+	priorities := make([]int64, 0)
+	seenPriorities := make(map[int64]struct{})
+	for _, ability := range abilities {
+		if _, ok := eligibleSet[ability.ChannelId]; !ok {
+			continue
 		}
-		// Randomly choose one
-		weight := common.GetRandomInt(int(weightSum))
-		for _, ability_ := range abilities {
-			weight -= int(ability_.Weight) + 10
-			//log.Printf("weight: %d, ability weight: %d", weight, *ability_.Weight)
-			if weight <= 0 {
-				channel.Id = ability_.ChannelId
-				break
-			}
+		filtered = append(filtered, ability)
+		priority := int64(0)
+		if ability.Priority != nil {
+			priority = *ability.Priority
 		}
-	} else {
+		if _, ok := seenPriorities[priority]; !ok {
+			seenPriorities[priority] = struct{}{}
+			priorities = append(priorities, priority)
+		}
+	}
+	if len(filtered) == 0 {
 		return nil, nil
 	}
-	err = DB.First(&channel, "id = ?", channel.Id).Error
-	return &channel, err
+	if retry >= len(priorities) {
+		retry = len(priorities) - 1
+	}
+	targetPriority := priorities[retry]
+
+	abilities = abilities[:0]
+	for _, ability := range filtered {
+		priority := int64(0)
+		if ability.Priority != nil {
+			priority = *ability.Priority
+		}
+		if priority == targetPriority {
+			abilities = append(abilities, ability)
+		}
+	}
+
+	channel := Channel{}
+	weightSum := uint(0)
+	for _, ability := range abilities {
+		weightSum += ability.Weight + 10
+	}
+	weight := common.GetRandomInt(int(weightSum))
+	for _, ability := range abilities {
+		weight -= int(ability.Weight) + 10
+		if weight <= 0 {
+			channel.Id = ability.ChannelId
+			break
+		}
+	}
+	if err := DB.First(&channel, "id = ?", channel.Id).Error; err != nil {
+		return nil, err
+	}
+	return &channel, nil
 }
 
 // filterAbilitiesByRequestPathAndModel restricts candidates by request path and

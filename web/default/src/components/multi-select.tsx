@@ -41,6 +41,10 @@ import { cn } from '@/lib/utils'
 export type Option = {
   label: string
   value: string
+  /** When true, the option cannot be selected (still searchable/visible). */
+  disabled?: boolean
+  /** Optional reason appended to the option label when disabled. */
+  disabledReason?: string
 }
 
 interface MultiSelectProps {
@@ -164,8 +168,16 @@ export function MultiSelect(props: MultiSelectProps) {
     if (canCreate) {
       set.add(trimmedInput)
     }
-    return Array.from(set)
+    return [...set]
   }, [props.options, props.selected, canCreate, trimmedInput])
+
+  const disabledValues = React.useMemo(() => {
+    const set = new Set<string>()
+    for (const option of props.options) {
+      if (option.disabled) set.add(option.value)
+    }
+    return set
+  }, [props.options])
 
   const addValues = React.useCallback(
     (values: string[]) => {
@@ -175,13 +187,14 @@ export function MultiSelect(props: MultiSelectProps) {
         const value = raw.trim()
         if (!value) continue
         if (seen.has(value)) continue
+        if (disabledValues.has(value)) continue
         seen.add(value)
         next.push(value)
       }
       if (next.length === 0) return
       props.onChange([...props.selected, ...next])
     },
-    [props]
+    [disabledValues, props]
   )
 
   const handleInputValueChange = (value: string) => {
@@ -199,11 +212,12 @@ export function MultiSelect(props: MultiSelectProps) {
   }
 
   const handleValueChange = (next: string[]) => {
-    props.onChange(next)
+    const filtered = next.filter((value) => !disabledValues.has(value))
+    props.onChange(filtered)
     // When an item is picked (multiple mode), Base UI keeps the input but most
     // UX patterns clear it. Clearing once a value is added makes batch picking
     // feel snappier and matches popular chip-style multiselects.
-    if (next.length > props.selected.length) {
+    if (filtered.length > props.selected.length) {
       setInputValue('')
     }
   }
@@ -355,11 +369,14 @@ export function MultiSelect(props: MultiSelectProps) {
           <ComboboxCollection>
             {(item: string) => {
               const isCreate = canCreate && item === trimmedInput
+              const option = props.options.find((entry) => entry.value === item)
               const label = labelMap.get(item) ?? item
+              const isDisabled = option?.disabled === true
               return (
                 <ComboboxItem
                   key={item}
                   value={item}
+                  disabled={isDisabled}
                   className={isCreate ? 'text-foreground' : undefined}
                 >
                   {isCreate ? (
@@ -377,7 +394,11 @@ export function MultiSelect(props: MultiSelectProps) {
                       </span>
                     </>
                   ) : (
-                    <span className='truncate'>{label}</span>
+                    <span className='truncate'>
+                      {isDisabled && option?.disabledReason
+                        ? `${label} (${option.disabledReason})`
+                        : label}
+                    </span>
                   )}
                 </ComboboxItem>
               )

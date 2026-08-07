@@ -16,24 +16,17 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useEffect, useMemo, useState, useRef, useCallback } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { VChart } from '@visactor/react-vchart'
 import { Hash, Loader2, ArrowLeftRight, AlertCircle } from 'lucide-react'
+import { useEffect, useMemo, useState, useRef, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { toIntlLocale } from '@/i18n/languages'
-import { getRollingDateRange } from '@/lib/time'
-import { useAutoRefresh } from '@/features/dashboard/hooks/use-auto-refresh'
-import { VCHART_OPTION } from '@/lib/vchart'
-import { useTheme } from '@/context/theme-provider'
-import { formatQuotaWithCurrency } from '@/lib/currency'
-import { formatCompactNumber, formatNumber } from '@/lib/format'
-import { Skeleton } from '@/components/ui/skeleton'
-import { Switch } from '@/components/ui/switch'
-import { Label } from '@/components/ui/label'
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Skeleton } from '@/components/ui/skeleton'
+import { Switch } from '@/components/ui/switch'
 import {
   Table,
   TableBody,
@@ -42,18 +35,27 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { useTheme } from '@/context/theme-provider'
 import {
   getSelfSubscriptionUsage,
   getSelfSubscriptionModelUsage,
   getSelfSubscriptions,
 } from '@/features/dashboard/api'
 import { TIME_RANGE_PRESETS } from '@/features/dashboard/constants'
+import { useAutoRefresh } from '@/features/dashboard/hooks/use-auto-refresh'
 import type {
   SubscriptionUsageDataItem,
   SubscriptionUsageFilters,
 } from '@/features/dashboard/types'
+import { toIntlLocale } from '@/i18n/languages'
+import { formatQuotaWithCurrency } from '@/lib/currency'
+import { formatCompactNumber, formatNumber } from '@/lib/format'
 import { ROLE } from '@/lib/roles'
+import { getRollingDateRange } from '@/lib/time'
+import { VCHART_OPTION } from '@/lib/vchart'
 import { useAuthStore } from '@/stores/auth-store'
+
 import { AdminSubscriptionPlanUsage } from './admin-subscription-plan-usage'
 
 let themeManagerPromise: Promise<
@@ -100,6 +102,8 @@ function SelfSubscriptionUsageSection(props: SubscriptionUsageSectionProps) {
   const { t, i18n } = useTranslation()
   const { resolvedTheme } = useTheme()
   const { refetchInterval } = useAutoRefresh()
+  const userRole = useAuthStore((state) => state.auth.user?.role)
+  const isAdmin = Boolean(userRole && userRole >= ROLE.ADMIN)
   const [themeReady, setThemeReady] = useState(false)
   const themeManagerRef = useRef<
     (typeof import('@visactor/vchart'))['ThemeManager'] | null
@@ -237,9 +241,7 @@ function SelfSubscriptionUsageSection(props: SubscriptionUsageSectionProps) {
   // Series: prompt_tokens, completion_tokens, and cached_tokens (when includeCache).
   const trendSpec = useMemo(() => {
     const items = isLoading ? [] : (dailyData ?? [])
-    const sortedItems = [...items].sort((a, b) =>
-      a.date.localeCompare(b.date)
-    )
+    const sortedItems = [...items].sort((a, b) => a.date.localeCompare(b.date))
 
     const series: TrendSeries[] = ['prompt', 'completion']
     if (includeCache) series.push('cached')
@@ -266,12 +268,12 @@ function SelfSubscriptionUsageSection(props: SubscriptionUsageSectionProps) {
     }> = []
     sortedItems.forEach((item) => {
       series.forEach((s) => {
-        const tokens =
-          s === 'prompt'
-            ? item.prompt_tokens
-            : s === 'completion'
-              ? item.completion_tokens
-              : item.cached_tokens
+        let tokens = item.cached_tokens
+        if (s === 'prompt') {
+          tokens = item.prompt_tokens
+        } else if (s === 'completion') {
+          tokens = item.completion_tokens
+        }
         values.push({
           Date: item.date,
           Series: seriesLabels[s],
@@ -528,7 +530,7 @@ function SelfSubscriptionUsageSection(props: SubscriptionUsageSectionProps) {
         <Button
           variant='outline'
           size='sm'
-          className='shrink-0 h-7 px-2 text-xs gap-1'
+          className='h-7 shrink-0 gap-1 px-2 text-xs'
           onClick={() => setCompactMode(!compactMode)}
           title={t('Number Format')}
         >
@@ -544,63 +546,98 @@ function SelfSubscriptionUsageSection(props: SubscriptionUsageSectionProps) {
       {/* Personal subscription summary cards */}
       {activeSubscriptions.length > 0 && (
         <div className='grid gap-2 sm:grid-cols-2 lg:grid-cols-3'>
-          {activeSubscriptions.map((s, idx) => {
+          {activeSubscriptions.map((s) => {
             const sub = s.subscription
-            const amountRemain = sub.amount_total > 0 ? sub.amount_total - sub.amount_used : 0
-            const amountPercent = sub.amount_total > 0 ? Math.min(100, (sub.amount_used / sub.amount_total) * 100) : 0
-            const tokensRemain = (sub.tokens_total ?? 0) > 0 ? (sub.tokens_total ?? 0) - (sub.tokens_used ?? 0) : 0
-            const tokensPercent = (sub.tokens_total ?? 0) > 0 ? Math.min(100, ((sub.tokens_used ?? 0) / (sub.tokens_total ?? 0)) * 100) : 0
+            const amountPercent =
+              sub.amount_total > 0
+                ? Math.min(100, (sub.amount_used / sub.amount_total) * 100)
+                : 0
+            const tokensPercent =
+              (sub.tokens_total ?? 0) > 0
+                ? Math.min(
+                    100,
+                    ((sub.tokens_used ?? 0) / (sub.tokens_total ?? 0)) * 100
+                  )
+                : 0
             const endDate = new Date(sub.end_time * 1000)
-            const daysLeft = Math.max(0, Math.ceil((sub.end_time * 1000 - Date.now()) / 86400000))
+            const daysLeft = Math.max(
+              0,
+              Math.ceil((sub.end_time * 1000 - Date.now()) / 86400000)
+            )
             return (
-              <div key={idx} className='rounded-lg border p-3 space-y-2'>
+              <div
+                key={s.subscription.id}
+                className='space-y-2 rounded-lg border p-3'
+              >
                 <div className='flex items-center justify-between'>
-                  <span className='text-sm font-medium'>{t('Plan')} #{sub.plan_id}</span>
-                  <span className='text-xs text-muted-foreground'>{daysLeft} {t('days remaining')}</span>
+                  <span className='text-sm font-medium'>
+                    {t('Plan')} #{sub.plan_id}
+                  </span>
+                  <span className='text-muted-foreground text-xs'>
+                    {daysLeft} {t('days remaining')}
+                  </span>
                 </div>
                 {sub.amount_total > 0 ? (
                   <div className='space-y-1'>
-                    <div className='flex justify-between text-xs text-muted-foreground'>
+                    <div className='text-muted-foreground flex justify-between text-xs'>
                       <span>{t('Quota')}</span>
-                      <span>{formatQuotaWithCurrency(sub.amount_used)} / {formatQuotaWithCurrency(sub.amount_total)}</span>
+                      <span>
+                        {formatQuotaWithCurrency(sub.amount_used)} /{' '}
+                        {formatQuotaWithCurrency(sub.amount_total)}
+                      </span>
                     </div>
-                    <div className='h-1.5 rounded-full bg-muted overflow-hidden'>
-                      <div className='h-full bg-primary rounded-full' style={{ width: `${amountPercent}%` }} />
+                    <div className='bg-muted h-1.5 overflow-hidden rounded-full'>
+                      <div
+                        className='bg-primary h-full rounded-full'
+                        style={{ width: `${amountPercent}%` }}
+                      />
                     </div>
                   </div>
                 ) : (
-                  <div className='flex justify-between text-xs text-muted-foreground'>
+                  <div className='text-muted-foreground flex justify-between text-xs'>
                     <span>{t('Quota')}</span>
                     <span>{t('Unlimited')}</span>
                   </div>
                 )}
                 {(sub.tokens_total ?? 0) > 0 ? (
                   <div className='space-y-1'>
-                    <div className='flex justify-between text-xs text-muted-foreground'>
+                    <div className='text-muted-foreground flex justify-between text-xs'>
                       <span>{t('Total Tokens')}</span>
-                      <span>{formatCompactNumber(sub.tokens_used ?? 0)} / {formatCompactNumber(sub.tokens_total ?? 0)}</span>
+                      <span>
+                        {formatCompactNumber(sub.tokens_used ?? 0)} /{' '}
+                        {formatCompactNumber(sub.tokens_total ?? 0)}
+                      </span>
                     </div>
-                    <div className='h-1.5 rounded-full bg-muted overflow-hidden'>
-                      <div className='h-full bg-blue-500 rounded-full' style={{ width: `${tokensPercent}%` }} />
+                    <div className='bg-muted h-1.5 overflow-hidden rounded-full'>
+                      <div
+                        className='h-full rounded-full bg-blue-500'
+                        style={{ width: `${tokensPercent}%` }}
+                      />
                     </div>
                   </div>
                 ) : (
-                  <div className='flex justify-between text-xs text-muted-foreground'>
+                  <div className='text-muted-foreground flex justify-between text-xs'>
                     <span>{t('Total Tokens')}</span>
                     <span>{t('Unlimited')}</span>
                   </div>
                 )}
                 {(sub.next_reset_time ?? 0) > 0 && (
-                  <div className='text-xs text-muted-foreground'>
-                    {t('Quota resets')}: {new Date((sub.next_reset_time ?? 0) * 1000).toLocaleString()}
+                  <div className='text-muted-foreground text-xs'>
+                    {t('Quota resets')}:{' '}
+                    {new Date(
+                      (sub.next_reset_time ?? 0) * 1000
+                    ).toLocaleString()}
                   </div>
                 )}
                 {(sub.token_next_reset_time ?? 0) > 0 && (
-                  <div className='text-xs text-muted-foreground'>
-                    {t('Token resets')}: {new Date((sub.token_next_reset_time ?? 0) * 1000).toLocaleString()}
+                  <div className='text-muted-foreground text-xs'>
+                    {t('Token resets')}:{' '}
+                    {new Date(
+                      (sub.token_next_reset_time ?? 0) * 1000
+                    ).toLocaleString()}
                   </div>
                 )}
-                <div className='text-xs text-muted-foreground'>
+                <div className='text-muted-foreground text-xs'>
                   {t('Expires')}: {endDate.toLocaleDateString()}
                 </div>
               </div>
@@ -611,7 +648,7 @@ function SelfSubscriptionUsageSection(props: SubscriptionUsageSectionProps) {
 
       {/* Error state */}
       {hasError && !isLoading && (
-        <div className='flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive'>
+        <div className='border-destructive/30 bg-destructive/5 text-destructive flex items-center gap-2 rounded-lg border px-4 py-3 text-sm'>
           <AlertCircle className='size-4 shrink-0' />
           {t('Failed to load subscription usage data')}
         </div>
@@ -643,17 +680,19 @@ function SelfSubscriptionUsageSection(props: SubscriptionUsageSectionProps) {
         </div>
 
         <div className='overflow-x-auto'>
-          {isLoading ? (
+          {isLoading && (
             <div className='p-4'>
               <Skeleton className='h-64 w-full' />
             </div>
-          ) : tableData.length === 0 ? (
+          )}
+          {!isLoading && tableData.length === 0 && (
             <div className='text-muted-foreground flex items-center justify-center p-8 text-sm'>
               {hasError
                 ? t('Failed to load subscription usage data')
                 : t('No subscription usage data')}
             </div>
-          ) : (
+          )}
+          {!isLoading && tableData.length > 0 && (
             <Table>
               <TableHeader>
                 <TableRow>
@@ -663,59 +702,55 @@ function SelfSubscriptionUsageSection(props: SubscriptionUsageSectionProps) {
                   <TableHead className='whitespace-nowrap'>
                     {t('Plan')}
                   </TableHead>
-                  <TableHead className='whitespace-nowrap text-right'>
+                  <TableHead className='text-right whitespace-nowrap'>
                     {t('Prompt Tokens')}
                   </TableHead>
-                  <TableHead className='whitespace-nowrap text-right'>
+                  <TableHead className='text-right whitespace-nowrap'>
                     {t('Completion Tokens')}
                   </TableHead>
-                  <TableHead className='whitespace-nowrap text-right'>
+                  <TableHead className='text-right whitespace-nowrap'>
                     {t('Cached Tokens')}
                   </TableHead>
-                  <TableHead className='whitespace-nowrap text-right'>
+                  <TableHead className='text-right whitespace-nowrap'>
                     {t('Total Tokens')}
                   </TableHead>
-                  <TableHead className='whitespace-nowrap text-right'>
+                  <TableHead className='text-right whitespace-nowrap'>
                     {t('Requests')}
                   </TableHead>
-                  <TableHead className='whitespace-nowrap text-right'>
+                  <TableHead className='text-right whitespace-nowrap'>
                     {t('Quota')}
                   </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {paginatedData.map(
-                  (item: SubscriptionUsageDataItem, idx: number) => (
-                    <TableRow
-                      key={`${item.subscription_id}-${item.date}-${idx}`}
-                    >
-                      <TableCell className='whitespace-nowrap'>
-                        {item.date}
-                      </TableCell>
-                      <TableCell className='whitespace-nowrap font-medium'>
-                        {item.plan_title}
-                      </TableCell>
-                      <TableCell className='whitespace-nowrap text-right tabular-nums'>
-                        {formatNum(item.prompt_tokens)}
-                      </TableCell>
-                      <TableCell className='whitespace-nowrap text-right tabular-nums'>
-                        {formatNum(item.completion_tokens)}
-                      </TableCell>
-                      <TableCell className='whitespace-nowrap text-right tabular-nums'>
-                        {formatNum(item.cached_tokens)}
-                      </TableCell>
-                      <TableCell className='whitespace-nowrap text-right tabular-nums font-medium'>
-                        {formatNum(item.total_tokens)}
-                      </TableCell>
-                      <TableCell className='whitespace-nowrap text-right tabular-nums'>
-                        {formatNum(item.request_count)}
-                      </TableCell>
-                      <TableCell className='whitespace-nowrap text-right tabular-nums'>
-                        {formatQuota(item.quota)}
-                      </TableCell>
-                    </TableRow>
-                  )
-                )}
+                {paginatedData.map((item: SubscriptionUsageDataItem) => (
+                  <TableRow key={`${item.subscription_id}-${item.date}`}>
+                    <TableCell className='whitespace-nowrap'>
+                      {item.date}
+                    </TableCell>
+                    <TableCell className='font-medium whitespace-nowrap'>
+                      {item.plan_title}
+                    </TableCell>
+                    <TableCell className='text-right whitespace-nowrap tabular-nums'>
+                      {formatNum(item.prompt_tokens)}
+                    </TableCell>
+                    <TableCell className='text-right whitespace-nowrap tabular-nums'>
+                      {formatNum(item.completion_tokens)}
+                    </TableCell>
+                    <TableCell className='text-right whitespace-nowrap tabular-nums'>
+                      {formatNum(item.cached_tokens)}
+                    </TableCell>
+                    <TableCell className='text-right font-medium whitespace-nowrap tabular-nums'>
+                      {formatNum(item.total_tokens)}
+                    </TableCell>
+                    <TableCell className='text-right whitespace-nowrap tabular-nums'>
+                      {formatNum(item.request_count)}
+                    </TableCell>
+                    <TableCell className='text-right whitespace-nowrap tabular-nums'>
+                      {formatQuota(item.quota)}
+                    </TableCell>
+                  </TableRow>
+                ))}
               </TableBody>
             </Table>
           )}
