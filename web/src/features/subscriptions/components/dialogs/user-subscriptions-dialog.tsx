@@ -54,7 +54,6 @@ import {
   SheetTitle,
   SheetDescription,
 } from '@/components/ui/sheet'
-import { Switch } from '@/components/ui/switch'
 import { formatQuota } from '@/lib/format'
 
 import {
@@ -66,7 +65,11 @@ import {
   resetUserSubscriptionsByPlan,
 } from '../../api'
 import { formatTimestamp } from '../../lib'
-import type { PlanRecord, UserSubscriptionRecord } from '../../types'
+import type {
+  PlanRecord,
+  SubscriptionResetScope,
+  UserSubscriptionRecord,
+} from '../../types'
 
 interface Props {
   open: boolean
@@ -118,7 +121,7 @@ export function UserSubscriptionsDialog(props: Props) {
   const [subs, setSubs] = useState<UserSubscriptionRecord[]>([])
   const [selectedPlanId, setSelectedPlanId] = useState<string>('')
   const [resetting, setResetting] = useState(false)
-  const [advanceResetTime, setAdvanceResetTime] = useState(true)
+  const [resetScope, setResetScope] = useState<SubscriptionResetScope>('both')
   const [resetAction, setResetAction] = useState<{
     planId: number
     planTitle: string
@@ -214,7 +217,7 @@ export function UserSubscriptionsDialog(props: Props) {
     try {
       const res = await resetUserSubscriptionsByPlan(props.user.id, {
         plan_id: resetAction.planId,
-        advance_reset_time: advanceResetTime,
+        reset_scope: resetScope,
       })
       if (res.success) {
         toast.success(
@@ -367,7 +370,7 @@ export function UserSubscriptionsDialog(props: Props) {
                         <DropdownMenuItem
                           disabled={!isActive}
                           onClick={() => {
-                            setAdvanceResetTime(true)
+                            setResetScope('both')
                             setResetAction({
                               planId: sub.plan_id,
                               planTitle:
@@ -455,14 +458,21 @@ export function UserSubscriptionsDialog(props: Props) {
           handleConfirm={handleResetConfirm}
           isLoading={resetting}
         >
-          <label className='flex items-center justify-between gap-3 rounded-md border px-3 py-2 text-sm'>
-            <span>{t('Advance next reset time')}</span>
-            <Switch
-              checked={advanceResetTime}
-              onCheckedChange={(checked) => setAdvanceResetTime(!!checked)}
-              aria-label={t('Advance next reset time')}
-            />
-          </label>
+          <Select
+            value={resetScope}
+            onValueChange={(value) =>
+              setResetScope(value as SubscriptionResetScope)
+            }
+          >
+            <SelectTrigger aria-label={t('Reset scope')}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value='quota'>{t('Quota only')}</SelectItem>
+              <SelectItem value='tokens'>{t('Tokens only')}</SelectItem>
+              <SelectItem value='both'>{t('Quota and tokens')}</SelectItem>
+            </SelectContent>
+          </Select>
         </ConfirmDialog>
       )}
     </>

@@ -62,7 +62,53 @@ export function formatResetPeriod(
   return t('No Reset')
 }
 
+export function formatPlanType(
+  planType: SubscriptionPlan['plan_type'] | string | undefined,
+  t: TFunction
+): string {
+  if (planType === 'channel') return t('Channel')
+  if (planType === 'both') return t('User and channel')
+  return t('User')
+}
+
+export function formatResetSummary(
+  plan: Partial<SubscriptionPlan>,
+  t: TFunction
+): string {
+  const period = formatResetPeriod(plan, t)
+  if ((plan.quota_reset_period || 'never') === 'never') {
+    return period
+  }
+  if (!plan.quota_reset_anchor) {
+    return period
+  }
+  const anchor = formatTimestamp(plan.quota_reset_anchor)
+  const timezone = plan.quota_reset_timezone || t('Browser timezone')
+  return `${period} · ${anchor} (${timezone})`
+}
+
 export function formatTimestamp(ts: number): string {
   if (!ts) return '-'
   return dayjs(ts * 1000).format('YYYY-MM-DD HH:mm:ss')
+}
+
+export function isChannelPoolRoutable(pool: {
+  status: string
+  amount_total: number
+  amount_used: number
+  tokens_total: number
+  tokens_used: number
+  start_time: number
+  end_time: number
+}): boolean {
+  if (pool.status !== 'active') return false
+  const now = Math.floor(Date.now() / 1000)
+  if (pool.start_time > now || pool.end_time <= now) return false
+  if (pool.amount_total > 0 && pool.amount_used >= pool.amount_total) {
+    return false
+  }
+  if (pool.tokens_total > 0 && pool.tokens_used >= pool.tokens_total) {
+    return false
+  }
+  return true
 }

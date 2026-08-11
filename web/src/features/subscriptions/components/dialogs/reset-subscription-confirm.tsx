@@ -29,58 +29,67 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 
-import { resetPlanSubscriptions } from '../../api'
-import type { SubscriptionResetScope } from '../../types'
-import { useSubscriptions } from '../subscriptions-provider'
+import { adminResetSubscription } from '../../api'
+import type {
+  AdminUserSubscriptionItem,
+  SubscriptionResetScope,
+} from '../../types'
 
-export function ResetSubscriptionsDialog() {
+interface ResetSubscriptionConfirmProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  subscription: AdminUserSubscriptionItem | null
+  onSuccess: () => void
+}
+
+export function ResetSubscriptionConfirm({
+  open,
+  onOpenChange,
+  subscription,
+  onSuccess,
+}: ResetSubscriptionConfirmProps) {
   const { t } = useTranslation()
-  const { open, setOpen, currentRow, triggerRefresh } = useSubscriptions()
+  const [loading, setLoading] = useState(false)
   const [resetScope, setResetScope] = useState<SubscriptionResetScope>('both')
-  const [resetting, setResetting] = useState(false)
-  const isOpen = open === 'reset-subscriptions'
 
   useEffect(() => {
-    if (isOpen) setResetScope('both')
-  }, [isOpen])
-  const plan = currentRow?.plan
-  const planLabel = plan?.title || (plan?.id ? `#${plan.id}` : '-')
+    if (open) setResetScope('both')
+  }, [open])
 
   const handleConfirm = async () => {
-    if (!plan?.id) return
-    setResetting(true)
+    if (!subscription) return
+    setLoading(true)
     try {
-      const res = await resetPlanSubscriptions(plan.id, {
+      const result = await adminResetSubscription(subscription.id, {
         reset_scope: resetScope,
       })
-      if (res.success) {
-        toast.success(
-          t('Reset {{count}} active subscriptions', {
-            count: res.data?.reset_count || 0,
-          })
-        )
-        triggerRefresh()
-        setOpen(null)
+      if (result.success) {
+        toast.success(t('Subscription usage has been reset'))
+        onOpenChange(false)
+        onSuccess()
+      } else {
+        toast.error(result.message || t('Operation failed'))
       }
     } catch {
       toast.error(t('Operation failed'))
     } finally {
-      setResetting(false)
+      setLoading(false)
     }
   }
 
   return (
     <ConfirmDialog
-      open={isOpen}
-      onOpenChange={(nextOpen) => !nextOpen && setOpen(null)}
-      title={t('Reset subscription quota')}
-      desc={t('Reset all active subscriptions under {{plan}}?', {
-        plan: planLabel,
-      })}
-      confirmText={t('Reset quota')}
+      open={open}
+      onOpenChange={onOpenChange}
+      title={t('Reset Subscription?')}
+      desc={t(
+        'Are you sure you want to reset this subscription? The next reset time will be recalculated according to the plan period.'
+      )}
+      confirmText={t('Reset Usage')}
+      destructive
       handleConfirm={handleConfirm}
-      disabled={!plan?.id}
-      isLoading={resetting}
+      isLoading={loading}
+      disabled={!subscription}
     >
       <Select
         value={resetScope}

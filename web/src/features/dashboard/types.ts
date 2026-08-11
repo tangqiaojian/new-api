@@ -33,6 +33,39 @@ export interface QuotaDataItem {
   quota?: number
 }
 
+// Daily token usage statistics per user
+export interface DailyTokenDataItem {
+  user_id: number
+  username: string
+  date: string // YYYY-MM-DD format
+  prompt_tokens: number
+  completion_tokens: number
+  total_tokens: number
+  cached_tokens: number
+  request_count: number
+  quota: number
+}
+
+// Daily token usage statistics per model
+export interface DailyModelTokenDataItem {
+  model_name: string
+  date: string
+  prompt_tokens: number
+  completion_tokens: number
+  total_tokens: number
+  cached_tokens: number
+  request_count: number
+  quota: number
+}
+
+export interface DailyTokensFilters {
+  timeGranularity: TimeGranularity
+  selectedRange: number
+  topUserLimit: number
+}
+
+export type TokenMetricType = 'prompt' | 'completion' | 'total'
+
 export interface FlowQuotaDataItem {
   user_id?: number
   username?: string
@@ -249,6 +282,76 @@ export interface ProcessedChartData {
 export interface ProcessedUserChartData {
   spec_user_rank: VChartSpec
   spec_user_trend: VChartSpec
+}
+
+export interface ProcessedDailyTokensChartData {
+  spec_tokens_trend: VChartSpec
+  spec_tokens_rank: VChartSpec
+  spec_tokens_pie: VChartSpec
+}
+
+export interface ProcessedDailyModelTokensChartData {
+  spec_model_trend: VChartSpec
+  spec_model_rank: VChartSpec
+  spec_model_request_count: VChartSpec
+  spec_model_pie: VChartSpec
+}
+
+export interface ChannelModelStatsItem {
+  channel_id: number
+  channel_name: string
+  model_name: string
+  request_count: number
+  prompt_tokens: number
+  completion_tokens: number
+  cached_tokens: number
+  avg_first_byte_ms: number
+  avg_speed_tok_per_s: number
+  cache_hit_ratio: number
+  success_rate: number
+  total_tokens: number
+  quota: number
+}
+
+export interface ChannelStatsFilters {
+  timeGranularity: TimeGranularity
+  selectedRange: number
+  topLimit: number
+}
+
+// ============================================================================
+// Subscription Usage Types
+// ============================================================================
+
+export interface SubscriptionUsageDataItem {
+  date: string
+  subscription_id: number
+  plan_id: number
+  plan_title: string
+  prompt_tokens: number
+  completion_tokens: number
+  total_tokens: number
+  cached_tokens: number
+  request_count: number
+  quota: number
+}
+
+export interface SubscriptionModelUsageDataItem {
+  model_name: string
+  plan_id: number
+  plan_title: string
+  prompt_tokens: number
+  completion_tokens: number
+  total_tokens: number
+  cached_tokens: number
+  request_count: number
+  quota: number
+}
+
+export interface SubscriptionUsageFilters {
+  timeGranularity: TimeGranularity
+  selectedRange: number
+  model: string
 }
 
 // ============================================================================

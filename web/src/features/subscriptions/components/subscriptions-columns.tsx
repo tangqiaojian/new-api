@@ -24,9 +24,13 @@ import { BadgeCell } from '@/components/data-table'
 import { GroupBadge } from '@/components/group-badge'
 import { StatusBadge } from '@/components/status-badge'
 import { TableId } from '@/components/table-id'
-import { formatQuota } from '@/lib/format'
+import {
+  formatChineseNumber,
+  formatCompactNumber,
+  formatQuota,
+} from '@/lib/format'
 
-import { formatDuration, formatResetPeriod } from '../lib'
+import { formatDuration, formatPlanType, formatResetSummary } from '../lib'
 import type { PlanRecord } from '../types'
 import { DataTableRowActions } from './data-table-row-actions'
 
@@ -85,15 +89,26 @@ export function useSubscriptionsColumns(): ColumnDef<PlanRecord>[] {
         size: 100,
       },
       {
+        id: 'plan_type',
+        header: t('Plan type'),
+        meta: { mobileHidden: true },
+        cell: ({ row }) => (
+          <span className='text-muted-foreground'>
+            {formatPlanType(row.original.plan.plan_type, t)}
+          </span>
+        ),
+        size: 110,
+      },
+      {
         id: 'reset',
         header: t('Quota Reset'),
         meta: { mobileHidden: true },
         cell: ({ row }) => (
           <span className='text-muted-foreground'>
-            {formatResetPeriod(row.original.plan, t)}
+            {formatResetSummary(row.original.plan, t)}
           </span>
         ),
-        size: 100,
+        size: 180,
       },
       {
         accessorFn: (row) => row.plan.sort_order,
@@ -173,6 +188,28 @@ export function useSubscriptionsColumns(): ColumnDef<PlanRecord>[] {
           )
         },
         size: 150,
+      },
+      {
+        id: 'total_tokens',
+        header: t('Total Tokens'),
+        meta: { mobileHidden: true },
+        cell: ({ row }) => {
+          const total = Number(row.original.plan.total_tokens || 0)
+          if (total <= 0) {
+            return (
+              <span className='text-muted-foreground'>{t('Unlimited')}</span>
+            )
+          }
+          return (
+            <div className='flex flex-col leading-tight'>
+              <span className='tabular-nums'>{formatCompactNumber(total)}</span>
+              <span className='text-muted-foreground text-xs'>
+                {formatChineseNumber(total)}
+              </span>
+            </div>
+          )
+        },
+        size: 120,
       },
       {
         id: 'upgrade_group',
