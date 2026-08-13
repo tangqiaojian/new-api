@@ -526,10 +526,24 @@ func BatchHardDeleteUsers(ids []int) error {
 	if len(ids) == 0 {
 		return nil
 	}
-	return DB.Transaction(func(tx *gorm.DB) error {
-		for _, chunk := range lo.Chunk(ids, 200) {
-			if err := tx.Where("user_id IN ?", chunk).Delete(&UserOAuthBinding{}).Error; err != nil {
+	var tokens []Token
+	authVersions := make(map[int]int64, len(ids))
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		if common.RedisEnabled {
+			if err := tx.Unscoped().Select("id", commonKeyCol).Where("user_id IN ?", ids).Find(&tokens).Error; err != nil {
 				return err
+			}
+		}
+		for _, chunk := range lo.Chunk(ids, 200) {
+			for _, id := range chunk {
+				v, err := IncrementUserAuthVersionWithTx(tx, id)
+				if err != nil {
+					return err
+				}
+				authVersions[id] = v
+				if err := deleteUserAuthenticationData(tx, id); err != nil {
+					return err
+				}
 			}
 			if err := tx.Unscoped().Where("id IN ?", chunk).Delete(&User{}).Error; err != nil {
 				return err
@@ -537,6 +551,23 @@ func BatchHardDeleteUsers(ids []int) error {
 		}
 		return nil
 	})
+	if err != nil {
+		return err
+	}
+	for id, v := range authVersions {
+		if err := publishCommittedUserAuthVersion(id, v); err != nil {
+			common.SysError(fmt.Sprintf("failed to publish auth tombstone after batch hard deleting user %d: %v", id, err))
+		}
+	}
+	if err := invalidateTokensCache(tokens); err != nil {
+		common.SysError(fmt.Sprintf("failed to invalidate token cache after batch hard deleting users: %v", err))
+	}
+	for _, id := range ids {
+		if err := invalidateUserCache(id); err != nil {
+			common.SysError(fmt.Sprintf("failed to invalidate user cache after batch hard deleting user %d: %v", id, err))
+		}
+	}
+	return nil
 }
 
 func inviteUser(inviterId int) error {
