@@ -1,3 +1,6 @@
+import { useQuery } from '@tanstack/react-query'
+import { VChart } from '@visactor/react-vchart'
+import { Hash, Loader2, ArrowLeftRight } from 'lucide-react'
 /*
 Copyright (C) 2023-2026 QuantumNous
 
@@ -17,24 +20,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useEffect, useMemo, useState, useRef, useCallback } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import { VChart } from '@visactor/react-vchart'
-import { Hash, Loader2, ArrowLeftRight } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { toIntlLocale } from '@/i18n/languages'
-import { getRollingDateRange } from '@/lib/time'
-import { useAutoRefresh } from '@/features/dashboard/hooks/use-auto-refresh'
-import { VCHART_OPTION } from '@/lib/vchart'
-import { useTheme } from '@/context/theme-provider'
-import { useAuthStore } from '@/stores/auth-store'
-import { ROLE } from '@/lib/roles'
-import { formatQuotaWithCurrency } from '@/lib/currency'
-import { formatCompactNumber, formatNumber } from '@/lib/format'
-import { Skeleton } from '@/components/ui/skeleton'
-import { Switch } from '@/components/ui/switch'
-import { Label } from '@/components/ui/label'
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+
 import { Button } from '@/components/ui/button'
+import { Skeleton } from '@/components/ui/skeleton'
 import {
   Table,
   TableBody,
@@ -43,17 +32,27 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { useTheme } from '@/context/theme-provider'
 import {
   getDailyModelTokenData,
   getSelfDailyModelTokenData,
 } from '@/features/dashboard/api'
 import { TIME_RANGE_PRESETS } from '@/features/dashboard/constants'
+import { useAutoRefresh } from '@/features/dashboard/hooks/use-auto-refresh'
 import { processDailyModelTokensChartData } from '@/features/dashboard/lib'
 import type {
   DailyTokensFilters,
   ProcessedDailyModelTokensChartData,
   TokenMetricType,
 } from '@/features/dashboard/types'
+import { toIntlLocale } from '@/i18n/languages'
+import { formatQuotaWithCurrency } from '@/lib/currency'
+import { formatCompactNumber, formatNumber } from '@/lib/format'
+import { ROLE } from '@/lib/roles'
+import { getRollingDateRange } from '@/lib/time'
+import { VCHART_OPTION } from '@/lib/vchart'
+import { useAuthStore } from '@/stores/auth-store'
 
 let themeManagerPromise: Promise<
   (typeof import('@visactor/vchart'))['ThemeManager']
@@ -117,7 +116,6 @@ export function DailyModelTokensSection(props: DailyModelTokensSectionProps) {
   const isAdmin = Boolean(userRole && userRole >= ROLE.ADMIN)
 
   const [compactMode, setCompactMode] = useState(true)
-  const [includeCache, setIncludeCache] = useState(true)
   const selectedRange = props.filters.selectedRange
   const topUserLimit = props.filters.topUserLimit
   const onFiltersChange = props.onFiltersChange
@@ -165,11 +163,23 @@ export function DailyModelTokensSection(props: DailyModelTokensSectionProps) {
   }, [resolvedTheme])
 
   const { data: dailyModelTokenData, isLoading } = useQuery({
-    queryKey: ['dashboard', 'daily-model-tokens', timeRange, isAdmin, props.includeCache],
+    queryKey: [
+      'dashboard',
+      'daily-model-tokens',
+      timeRange,
+      isAdmin,
+      props.includeCache,
+    ],
     queryFn: () =>
       isAdmin
-        ? getDailyModelTokenData({ ...timeRange, include_cache: props.includeCache })
-        : getSelfDailyModelTokenData({ ...timeRange, include_cache: props.includeCache }),
+        ? getDailyModelTokenData({
+            ...timeRange,
+            include_cache: props.includeCache,
+          })
+        : getSelfDailyModelTokenData({
+            ...timeRange,
+            include_cache: props.includeCache,
+          }),
     select: (res) => (res.success ? res.data : []),
     staleTime: 60_000,
     refetchInterval: refetchInterval || undefined,
@@ -185,7 +195,15 @@ export function DailyModelTokensSection(props: DailyModelTokensSectionProps) {
         compactMode,
         locale
       ),
-    [dailyModelTokenData, isLoading, t, metricType, topUserLimit, compactMode, locale]
+    [
+      dailyModelTokenData,
+      isLoading,
+      t,
+      metricType,
+      topUserLimit,
+      compactMode,
+      locale,
+    ]
   )
 
   // Data fingerprint so VChart remounts when the underlying data changes
@@ -197,10 +215,14 @@ export function DailyModelTokensSection(props: DailyModelTokensSectionProps) {
     return `${items.length}-${sum}`
   }, [dailyModelTokenData])
 
-  const tableData = useMemo(() => dailyModelTokenData ?? [], [dailyModelTokenData])
+  const tableData = useMemo(
+    () => dailyModelTokenData ?? [],
+    [dailyModelTokenData]
+  )
   const totalPages = Math.ceil(tableData.length / PAGE_SIZE)
   const paginatedData = useMemo(
-    () => tableData.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE),
+    () =>
+      tableData.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE),
     [tableData, currentPage]
   )
 
@@ -219,7 +241,11 @@ export function DailyModelTokensSection(props: DailyModelTokensSectionProps) {
         >
           <TabsList>
             {TIME_RANGE_PRESETS.map((preset) => (
-              <TabsTrigger key={preset.days} value={String(preset.days)} className='px-2.5 text-xs'>
+              <TabsTrigger
+                key={preset.days}
+                value={String(preset.days)}
+                className='px-2.5 text-xs'
+              >
                 {t(preset.label)}
               </TabsTrigger>
             ))}
@@ -233,7 +259,11 @@ export function DailyModelTokensSection(props: DailyModelTokensSectionProps) {
         >
           <TabsList>
             {TOKEN_METRIC_OPTIONS.map((opt) => (
-              <TabsTrigger key={opt.value} value={opt.value} className='px-2.5 text-xs'>
+              <TabsTrigger
+                key={opt.value}
+                value={opt.value}
+                className='px-2.5 text-xs'
+              >
                 {t(opt.labelKey)}
               </TabsTrigger>
             ))}
@@ -250,7 +280,11 @@ export function DailyModelTokensSection(props: DailyModelTokensSectionProps) {
               {t('Top Users')}
             </span>
             {TOP_MODEL_LIMIT_OPTIONS.map((limit) => (
-              <TabsTrigger key={limit} value={String(limit)} className='px-2.5 text-xs'>
+              <TabsTrigger
+                key={limit}
+                value={String(limit)}
+                className='px-2.5 text-xs'
+              >
                 {t('Top {{count}}', { count: limit })}
               </TabsTrigger>
             ))}
@@ -260,7 +294,7 @@ export function DailyModelTokensSection(props: DailyModelTokensSectionProps) {
         <Button
           variant='outline'
           size='sm'
-          className='shrink-0 h-7 px-2 text-xs gap-1'
+          className='h-7 shrink-0 gap-1 px-2 text-xs'
           onClick={() => setCompactMode(!compactMode)}
           title={t('Number Format')}
         >
@@ -268,23 +302,9 @@ export function DailyModelTokensSection(props: DailyModelTokensSectionProps) {
           {compactMode ? t('Compact') : t('Precise')}
         </Button>
 
-        {/* Cache toggle */}
-        <div className='flex shrink-0 items-center gap-1.5'>
-          <Switch
-            id='daily-model-tokens-include-cache'
-            checked={includeCache}
-            onCheckedChange={setIncludeCache}
-            className='scale-90'
-          />
-          <Label
-            htmlFor='daily-model-tokens-include-cache'
-            className='text-muted-foreground cursor-pointer text-xs font-normal'
-          >
-            {t('Include cache')}
-          </Label>
-        </div>
-
-        {isLoading && <Loader2 className='text-muted-foreground size-4 animate-spin' />}
+        {isLoading && (
+          <Loader2 className='text-muted-foreground size-4 animate-spin' />
+        )}
       </div>
 
       {/* Charts */}
@@ -292,7 +312,10 @@ export function DailyModelTokensSection(props: DailyModelTokensSectionProps) {
         {MODEL_CHARTS.map((chart) => {
           const spec = chartData[chart.specKey]
           return (
-            <div key={chart.value} className='overflow-hidden rounded-lg border'>
+            <div
+              key={chart.value}
+              className='overflow-hidden rounded-lg border'
+            >
               <div className='flex w-full items-center gap-2 border-b px-3 py-2 sm:px-5 sm:py-3'>
                 <Hash className='text-muted-foreground/60 size-4' />
                 <div className='text-sm font-semibold'>{t(chart.labelKey)}</div>
@@ -301,10 +324,15 @@ export function DailyModelTokensSection(props: DailyModelTokensSectionProps) {
                 {isLoading ? (
                   <Skeleton className='h-full w-full' />
                 ) : (
-                  themeReady && spec && (
+                  themeReady &&
+                  spec && (
                     <VChart
                       key={`daily-model-tokens-${chart.value}-${topUserLimit}-${metricType}-${resolvedTheme}-${compactMode}-${dataFingerprint}`}
-                      spec={{ ...spec, theme: resolvedTheme === 'dark' ? 'dark' : 'light', background: 'transparent' }}
+                      spec={{
+                        ...spec,
+                        theme: resolvedTheme === 'dark' ? 'dark' : 'light',
+                        background: 'transparent',
+                      }}
                       option={VCHART_OPTION}
                     />
                   )
@@ -319,38 +347,72 @@ export function DailyModelTokensSection(props: DailyModelTokensSectionProps) {
       <div className='overflow-hidden rounded-lg border'>
         <div className='flex w-full items-center gap-2 border-b px-3 py-2 sm:px-5 sm:py-3'>
           <Hash className='text-muted-foreground/60 size-4' />
-          <div className='text-sm font-semibold'>{t('Token Usage per Model per Day')}</div>
+          <div className='text-sm font-semibold'>
+            {t('Token Usage per Model per Day')}
+          </div>
         </div>
         <div className='overflow-x-auto'>
-          {isLoading ? (
-            <div className='p-4'><Skeleton className='h-64 w-full' /></div>
-          ) : tableData.length === 0 ? (
+          {isLoading && (
+            <div className='p-4'>
+              <Skeleton className='h-64 w-full' />
+            </div>
+          )}
+          {!isLoading && tableData.length === 0 && (
             <div className='text-muted-foreground flex items-center justify-center p-8 text-sm'>
               {t('No data available')}
             </div>
-          ) : (
+          )}
+          {!isLoading && tableData.length > 0 && (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className='whitespace-nowrap'>{t('Model')}</TableHead>
-                  <TableHead className='whitespace-nowrap'>{t('Date')}</TableHead>
-                  <TableHead className='whitespace-nowrap text-right'>{t('Prompt Tokens')}</TableHead>
-                  <TableHead className='whitespace-nowrap text-right'>{t('Completion Tokens')}</TableHead>
-                  <TableHead className='whitespace-nowrap text-right'>{t('Total Tokens')}</TableHead>
-                  <TableHead className='whitespace-nowrap text-right'>{t('Request Count')}</TableHead>
-                  <TableHead className='whitespace-nowrap text-right'>{t('Quota')}</TableHead>
+                  <TableHead className='whitespace-nowrap'>
+                    {t('Model')}
+                  </TableHead>
+                  <TableHead className='whitespace-nowrap'>
+                    {t('Date')}
+                  </TableHead>
+                  <TableHead className='text-right whitespace-nowrap'>
+                    {t('Prompt Tokens')}
+                  </TableHead>
+                  <TableHead className='text-right whitespace-nowrap'>
+                    {t('Completion Tokens')}
+                  </TableHead>
+                  <TableHead className='text-right whitespace-nowrap'>
+                    {t('Total Tokens')}
+                  </TableHead>
+                  <TableHead className='text-right whitespace-nowrap'>
+                    {t('Request Count')}
+                  </TableHead>
+                  <TableHead className='text-right whitespace-nowrap'>
+                    {t('Quota')}
+                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {paginatedData.map((item, idx) => (
-                  <TableRow key={`${item.model_name}-${item.date}-${idx}`}>
-                    <TableCell className='whitespace-nowrap font-medium'>{item.model_name}</TableCell>
-                    <TableCell className='whitespace-nowrap'>{item.date}</TableCell>
-                    <TableCell className='whitespace-nowrap text-right tabular-nums'>{formatNum(item.prompt_tokens)}</TableCell>
-                    <TableCell className='whitespace-nowrap text-right tabular-nums'>{formatNum(item.completion_tokens)}</TableCell>
-                    <TableCell className='whitespace-nowrap text-right tabular-nums font-medium'>{formatNum(item.total_tokens)}</TableCell>
-                    <TableCell className='whitespace-nowrap text-right tabular-nums'>{formatNum(item.request_count)}</TableCell>
-                    <TableCell className='whitespace-nowrap text-right tabular-nums'>{formatQuota(item.quota)}</TableCell>
+                {paginatedData.map((item) => (
+                  <TableRow key={`${item.model_name}-${item.date}`}>
+                    <TableCell className='font-medium whitespace-nowrap'>
+                      {item.model_name}
+                    </TableCell>
+                    <TableCell className='whitespace-nowrap'>
+                      {item.date}
+                    </TableCell>
+                    <TableCell className='text-right whitespace-nowrap tabular-nums'>
+                      {formatNum(item.prompt_tokens)}
+                    </TableCell>
+                    <TableCell className='text-right whitespace-nowrap tabular-nums'>
+                      {formatNum(item.completion_tokens)}
+                    </TableCell>
+                    <TableCell className='text-right font-medium whitespace-nowrap tabular-nums'>
+                      {formatNum(item.total_tokens)}
+                    </TableCell>
+                    <TableCell className='text-right whitespace-nowrap tabular-nums'>
+                      {formatNum(item.request_count)}
+                    </TableCell>
+                    <TableCell className='text-right whitespace-nowrap tabular-nums'>
+                      {formatQuota(item.quota)}
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -363,11 +425,22 @@ export function DailyModelTokensSection(props: DailyModelTokensSectionProps) {
               {t('{{total}} records', { total: tableData.length })}
             </div>
             <div className='flex items-center gap-1'>
-              <Tabs value={String(currentPage)} onValueChange={(v) => setCurrentPage(Number(v))}>
+              <Tabs
+                value={String(currentPage)}
+                onValueChange={(v) => setCurrentPage(Number(v))}
+              >
                 <TabsList>
-                  {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
-                    <TabsTrigger key={page} value={String(page)} className='px-2.5 text-xs'>{page}</TabsTrigger>
-                  ))}
+                  {Array.from({ length: totalPages }, (_, i) => i + 1).map(
+                    (page) => (
+                      <TabsTrigger
+                        key={page}
+                        value={String(page)}
+                        className='px-2.5 text-xs'
+                      >
+                        {page}
+                      </TabsTrigger>
+                    )
+                  )}
                 </TabsList>
               </Tabs>
             </div>

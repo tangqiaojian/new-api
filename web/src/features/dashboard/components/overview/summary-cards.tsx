@@ -25,6 +25,7 @@ import { useTranslation } from 'react-i18next'
 import { StaggerContainer, StaggerItem } from '@/components/page-transition'
 import { Button } from '@/components/ui/button'
 import { getUserQuotaDates } from '@/features/dashboard/api'
+import { useAutoRefresh } from '@/features/dashboard/hooks/use-auto-refresh'
 import { useSummaryCardsConfig } from '@/features/dashboard/hooks/use-dashboard-config'
 import type { QuotaDataItem } from '@/features/dashboard/types'
 import { useStatus } from '@/hooks/use-status'
@@ -136,12 +137,18 @@ const HEALTH_CONFIG: Record<
   },
 }
 
-export function SummaryCards() {
+interface SummaryCardsProps {
+  days?: number
+}
+
+export function SummaryCards(props: SummaryCardsProps) {
   const { t } = useTranslation()
   const user = useAuthStore((state) => state.auth.user)
   const { status, loading } = useStatus()
+  const { refetchInterval } = useAutoRefresh()
+  const days = props.days ?? 1
 
-  const summaryTimeRange = useMemo(() => computeTimeRange(1), [])
+  const summaryTimeRange = useMemo(() => computeTimeRange(days), [days])
   const remainQuota = Number(user?.quota ?? 0)
   const usedQuota = Number(user?.used_quota ?? 0)
   const requestCount = Number(user?.request_count ?? 0)
@@ -158,9 +165,10 @@ export function SummaryCards() {
       getUserQuotaDates({
         start_timestamp: summaryTimeRange.start_timestamp,
         end_timestamp: summaryTimeRange.end_timestamp,
-        default_time: 'hour',
+        default_time: days <= 1 ? 'hour' : 'day',
       }),
     staleTime: 60 * 1000,
+    refetchInterval: refetchInterval || undefined,
   })
 
   const summaryValues = useMemo(() => {

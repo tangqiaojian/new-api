@@ -1,3 +1,12 @@
+import { useQuery } from '@tanstack/react-query'
+import {
+  ArrowLeftRight,
+  ArrowUpDown,
+  Hash,
+  Loader2,
+  Search,
+  X,
+} from 'lucide-react'
 /*
 Copyright (C) 2023-2026 QuantumNous
 
@@ -17,15 +26,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useMemo, useState, useCallback } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import {
-  ArrowLeftRight,
-  ArrowUpDown,
-  Hash,
-  Loader2,
-  Search,
-  X,
-} from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
@@ -92,6 +92,12 @@ type SortField =
   | 'quota'
 
 type SortDirection = 'asc' | 'desc'
+
+function getSuccessRateBarClass(rate: number): string {
+  if (rate >= 0.95) return 'bg-success'
+  if (rate >= 0.8) return 'bg-warning'
+  return 'bg-destructive'
+}
 
 const STRING_SORT_FIELDS: Set<SortField> = new Set([
   'channel_name',
@@ -193,13 +199,10 @@ export function ChannelStatsSection(props: ChannelStatsSectionProps) {
     for (const item of (channelStatsData ?? []) as ChannelModelStatsItem[]) {
       if (!seen.has(item.channel_id)) {
         const name = (item.channel_name || '').trim()
-        seen.set(
-          item.channel_id,
-          name || `${t('Channel')} #${item.channel_id}`
-        )
+        seen.set(item.channel_id, name || `${t('Channel')} #${item.channel_id}`)
       }
     }
-    return Array.from(seen.entries())
+    return [...seen.entries()]
       .map(([id, name]) => ({ id, name }))
       .sort((a, b) => a.name.localeCompare(b.name))
   }, [channelStatsData, t])
@@ -221,9 +224,7 @@ export function ChannelStatsSection(props: ChannelStatsSectionProps) {
       TOP_LIMIT_OPTIONS.map((limit) => ({
         value: String(limit),
         label:
-          limit === 0
-            ? t('Show all')
-            : t('Top {{count}}', { count: limit }),
+          limit === 0 ? t('Show all') : t('Top {{count}}', { count: limit }),
       })),
     [t]
   )
@@ -315,8 +316,7 @@ export function ChannelStatsSection(props: ChannelStatsSectionProps) {
   const totalPages = Math.max(1, Math.ceil(sortedData.length / PAGE_SIZE))
   const safePage = Math.min(currentPage, totalPages)
   const paginatedData = useMemo(
-    () =>
-      sortedData.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE),
+    () => sortedData.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE),
     [sortedData, safePage]
   )
 
@@ -403,8 +403,7 @@ export function ChannelStatsSection(props: ChannelStatsSectionProps) {
           items={channelSelectItems}
           value={selectedChannelId === null ? 'all' : String(selectedChannelId)}
           onValueChange={(value) => {
-            const next =
-              value == null || value === 'all' ? null : Number(value)
+            const next = value == null || value === 'all' ? null : Number(value)
             setSelectedChannelId(
               next != null && Number.isFinite(next) ? next : null
             )
@@ -520,20 +519,23 @@ export function ChannelStatsSection(props: ChannelStatsSectionProps) {
         </div>
 
         <div className='overflow-x-auto'>
-          {isLoading ? (
+          {isLoading && (
             <div className='p-4'>
               <Skeleton className='h-64 w-full' />
             </div>
-          ) : sortedData.length === 0 ? (
+          )}
+          {!isLoading && sortedData.length === 0 && (
             <div className='text-muted-foreground flex items-center justify-center p-8 text-sm'>
               {t('No data available')}
             </div>
-          ) : (
+          )}
+          {!isLoading && sortedData.length > 0 && (
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead className='whitespace-nowrap'>
                     <button
+                      type='button'
                       className='hover:text-foreground inline-flex items-center'
                       onClick={() => handleSort('channel_name')}
                     >
@@ -543,6 +545,7 @@ export function ChannelStatsSection(props: ChannelStatsSectionProps) {
                   </TableHead>
                   <TableHead className='whitespace-nowrap'>
                     <button
+                      type='button'
                       className='hover:text-foreground inline-flex items-center'
                       onClick={() => handleSort('model_name')}
                     >
@@ -550,8 +553,9 @@ export function ChannelStatsSection(props: ChannelStatsSectionProps) {
                       {sortIcon('model_name')}
                     </button>
                   </TableHead>
-                  <TableHead className='whitespace-nowrap text-right'>
+                  <TableHead className='text-right whitespace-nowrap'>
                     <button
+                      type='button'
                       className='hover:text-foreground inline-flex items-center'
                       onClick={() => handleSort('request_count')}
                     >
@@ -559,8 +563,9 @@ export function ChannelStatsSection(props: ChannelStatsSectionProps) {
                       {sortIcon('request_count')}
                     </button>
                   </TableHead>
-                  <TableHead className='whitespace-nowrap text-right'>
+                  <TableHead className='text-right whitespace-nowrap'>
                     <button
+                      type='button'
                       className='hover:text-foreground inline-flex items-center'
                       onClick={() => handleSort('prompt_tokens')}
                     >
@@ -568,8 +573,9 @@ export function ChannelStatsSection(props: ChannelStatsSectionProps) {
                       {sortIcon('prompt_tokens')}
                     </button>
                   </TableHead>
-                  <TableHead className='whitespace-nowrap text-right'>
+                  <TableHead className='text-right whitespace-nowrap'>
                     <button
+                      type='button'
                       className='hover:text-foreground inline-flex items-center'
                       onClick={() => handleSort('completion_tokens')}
                     >
@@ -577,8 +583,9 @@ export function ChannelStatsSection(props: ChannelStatsSectionProps) {
                       {sortIcon('completion_tokens')}
                     </button>
                   </TableHead>
-                  <TableHead className='whitespace-nowrap text-right'>
+                  <TableHead className='text-right whitespace-nowrap'>
                     <button
+                      type='button'
                       className='hover:text-foreground inline-flex items-center'
                       onClick={() => handleSort('cached_tokens')}
                     >
@@ -586,8 +593,9 @@ export function ChannelStatsSection(props: ChannelStatsSectionProps) {
                       {sortIcon('cached_tokens')}
                     </button>
                   </TableHead>
-                  <TableHead className='whitespace-nowrap text-right'>
+                  <TableHead className='text-right whitespace-nowrap'>
                     <button
+                      type='button'
                       className='hover:text-foreground inline-flex items-center'
                       onClick={() => handleSort('avg_first_byte_ms')}
                     >
@@ -595,8 +603,9 @@ export function ChannelStatsSection(props: ChannelStatsSectionProps) {
                       {sortIcon('avg_first_byte_ms')}
                     </button>
                   </TableHead>
-                  <TableHead className='whitespace-nowrap text-right'>
+                  <TableHead className='text-right whitespace-nowrap'>
                     <button
+                      type='button'
                       className='hover:text-foreground inline-flex items-center'
                       onClick={() => handleSort('avg_speed_tok_per_s')}
                     >
@@ -604,8 +613,9 @@ export function ChannelStatsSection(props: ChannelStatsSectionProps) {
                       {sortIcon('avg_speed_tok_per_s')}
                     </button>
                   </TableHead>
-                  <TableHead className='whitespace-nowrap text-right'>
+                  <TableHead className='text-right whitespace-nowrap'>
                     <button
+                      type='button'
                       className='hover:text-foreground inline-flex items-center'
                       onClick={() => handleSort('cache_hit_ratio')}
                     >
@@ -613,8 +623,9 @@ export function ChannelStatsSection(props: ChannelStatsSectionProps) {
                       {sortIcon('cache_hit_ratio')}
                     </button>
                   </TableHead>
-                  <TableHead className='whitespace-nowrap text-right'>
+                  <TableHead className='text-right whitespace-nowrap'>
                     <button
+                      type='button'
                       className='hover:text-foreground inline-flex items-center'
                       onClick={() => handleSort('success_rate')}
                     >
@@ -622,8 +633,9 @@ export function ChannelStatsSection(props: ChannelStatsSectionProps) {
                       {sortIcon('success_rate')}
                     </button>
                   </TableHead>
-                  <TableHead className='whitespace-nowrap text-right'>
+                  <TableHead className='text-right whitespace-nowrap'>
                     <button
+                      type='button'
                       className='hover:text-foreground inline-flex items-center'
                       onClick={() => handleSort('total_tokens')}
                     >
@@ -631,8 +643,9 @@ export function ChannelStatsSection(props: ChannelStatsSectionProps) {
                       {sortIcon('total_tokens')}
                     </button>
                   </TableHead>
-                  <TableHead className='whitespace-nowrap text-right'>
+                  <TableHead className='text-right whitespace-nowrap'>
                     <button
+                      type='button'
                       className='hover:text-foreground inline-flex items-center'
                       onClick={() => handleSort('quota')}
                     >
@@ -643,17 +656,15 @@ export function ChannelStatsSection(props: ChannelStatsSectionProps) {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {paginatedData.map((item, idx) => (
-                  <TableRow
-                    key={`${item.channel_id}-${item.model_name}-${idx}`}
-                  >
-                    <TableCell className='whitespace-nowrap font-medium'>
+                {paginatedData.map((item) => (
+                  <TableRow key={`${item.channel_id}-${item.model_name}`}>
+                    <TableCell className='font-medium whitespace-nowrap'>
                       {item.channel_name || `#${item.channel_id}`}
                     </TableCell>
                     <TableCell className='whitespace-nowrap'>
                       {item.model_name}
                     </TableCell>
-                    <TableCell className='whitespace-nowrap text-right'>
+                    <TableCell className='text-right whitespace-nowrap'>
                       <div className='flex justify-end'>
                         <RatioBar
                           value={item.request_count}
@@ -663,22 +674,22 @@ export function ChannelStatsSection(props: ChannelStatsSectionProps) {
                         />
                       </div>
                     </TableCell>
-                    <TableCell className='whitespace-nowrap text-right tabular-nums'>
+                    <TableCell className='text-right whitespace-nowrap tabular-nums'>
                       {formatNum(item.prompt_tokens)}
                     </TableCell>
-                    <TableCell className='whitespace-nowrap text-right tabular-nums'>
+                    <TableCell className='text-right whitespace-nowrap tabular-nums'>
                       {formatNum(item.completion_tokens)}
                     </TableCell>
-                    <TableCell className='whitespace-nowrap text-right tabular-nums'>
+                    <TableCell className='text-right whitespace-nowrap tabular-nums'>
                       {formatNum(item.cached_tokens)}
                     </TableCell>
-                    <TableCell className='whitespace-nowrap text-right tabular-nums'>
+                    <TableCell className='text-right whitespace-nowrap tabular-nums'>
                       {formatFloat(item.avg_first_byte_ms)} ms
                     </TableCell>
-                    <TableCell className='whitespace-nowrap text-right tabular-nums'>
+                    <TableCell className='text-right whitespace-nowrap tabular-nums'>
                       {formatFloat(item.avg_speed_tok_per_s)} tok/s
                     </TableCell>
-                    <TableCell className='whitespace-nowrap text-right'>
+                    <TableCell className='text-right whitespace-nowrap'>
                       <div className='flex justify-end'>
                         <RatioBar
                           value={item.cache_hit_ratio}
@@ -688,23 +699,17 @@ export function ChannelStatsSection(props: ChannelStatsSectionProps) {
                         />
                       </div>
                     </TableCell>
-                    <TableCell className='whitespace-nowrap text-right font-medium'>
+                    <TableCell className='text-right font-medium whitespace-nowrap'>
                       <div className='flex justify-end'>
                         <RatioBar
                           value={item.success_rate}
                           max={1}
-                          className={
-                            item.success_rate >= 0.95
-                              ? 'bg-success'
-                              : item.success_rate >= 0.8
-                                ? 'bg-warning'
-                                : 'bg-destructive'
-                          }
+                          className={getSuccessRateBarClass(item.success_rate)}
                           label={formatRatio(item.success_rate)}
                         />
                       </div>
                     </TableCell>
-                    <TableCell className='whitespace-nowrap text-right'>
+                    <TableCell className='text-right whitespace-nowrap'>
                       <div className='flex justify-end'>
                         <RatioBar
                           value={item.total_tokens}
@@ -714,7 +719,7 @@ export function ChannelStatsSection(props: ChannelStatsSectionProps) {
                         />
                       </div>
                     </TableCell>
-                    <TableCell className='whitespace-nowrap text-right'>
+                    <TableCell className='text-right whitespace-nowrap'>
                       <div className='flex justify-end'>
                         <RatioBar
                           value={item.quota}

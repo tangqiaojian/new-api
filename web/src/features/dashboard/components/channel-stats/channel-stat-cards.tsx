@@ -1,3 +1,4 @@
+import { ArrowDownToLine, ArrowUpFromLine, Database, Hash } from 'lucide-react'
 /*
 Copyright (C) 2023-2026 QuantumNous
 
@@ -18,7 +19,6 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ArrowDownToLine, ArrowUpFromLine, Database, Hash } from 'lucide-react'
 
 import { IconBadge, type IconBadgeTone } from '@/components/ui/icon-badge'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -34,7 +34,11 @@ interface ChannelStatCardsProps {
   channelName?: string
 }
 
-function formatStatNumber(value: number, locale: Intl.LocalesArgument, compact: boolean) {
+function formatStatNumber(
+  value: number,
+  locale: Intl.LocalesArgument,
+  compact: boolean
+) {
   return compact ? formatCompactNumber(value, locale) : formatNumber(value)
 }
 
@@ -42,7 +46,7 @@ export function ChannelStatCards(props: ChannelStatCardsProps) {
   const { t, i18n } = useTranslation()
   const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
   const compact = props.compact ?? true
-  const data = props.data ?? []
+  const data = props.data
   const subtitle = props.channelName
     ? t('Across {{channel}}', { channel: props.channelName })
     : t('Across all channels')
@@ -138,7 +142,10 @@ export function ChannelStatCards(props: ChannelStatCardsProps) {
                 </div>
                 <div className='bg-muted mt-1.5 h-1.5 w-full overflow-hidden rounded-full'>
                   <div
-                    className={cn('h-full rounded-full transition-all', it.barClass)}
+                    className={cn(
+                      'h-full rounded-full transition-all',
+                      it.barClass
+                    )}
                     style={{ width: barWidth }}
                   />
                 </div>

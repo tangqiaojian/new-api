@@ -80,12 +80,18 @@ import type { LogCleanupTask } from '../types'
 
 const logSettingsSchema = z.object({
   LogConsumeEnabled: z.boolean(),
+  LogRequestDebugEnabled: z.boolean(),
+  LogRequestBodyMaxBytes: z
+    .number()
+    .int()
+    .min(256)
+    .max(1024 * 1024),
 })
 
 type LogSettingsFormValues = z.infer<typeof logSettingsSchema>
 
 type LogSettingsSectionProps = {
-  defaultEnabled: boolean
+  defaultValues: LogSettingsFormValues
 }
 
 type ServerLogInfo = {
@@ -139,16 +145,12 @@ function isActiveLogCleanupTask(task: LogCleanupTask | null) {
   return task?.status === 'pending' || task?.status === 'running'
 }
 
-export function LogSettingsSection({
-  defaultEnabled,
-}: LogSettingsSectionProps) {
+export function LogSettingsSection({ defaultValues }: LogSettingsSectionProps) {
   const { t } = useTranslation()
   const updateOption = useUpdateOption()
   const form = useForm<LogSettingsFormValues>({
     resolver: zodResolver(logSettingsSchema),
-    defaultValues: {
-      LogConsumeEnabled: defaultEnabled,
-    },
+    defaultValues,
   })
 
   const [purgeDate, setPurgeDate] = useState<Date | undefined>(() =>
@@ -174,8 +176,17 @@ export function LogSettingsSection({
   }, [])
 
   useEffect(() => {
-    form.reset({ LogConsumeEnabled: defaultEnabled })
-  }, [defaultEnabled, form])
+    form.reset({
+      LogConsumeEnabled: defaultValues.LogConsumeEnabled,
+      LogRequestDebugEnabled: defaultValues.LogRequestDebugEnabled,
+      LogRequestBodyMaxBytes: defaultValues.LogRequestBodyMaxBytes,
+    })
+  }, [
+    defaultValues.LogConsumeEnabled,
+    defaultValues.LogRequestBodyMaxBytes,
+    defaultValues.LogRequestDebugEnabled,
+    form,
+  ])
 
   useEffect(() => {
     fetchServerLogInfo()
@@ -257,11 +268,13 @@ export function LogSettingsSection({
   }, [logCleanupActive, logCleanupTaskId, t])
 
   const onSubmit = async (values: LogSettingsFormValues) => {
-    if (values.LogConsumeEnabled === defaultEnabled) return
-    await updateOption.mutateAsync({
-      key: 'LogConsumeEnabled',
-      value: values.LogConsumeEnabled,
-    })
+    const updates = Object.entries(values).filter(
+      ([key, value]) =>
+        value !== defaultValues[key as keyof LogSettingsFormValues]
+    )
+    for (const [key, value] of updates) {
+      await updateOption.mutateAsync({ key, value })
+    }
   }
 
   const handleRequestCleanLogs = () => {
@@ -364,6 +377,61 @@ export function LogSettingsSection({
                 </FormControl>
                 <FormMessage />
               </SettingsSwitchItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name='LogRequestDebugEnabled'
+            render={({ field }) => (
+              <SettingsSwitchItem>
+                <SettingsSwitchContent>
+                  <FormLabel>{t('Record request debug data')}</FormLabel>
+                  <FormDescription>
+                    {t(
+                      'Store masked request headers and a truncated request body in usage logs. Only super administrators can view this sensitive diagnostic data.'
+                    )}
+                  </FormDescription>
+                </SettingsSwitchContent>
+                <FormControl>
+                  <Switch
+                    checked={field.value}
+                    onCheckedChange={field.onChange}
+                  />
+                </FormControl>
+                <FormMessage />
+              </SettingsSwitchItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name='LogRequestBodyMaxBytes'
+            render={({ field }) => (
+              <SettingsControlGroup>
+                <FormLabel>{t('Maximum request body bytes')}</FormLabel>
+                <FormDescription>
+                  {t(
+                    'Request bodies larger than this limit are truncated before being stored.'
+                  )}
+                </FormDescription>
+                <FormControl>
+                  <Input
+                    type='number'
+                    min={256}
+                    max={1024 * 1024}
+                    step={256}
+                    name={field.name}
+                    ref={field.ref}
+                    onBlur={field.onBlur}
+                    value={field.value}
+                    onChange={(event) =>
+                      field.onChange(event.currentTarget.valueAsNumber)
+                    }
+                  />
+                </FormControl>
+                <FormMessage />
+              </SettingsControlGroup>
             )}
           />
 

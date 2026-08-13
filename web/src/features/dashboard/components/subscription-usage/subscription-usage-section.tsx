@@ -24,9 +24,7 @@ import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Switch } from '@/components/ui/switch'
 import {
   Table,
   TableBody,
@@ -508,22 +506,6 @@ function SelfSubscriptionUsageSection(props: SubscriptionUsageSectionProps) {
             className='h-7 w-40 text-xs'
             aria-label={t('Model')}
           />
-        </div>
-
-        {/* Cache token toggle (controlled by parent DashboardAutoRefreshControls) */}
-        <div className='flex shrink-0 items-center gap-1.5'>
-          <Switch
-            id='subscription-usage-include-cache'
-            checked={includeCache}
-            disabled
-            className='scale-90'
-          />
-          <Label
-            htmlFor='subscription-usage-include-cache'
-            className='text-muted-foreground cursor-pointer text-xs font-normal'
-          >
-            {t('Include cache')}
-          </Label>
         </div>
 
         {/* Number format toggle */}

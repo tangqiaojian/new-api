@@ -1,3 +1,6 @@
+import { useQuery } from '@tanstack/react-query'
+import { Link } from '@tanstack/react-router'
+import { AlertCircle, Loader2, Search, Users } from 'lucide-react'
 /*
 Copyright (C) 2023-2026 QuantumNous
 
@@ -17,10 +20,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import { AlertCircle, Loader2, Search, Users } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { Link } from '@tanstack/react-router'
 
 import { StatusBadge } from '@/components/status-badge'
 import { Button } from '@/components/ui/button'
@@ -41,6 +41,9 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import { useAutoRefresh } from '@/features/dashboard/hooks/use-auto-refresh'
+import { adminListAllSubscriptions } from '@/features/subscriptions/api'
+import type { AdminUserSubscriptionItem } from '@/features/subscriptions/types'
 import { useDebounce } from '@/hooks'
 import { formatQuotaWithCurrency } from '@/lib/currency'
 import {
@@ -49,9 +52,6 @@ import {
   formatTimestampToDate,
 } from '@/lib/format'
 import { cn } from '@/lib/utils'
-import { useAutoRefresh } from '@/features/dashboard/hooks/use-auto-refresh'
-import { adminListAllSubscriptions } from '@/features/subscriptions/api'
-import type { AdminUserSubscriptionItem } from '@/features/subscriptions/types'
 
 const PAGE_SIZE = 20
 
@@ -74,12 +74,16 @@ function QuotaUsageCell({
 }) {
   const { t } = useTranslation()
   if (!total || total <= 0) {
-    return <span className='text-muted-foreground text-xs'>{unlimitedLabel}</span>
+    return (
+      <span className='text-muted-foreground text-xs'>{unlimitedLabel}</span>
+    )
   }
   const percentage = Math.min((used / total) * 100, 100)
   return (
     <Tooltip>
-      <TooltipTrigger render={<div className='w-[150px] cursor-help space-y-1' />}>
+      <TooltipTrigger
+        render={<div className='w-[150px] cursor-help space-y-1' />}
+      >
         <div className='flex justify-between text-xs'>
           <span className='font-medium tabular-nums'>
             {formatQuotaWithCurrency(used)}
@@ -121,12 +125,16 @@ function TokenUsageCell({
 }) {
   const { t } = useTranslation()
   if (!total || total <= 0) {
-    return <span className='text-muted-foreground text-xs'>{unlimitedLabel}</span>
+    return (
+      <span className='text-muted-foreground text-xs'>{unlimitedLabel}</span>
+    )
   }
   const percentage = Math.min((used / total) * 100, 100)
   return (
     <Tooltip>
-      <TooltipTrigger render={<div className='w-[150px] cursor-help space-y-1' />}>
+      <TooltipTrigger
+        render={<div className='w-[150px] cursor-help space-y-1' />}
+      >
         <div className='flex justify-between text-xs'>
           <span className='font-medium tabular-nums'>
             {formatCompactNumber(used)}
@@ -143,7 +151,8 @@ function TokenUsageCell({
       <TooltipContent>
         <div className='space-y-1 text-xs'>
           <div>
-            {t('Used:')} {formatCompactNumber(used)}（{formatChineseNumber(used)}）
+            {t('Used:')} {formatCompactNumber(used)}（
+            {formatChineseNumber(used)}）
           </div>
           <div>
             {t('Total:')} {formatCompactNumber(total)}（
@@ -246,7 +255,7 @@ export function AdminSubscriptionPlanUsage() {
     placeholderData: (prev) => prev,
   })
 
-  const items = data?.items ?? []
+  const items = useMemo(() => data?.items ?? [], [data?.items])
   const total = data?.total ?? 0
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE))
 
@@ -258,13 +267,9 @@ export function AdminSubscriptionPlanUsage() {
       const amountTotal = row.amount_total || 0
       const tokensTotal = row.tokens_total || 0
       const amountPct =
-        amountTotal > 0
-          ? ((row.amount_used || 0) / amountTotal) * 100
-          : 0
+        amountTotal > 0 ? ((row.amount_used || 0) / amountTotal) * 100 : 0
       const tokenPct =
-        tokensTotal > 0
-          ? ((row.tokens_used || 0) / tokensTotal) * 100
-          : 0
+        tokensTotal > 0 ? ((row.tokens_used || 0) / tokensTotal) * 100 : 0
       if (amountPct >= 80 || tokenPct >= 80) highUsage += 1
       if (amountTotal > 0 && (row.amount_used || 0) >= amountTotal) {
         quotaExhausted += 1
@@ -398,22 +403,26 @@ export function AdminSubscriptionPlanUsage() {
 
       <div className='overflow-hidden rounded-lg border'>
         <div className='overflow-x-auto'>
-          {isLoading && items.length === 0 ? (
+          {isLoading && items.length === 0 && (
             <div className='p-4'>
               <Skeleton className='h-64 w-full' />
             </div>
-          ) : items.length === 0 ? (
+          )}
+          {!isLoading && items.length === 0 && (
             <div className='text-muted-foreground flex items-center justify-center p-8 text-sm'>
               {t('No user subscriptions found')}
             </div>
-          ) : (
+          )}
+          {items.length > 0 && (
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead className='whitespace-nowrap'>
                     {t('Username')}
                   </TableHead>
-                  <TableHead className='whitespace-nowrap'>{t('Plan')}</TableHead>
+                  <TableHead className='whitespace-nowrap'>
+                    {t('Plan')}
+                  </TableHead>
                   <TableHead className='whitespace-nowrap'>
                     {t('Status')}
                   </TableHead>
@@ -459,7 +468,8 @@ export function AdminSubscriptionPlanUsage() {
                     </TableCell>
                     <TableCell className='text-muted-foreground space-y-0.5 text-xs whitespace-nowrap'>
                       <div>
-                        {t('Quota')}: {formatTimestampToDate(row.next_reset_time)}
+                        {t('Quota')}:{' '}
+                        {formatTimestampToDate(row.next_reset_time)}
                       </div>
                       <div>
                         {t('Token')}:{' '}

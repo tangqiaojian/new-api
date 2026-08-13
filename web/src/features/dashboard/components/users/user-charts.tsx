@@ -31,6 +31,7 @@ import {
   TIME_GRANULARITY_OPTIONS,
   TIME_RANGE_PRESETS,
 } from '@/features/dashboard/constants'
+import { useAutoRefresh } from '@/features/dashboard/hooks/use-auto-refresh'
 import {
   getDefaultDays,
   saveGranularity,
@@ -74,6 +75,7 @@ interface UserChartsProps {
 export function UserCharts(props: UserChartsProps) {
   const { t } = useTranslation()
   const { resolvedTheme } = useTheme()
+  const { refetchInterval } = useAutoRefresh()
   const [themeReady, setThemeReady] = useState(false)
   const themeManagerRef = useRef<
     (typeof import('@visactor/vchart'))['ThemeManager'] | null
@@ -141,6 +143,7 @@ export function UserCharts(props: UserChartsProps) {
     queryFn: () => getUserQuotaDataByUsers(timeRange),
     select: (res) => (res.success ? res.data : []),
     staleTime: 60_000,
+    refetchInterval: refetchInterval || undefined,
   })
 
   const chartData = useMemo(
@@ -153,6 +156,12 @@ export function UserCharts(props: UserChartsProps) {
       ),
     [userData, isLoading, timeGranularity, t, topUserLimit]
   )
+  const dataFingerprint = useMemo(() => {
+    const items = userData ?? []
+    let quotaSum = 0
+    for (const item of items) quotaSum += item.quota ?? 0
+    return `${items.length}-${quotaSum}`
+  }, [userData])
 
   return (
     <div className='space-y-3'>
@@ -244,7 +253,7 @@ export function UserCharts(props: UserChartsProps) {
                   themeReady &&
                   spec && (
                     <VChart
-                      key={`user-${chart.value}-${topUserLimit}-${resolvedTheme}`}
+                      key={`user-${chart.value}-${topUserLimit}-${resolvedTheme}-${dataFingerprint}`}
                       spec={{
                         ...spec,
                         theme: resolvedTheme === 'dark' ? 'dark' : 'light',

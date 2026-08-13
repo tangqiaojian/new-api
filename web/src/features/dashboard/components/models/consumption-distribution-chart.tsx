@@ -108,13 +108,18 @@ export function ConsumptionDistributionChart(
       ),
     [props.data, props.loading, timeGranularity, t, chartRadius]
   )
+  const dataFingerprint = useMemo(() => {
+    let quotaSum = 0
+    for (const item of props.data) quotaSum += item.quota ?? 0
+    return `${props.data.length}-${quotaSum}`
+  }, [props.data])
   const spec = chartType === 'bar' ? chartData.spec_line : chartData.spec_area
   const specType = typeof spec?.type === 'string' ? spec.type : chartType
   const chartKey = [
     chartType,
     specType,
     props.loading ? 'loading' : 'ready',
-    props.data.length,
+    dataFingerprint,
     resolvedTheme,
     customization.preset,
   ].join('-')

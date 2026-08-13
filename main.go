@@ -45,6 +45,28 @@ var buildFS embed.FS
 //go:embed web/dist/index.html
 var indexPage []byte
 
+type startupMode struct {
+	migrationOnly bool
+}
+
+func readStartupMode() (startupMode, error) {
+	nodeType := strings.ToLower(strings.TrimSpace(os.Getenv("NODE_TYPE")))
+	mode := startupMode{
+		migrationOnly: common.GetEnvOrDefaultBool("MIGRATION_ONLY", false),
+	}
+	if mode.migrationOnly && nodeType == "slave" {
+		return startupMode{}, errors.New("MIGRATION_ONLY=true cannot be combined with NODE_TYPE=slave: slave nodes skip database migrations")
+	}
+	return mode, nil
+}
+
+func (mode startupMode) initializeRuntime(initializer func() error) error {
+	if mode.migrationOnly {
+		return nil
+	}
+	return initializer()
+}
+
 func main() {
 	startTime := time.Now()
 	kitutil.SetLogging(common.SysLog, func(message string) {
@@ -55,6 +77,13 @@ func main() {
 	err := InitResources()
 	if err != nil {
 		common.FatalLog("failed to initialize resources: " + err.Error())
+		return
+	}
+	if common.GetEnvOrDefaultBool("MIGRATION_ONLY", false) {
+		common.SysLog("database migration completed; exiting migration-only mode")
+		if err := model.CloseDB(); err != nil {
+			common.FatalLog("failed to close database: " + err.Error())
+		}
 		return
 	}
 
@@ -290,6 +319,10 @@ func InitResources() error {
 			common.SysLog("No .env file found, using default environment variables. If needed, please create a .env file and set the relevant variables.")
 		}
 	}
+	mode, err := readStartupMode()
+	if err != nil {
+		return err
+	}
 
 	// 加载环境变量
 	common.InitEnv()
@@ -324,17 +357,22 @@ func InitResources() error {
 	}
 	model.InitOptionMap()
 
-	// 清理旧的磁盘缓存文件
-	common.CleanupOldCacheFiles()
-
 	// Initialize SQL Database
 	err = model.InitLogDB()
 	if err != nil {
 		return err
 	}
+	return mode.initializeRuntime(initRuntimeResources)
+}
+
+// initRuntimeResources contains process-lifetime integrations and workers.
+// Migration-only startup must only reach it through startupMode.initializeRuntime.
+func initRuntimeResources() error {
+	// 清理旧的磁盘缓存文件
+	common.CleanupOldCacheFiles()
 
 	// Initialize Redis
-	err = common.InitRedisClient()
+	err := common.InitRedisClient()
 	if err != nil {
 		return err
 	}

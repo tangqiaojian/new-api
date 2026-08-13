@@ -600,6 +600,9 @@ export function DetailsDialog(props: DetailsDialogProps) {
     props.isAdmin &&
     props.log.type !== 6 &&
     (other?.request_path || conversionChain.length > 0)
+  const requestHeadersText = other?.request_headers
+    ? JSON.stringify(other.request_headers, null, 2)
+    : ''
 
   const useChannel = other?.admin_info?.use_channel
   const channelChain =
@@ -776,6 +779,54 @@ export function DetailsDialog(props: DetailsDialogProps) {
                   </span>
                 </div>
               </div>
+            </div>
+          </DetailSection>
+        )}
+
+        {props.isAdmin && requestHeadersText && (
+          <DetailSection label={t('Request Headers')}>
+            <div className='relative min-w-0'>
+              <Button
+                variant='ghost'
+                size='sm'
+                className='absolute top-0 right-0 h-5 w-5 p-0'
+                onClick={() => copyToClipboard(requestHeadersText)}
+                title={t('Copy to clipboard')}
+                aria-label={t('Copy to clipboard')}
+              >
+                {copiedText === requestHeadersText ? (
+                  <Check className='size-3 text-green-600' />
+                ) : (
+                  <Copy className='size-3' />
+                )}
+              </Button>
+              <pre className='max-h-64 overflow-auto pr-6 text-xs break-all whitespace-pre-wrap'>
+                {requestHeadersText}
+              </pre>
+            </div>
+          </DetailSection>
+        )}
+
+        {props.isAdmin && other?.request_body != null && (
+          <DetailSection label={t('Request Body')}>
+            <div className='relative min-w-0'>
+              <Button
+                variant='ghost'
+                size='sm'
+                className='absolute top-0 right-0 h-5 w-5 p-0'
+                onClick={() => copyToClipboard(other.request_body ?? '')}
+                title={t('Copy to clipboard')}
+                aria-label={t('Copy to clipboard')}
+              >
+                {copiedText === other.request_body ? (
+                  <Check className='size-3 text-green-600' />
+                ) : (
+                  <Copy className='size-3' />
+                )}
+              </Button>
+              <pre className='max-h-80 overflow-auto pr-6 text-xs break-all whitespace-pre-wrap'>
+                {other.request_body}
+              </pre>
             </div>
           </DetailSection>
         )}

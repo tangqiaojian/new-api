@@ -110,6 +110,9 @@ type TaskPrivateData struct {
 	TokenId        int                 `json:"token_id,omitempty"`        // 令牌 ID，用于令牌额度退款
 	NodeName       string              `json:"node_name,omitempty"`       // 发起任务的节点名，轮询结算阶段据此归属日志而非最后查询节点
 	BillingContext *TaskBillingContext `json:"billing_context,omitempty"` // 计费参数快照（用于轮询阶段重新计算）
+	// WeeklyQuotaReservation persists the task's contribution to the user's
+	// weekly counter so polling can reconcile or release it after submission.
+	WeeklyQuotaReservation *WeeklyQuotaReservation `json:"weekly_quota_reservation,omitempty"`
 }
 
 // TaskBillingContext 记录任务提交时的计费参数，以便轮询阶段可以重新计算额度。
@@ -409,6 +412,19 @@ func (Task *Task) Update() error {
 
 func (t *Task) UpdateQuota() error {
 	return DB.Model(t).Update("quota", t.Quota).Error
+}
+
+// UpdateBillingState persists the task quota and its weekly-quota reservation
+// together, preventing a successfully reconciled reservation from being paired
+// with the previous task quota after a process restart.
+func (t *Task) UpdateBillingState() error {
+	if t.ID <= 0 {
+		return nil
+	}
+	return DB.Model(t).Updates(map[string]interface{}{
+		"quota":        t.Quota,
+		"private_data": t.PrivateData,
+	}).Error
 }
 
 // UpdateWithStatus performs a conditional UPDATE guarded by fromStatus (CAS).

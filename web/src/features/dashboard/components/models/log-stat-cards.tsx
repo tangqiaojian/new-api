@@ -16,12 +16,14 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useEffect, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { useEffect, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { IconBadge } from '@/components/ui/icon-badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { getUserQuotaDates } from '@/features/dashboard/api'
+import { useAutoRefresh } from '@/features/dashboard/hooks/use-auto-refresh'
 import { useModelStatCardsConfig } from '@/features/dashboard/hooks/use-dashboard-config'
 import {
   buildQueryParams,
@@ -34,6 +36,7 @@ import type {
 } from '@/features/dashboard/types'
 import { toIntlLocale } from '@/i18n/languages'
 import { formatCompactNumber, formatNumber, formatQuota } from '@/lib/format'
+import { ROLE } from '@/lib/roles'
 import { computeTimeRange } from '@/lib/time'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/stores/auth-store'
@@ -41,6 +44,7 @@ import { useAuthStore } from '@/stores/auth-store'
 interface LogStatCardsProps {
   filters?: DashboardFilters
   onDataUpdate?: (data: QuotaDataItem[], loading: boolean) => void
+  includeCache?: boolean
 }
 
 const MAX_INLINE_STAT_CHARS = 9
@@ -62,58 +66,60 @@ export function LogStatCards(props: LogStatCardsProps) {
   const { i18n } = useTranslation()
   const statCardsConfig = useModelStatCardsConfig()
   const user = useAuthStore((state) => state.auth.user)
-  const isAdmin = !!(user?.role && user.role >= 10)
-  const [stats, setStats] = useState<{
-    totalQuota: number
-    totalCount: number
-    totalTokens: number
-  } | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(false)
+  const isAdmin = !!(user?.role && user.role >= ROLE.ADMIN)
+  const { refetchInterval } = useAutoRefresh()
 
-  const [timeRangeMinutes, setTimeRangeMinutes] = useState(0)
+  const timeRange = useMemo(
+    () =>
+      computeTimeRange(
+        getDefaultDays(props.filters?.time_granularity),
+        props.filters?.start_timestamp,
+        props.filters?.end_timestamp
+      ),
+    [
+      props.filters?.end_timestamp,
+      props.filters?.start_timestamp,
+      props.filters?.time_granularity,
+    ]
+  )
+  const queryParams = useMemo(
+    () => buildQueryParams(timeRange, props.filters),
+    [props.filters, timeRange]
+  )
+  const timeRangeMinutes =
+    (timeRange.end_timestamp - timeRange.start_timestamp) / 60
 
-  const { filters, onDataUpdate } = props
+  const quotaQuery = useQuery({
+    queryKey: [
+      'dashboard',
+      'models',
+      'log-stats',
+      queryParams,
+      isAdmin,
+      props.includeCache,
+    ],
+    queryFn: () =>
+      getUserQuotaDates(
+        { ...queryParams, include_cache: props.includeCache },
+        isAdmin
+      ),
+    staleTime: 60_000,
+    refetchInterval: refetchInterval || undefined,
+  })
+
+  const data = useMemo(
+    () => quotaQuery.data?.data ?? [],
+    [quotaQuery.data?.data]
+  )
+  const stats = useMemo(
+    () => (data.length > 0 ? calculateDashboardStats(data) : null),
+    [data]
+  )
+  const onDataUpdate = props.onDataUpdate
 
   useEffect(() => {
-    const abortController = new AbortController()
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setLoading(true)
-
-    setError(false)
-    onDataUpdate?.([], true)
-
-    const timeRange = computeTimeRange(
-      getDefaultDays(filters?.time_granularity),
-      filters?.start_timestamp,
-      filters?.end_timestamp
-    )
-    const timeDiff = (timeRange.end_timestamp - timeRange.start_timestamp) / 60
-    setTimeRangeMinutes(timeDiff)
-
-    void getUserQuotaDates(buildQueryParams(timeRange, filters), isAdmin)
-      .then((res) => {
-        if (abortController.signal.aborted) return
-        const data = res?.data || []
-        setStats(calculateDashboardStats(data))
-        onDataUpdate?.(data, false)
-      })
-      .catch(() => {
-        if (abortController.signal.aborted) return
-        setStats(null)
-        setError(true)
-        onDataUpdate?.([], false)
-      })
-      .finally(() => {
-        if (!abortController.signal.aborted) {
-          setLoading(false)
-        }
-      })
-
-    return () => {
-      abortController.abort()
-    }
-  }, [filters, isAdmin, onDataUpdate])
+    onDataUpdate?.(data, quotaQuery.isLoading)
+  }, [data, onDataUpdate, quotaQuery.isLoading])
 
   const adaptedStats = {
     rpm: stats?.totalCount ?? 0,
@@ -148,14 +154,14 @@ export function LogStatCards(props: LogStatCardsProps) {
         {items.map((it, idx) => {
           const Icon = it.icon
           let valueContent
-          if (loading) {
+          if (quotaQuery.isLoading) {
             valueContent = (
               <div className='mt-1 flex flex-col gap-1 sm:mt-2 sm:gap-1.5'>
                 <Skeleton className='h-5 w-16 sm:h-7 sm:w-20' />
                 <Skeleton className='hidden h-3.5 w-28 md:block' />
               </div>
             )
-          } else if (error) {
+          } else if (quotaQuery.isError) {
             valueContent = (
               <>
                 <div className='text-muted-foreground mt-1 font-mono text-base leading-tight font-bold tracking-tight tabular-nums sm:mt-2 sm:text-2xl sm:leading-normal'>

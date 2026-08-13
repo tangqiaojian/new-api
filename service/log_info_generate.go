@@ -3,6 +3,7 @@ package service
 import (
 	"encoding/base64"
 	"fmt"
+	"io"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -115,7 +116,63 @@ func GenerateTextOtherInfo(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, m
 	appendBillingInfo(relayInfo, other)
 	appendParamOverrideInfo(relayInfo, other)
 	appendStreamStatus(relayInfo, other)
+	appendRequestDebugInfo(ctx, relayInfo, other)
 	return other
+}
+
+func appendRequestDebugInfo(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, other map[string]interface{}) {
+	if !common.LogRequestDebugEnabled || other == nil {
+		return
+	}
+
+	if relayInfo != nil && len(relayInfo.RequestHeaders) > 0 {
+		safeHeaders := make(map[string]string, len(relayInfo.RequestHeaders))
+		for key, value := range relayInfo.RequestHeaders {
+			normalizedKey := strings.ToLower(strings.ReplaceAll(key, "_", "-"))
+			switch normalizedKey {
+			case "accept",
+				"accept-encoding",
+				"accept-language",
+				"content-encoding",
+				"content-length",
+				"content-type",
+				"traceparent",
+				"user-agent",
+				"x-correlation-id",
+				"x-oneapi-request-id",
+				"x-request-id":
+				safeHeaders[key] = value
+			default:
+				safeHeaders[key] = "***"
+			}
+		}
+		other["request_headers"] = safeHeaders
+	}
+
+	if ctx == nil {
+		return
+	}
+	storage, err := common.GetBodyStorage(ctx)
+	if err != nil || storage == nil {
+		return
+	}
+	maxBytes := common.LogRequestBodyMaxBytes
+	if maxBytes <= 0 {
+		maxBytes = 8192
+	}
+	if _, err := storage.Seek(0, io.SeekStart); err != nil {
+		return
+	}
+	defer func() {
+		_, _ = storage.Seek(0, io.SeekStart)
+	}()
+	buffer := make([]byte, maxBytes+1)
+	readBytes, _ := storage.Read(buffer)
+	body := string(buffer[:min(readBytes, maxBytes)])
+	if readBytes > maxBytes {
+		body += "\n... (truncated)"
+	}
+	other["request_body"] = body
 }
 
 func appendParamOverrideInfo(relayInfo *relaycommon.RelayInfo, other map[string]interface{}) {

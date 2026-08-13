@@ -118,6 +118,29 @@ func taskAdjustTokenQuota(ctx context.Context, task *model.Task, delta int) {
 	}
 }
 
+// taskReconcileWeeklyQuota replaces the task's persisted contribution to the
+// current weekly counter. Legacy tasks created before reservations were
+// persisted intentionally leave the counter unchanged.
+func taskReconcileWeeklyQuota(task *model.Task, targetQuota int) error {
+	reservation := task.PrivateData.WeeklyQuotaReservation
+	if reservation == nil {
+		return nil
+	}
+	if reservation.Amount == targetQuota {
+		return nil
+	}
+	updated, err := model.AdjustWeeklyQuotaReservation(task.UserId, *reservation, targetQuota, false)
+	if err != nil {
+		return err
+	}
+	if !updated.Enabled {
+		task.PrivateData.WeeklyQuotaReservation = nil
+		return nil
+	}
+	task.PrivateData.WeeklyQuotaReservation = &updated
+	return nil
+}
+
 // taskBillingOther 从 task 的 BillingContext 构建日志 Other 字段。
 func taskBillingOther(task *model.Task) map[string]interface{} {
 	other := make(map[string]interface{})
@@ -178,13 +201,19 @@ func RefundTaskQuota(ctx context.Context, task *model.Task, reason string) bool 
 		return false
 	}
 
-	// 2. 退还令牌额度
+	// 2. 释放任务提交时计入的周额度。资金退款优先，周计数故障不能
+	// 导致下一次重试再次退还钱包或订阅。
+	if err := taskReconcileWeeklyQuota(task, 0); err != nil {
+		logger.LogError(ctx, fmt.Sprintf("释放任务周额度失败 task %s: %s", task.TaskID, err.Error()))
+	}
+
+	// 3. 退还令牌额度
 	taskAdjustTokenQuota(ctx, task, -quota)
 	if err := SettleTaskChannelPoolUsage(ctx, task, 0, 0); err != nil {
 		logger.LogError(ctx, fmt.Sprintf("任务渠道订阅池退款失败 task %s: %s", task.TaskID, err.Error()))
 	}
 
-	// 3. 记录日志
+	// 4. 记录日志
 	other := taskBillingOther(task)
 	other["task_id"] = task.TaskID
 	other["reason"] = reason
@@ -200,11 +229,11 @@ func RefundTaskQuota(ctx context.Context, task *model.Task, reason string) bool 
 		Other:     other,
 	})
 
-	// 4. 资金退款完成后再清除持久化标记。
+	// 5. 资金退款完成后再清除持久化标记。
 	// 回写失败必须显式告警，避免漏掉潜在的重复退款风险。
 	task.Quota = 0
-	if err := task.UpdateQuota(); err != nil {
-		logger.LogError(ctx, fmt.Sprintf("退款成功但清除 task quota 失败 task %s: %s", task.TaskID, err.Error()))
+	if err := task.UpdateBillingState(); err != nil {
+		logger.LogError(ctx, fmt.Sprintf("退款成功但持久化 task 计费状态失败 task %s: %s", task.TaskID, err.Error()))
 	}
 	return true
 }
@@ -221,6 +250,12 @@ func RecalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int
 	quotaDelta := actualQuota - preConsumedQuota
 
 	if quotaDelta == 0 {
+		if err := taskReconcileWeeklyQuota(task, actualQuota); err != nil {
+			logger.LogError(ctx, fmt.Sprintf("任务周额度核对失败 task %s: %s", task.TaskID, err.Error()))
+		}
+		if err := task.UpdateBillingState(); err != nil {
+			logger.LogError(ctx, fmt.Sprintf("任务周额度核对后持久化失败 task %s: %s", task.TaskID, err.Error()))
+		}
 		logger.LogInfo(ctx, fmt.Sprintf("任务 %s 预扣费准确（%s，%s）",
 			task.TaskID, logger.LogQuota(actualQuota), reason))
 		if err := SettleTaskChannelPoolUsage(ctx, task, actualQuota, 0); err != nil {
@@ -243,12 +278,18 @@ func RecalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int
 		return
 	}
 
+	// 资金结算成功后核对周额度；周计数失败只影响限额统计，不能回滚或
+	// 阻断已经完成的真实钱包/订阅结算。
+	if err := taskReconcileWeeklyQuota(task, actualQuota); err != nil {
+		logger.LogError(ctx, fmt.Sprintf("任务周额度差额结算失败 task %s: %s", task.TaskID, err.Error()))
+	}
+
 	// 调整令牌额度
 	taskAdjustTokenQuota(ctx, task, quotaDelta)
 
 	task.Quota = actualQuota
-	if err := task.UpdateQuota(); err != nil {
-		logger.LogError(ctx, fmt.Sprintf("差额结算回写 quota 失败 task %s: %s", task.TaskID, err.Error()))
+	if err := task.UpdateBillingState(); err != nil {
+		logger.LogError(ctx, fmt.Sprintf("差额结算回写 task 计费状态失败 task %s: %s", task.TaskID, err.Error()))
 	}
 	if err := SettleTaskChannelPoolUsage(ctx, task, actualQuota, 0); err != nil {
 		logger.LogError(ctx, fmt.Sprintf("任务渠道订阅池结算失败 task %s: %s", task.TaskID, err.Error()))

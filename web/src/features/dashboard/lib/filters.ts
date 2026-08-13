@@ -18,12 +18,14 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import {
   DASHBOARD_CHART_PREFERENCES_STORAGE_KEY,
+  DASHBOARD_INCLUDE_CACHE_STORAGE_KEY,
   DEFAULT_DASHBOARD_CHART_PREFERENCES,
   DEFAULT_TIME_GRANULARITY,
   EMPTY_DASHBOARD_FILTERS,
   TIME_GRANULARITY_STORAGE_KEY,
   TIME_RANGE_PRESETS,
   TIME_RANGE_BY_GRANULARITY,
+  LEGACY_DASHBOARD_INCLUDE_CACHE_STORAGE_KEY,
 } from '@/features/dashboard/constants'
 import type {
   ConsumptionDistributionChartType,
@@ -39,8 +41,12 @@ function isTimeGranularity(value: unknown): value is TimeGranularity {
 
 function getLegacySavedGranularity(): TimeGranularity {
   if (typeof window === 'undefined') return DEFAULT_TIME_GRANULARITY
-  const saved = localStorage.getItem(TIME_GRANULARITY_STORAGE_KEY)
-  return isTimeGranularity(saved) ? saved : DEFAULT_TIME_GRANULARITY
+  try {
+    const saved = localStorage.getItem(TIME_GRANULARITY_STORAGE_KEY)
+    return isTimeGranularity(saved) ? saved : DEFAULT_TIME_GRANULARITY
+  } catch {
+    return DEFAULT_TIME_GRANULARITY
+  }
 }
 
 function isConsumptionDistributionChartType(
@@ -88,7 +94,11 @@ export function saveGranularity(granularity: TimeGranularity): void {
     ...getSavedChartPreferences(),
     defaultTimeGranularity: granularity,
   })
-  localStorage.setItem(TIME_GRANULARITY_STORAGE_KEY, granularity)
+  try {
+    localStorage.setItem(TIME_GRANULARITY_STORAGE_KEY, granularity)
+  } catch {
+    // Storage can be unavailable in private browsing or restricted contexts.
+  }
 }
 
 export function getSavedChartPreferences(): DashboardChartPreferences {
@@ -129,10 +139,43 @@ export function saveChartPreferences(
   preferences: DashboardChartPreferences
 ): void {
   if (typeof window === 'undefined') return
-  localStorage.setItem(
-    DASHBOARD_CHART_PREFERENCES_STORAGE_KEY,
-    JSON.stringify(preferences)
-  )
+  try {
+    localStorage.setItem(
+      DASHBOARD_CHART_PREFERENCES_STORAGE_KEY,
+      JSON.stringify(preferences)
+    )
+  } catch {
+    // Storage can be unavailable in private browsing or restricted contexts.
+  }
+}
+
+export function getSavedIncludeCache(): boolean {
+  if (typeof window === 'undefined') return false
+
+  try {
+    const saved = localStorage.getItem(DASHBOARD_INCLUDE_CACHE_STORAGE_KEY)
+    if (saved != null) return saved === 'true'
+
+    const legacy = localStorage.getItem(
+      LEGACY_DASHBOARD_INCLUDE_CACHE_STORAGE_KEY
+    )
+    if (legacy == null) return false
+
+    const enabled = legacy === 'true'
+    localStorage.setItem(DASHBOARD_INCLUDE_CACHE_STORAGE_KEY, String(enabled))
+    return enabled
+  } catch {
+    return false
+  }
+}
+
+export function saveIncludeCache(enabled: boolean): void {
+  if (typeof window === 'undefined') return
+  try {
+    localStorage.setItem(DASHBOARD_INCLUDE_CACHE_STORAGE_KEY, String(enabled))
+  } catch {
+    // Storage can be unavailable in private browsing or restricted contexts.
+  }
 }
 
 export function getDefaultDays(granularity?: TimeGranularity): number {

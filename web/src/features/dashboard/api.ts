@@ -19,8 +19,13 @@ For commercial licensing, please contact support@quantumnous.com
 import { api } from '@/lib/api'
 
 import type {
+  ChannelModelStatsItem,
+  DailyModelTokenDataItem,
+  DailyTokenDataItem,
   FlowQuotaDataItem,
   QuotaDataItem,
+  SubscriptionModelUsageDataItem,
+  SubscriptionUsageDataItem,
   UptimeGroupResult,
 } from './types'
 
@@ -40,6 +45,7 @@ export async function getUserQuotaDates(
     end_timestamp: number
     default_time?: string
     username?: string
+    include_cache?: boolean
   },
   isAdmin = false
 ) {
@@ -58,6 +64,7 @@ export async function getUserQuotaDates(
 export async function getUserQuotaDataByUsers(params: {
   start_timestamp: number
   end_timestamp: number
+  include_cache?: boolean
 }) {
   const res = await api.get<{ success: boolean; data: QuotaDataItem[] }>(
     '/api/data/users',
@@ -89,5 +96,191 @@ export async function getUptimeStatus() {
   const res = await api.get<{ success: boolean; data: UptimeGroupResult[] }>(
     '/api/uptime/status'
   )
+  return res.data
+}
+
+// ----------------------------------------------------------------------------
+// Daily Token Usage Statistics
+// ----------------------------------------------------------------------------
+
+// Get daily token usage data for all users (admin only)
+export async function getDailyTokenData(params: {
+  start_timestamp: number
+  end_timestamp: number
+  username?: string
+  include_cache?: boolean
+}) {
+  const res = await api.get<{ success: boolean; data: DailyTokenDataItem[] }>(
+    '/api/data/daily-tokens',
+    { params: { ...params, include_cache: params.include_cache !== false } }
+  )
+  return res.data
+}
+
+// Get daily token usage data for current user
+export async function getSelfDailyTokenData(params: {
+  start_timestamp: number
+  end_timestamp: number
+  include_cache?: boolean
+}) {
+  const res = await api.get<{ success: boolean; data: DailyTokenDataItem[] }>(
+    '/api/data/daily-tokens/self',
+    { params: { ...params, include_cache: params.include_cache !== false } }
+  )
+  return res.data
+}
+
+// ----------------------------------------------------------------------------
+// Daily Model Token Usage Statistics
+// ----------------------------------------------------------------------------
+
+// Get daily model token usage data for all users (admin only)
+export async function getDailyModelTokenData(params: {
+  start_timestamp: number
+  end_timestamp: number
+  include_cache?: boolean
+}) {
+  const res = await api.get<{
+    success: boolean
+    data: DailyModelTokenDataItem[]
+  }>('/api/data/daily-model-tokens', {
+    params: { ...params, include_cache: params.include_cache !== false },
+  })
+  return res.data
+}
+
+// Get daily model token usage data for current user
+export async function getSelfDailyModelTokenData(params: {
+  start_timestamp: number
+  end_timestamp: number
+  include_cache?: boolean
+}) {
+  const res = await api.get<{
+    success: boolean
+    data: DailyModelTokenDataItem[]
+  }>('/api/data/daily-model-tokens/self', {
+    params: { ...params, include_cache: params.include_cache !== false },
+  })
+  return res.data
+}
+
+// ----------------------------------------------------------------------------
+// Channel + Model Statistics
+// ----------------------------------------------------------------------------
+
+// Get channel+model aggregated statistics for all users (admin only)
+export async function getChannelModelStats(params: {
+  start_timestamp: number
+  end_timestamp: number
+  username?: string
+  include_cache?: boolean
+}) {
+  const res = await api.get<{
+    success: boolean
+    data: ChannelModelStatsItem[]
+  }>('/api/data/channel-stats', { params })
+  return res.data
+}
+
+// Get channel+model aggregated statistics for current user
+export async function getSelfChannelModelStats(params: {
+  start_timestamp: number
+  end_timestamp: number
+  include_cache?: boolean
+}) {
+  const res = await api.get<{
+    success: boolean
+    data: ChannelModelStatsItem[]
+  }>('/api/data/channel-stats/self', { params })
+  return res.data
+}
+
+// ----------------------------------------------------------------------------
+// Subscription Usage Statistics
+// ----------------------------------------------------------------------------
+
+// Get subscription usage data for current user (daily)
+export async function getSelfSubscriptionUsage(params: {
+  start_timestamp: number
+  end_timestamp: number
+  subscription_id?: number
+  model?: string
+  include_cache?: boolean
+}) {
+  const res = await api.get<{
+    success: boolean
+    data: SubscriptionUsageDataItem[]
+  }>('/api/data/subscription-usage/self', { params })
+  return res.data
+}
+
+// Get platform-wide subscription usage (admin only)
+export async function getAllSubscriptionUsage(params: {
+  start_timestamp: number
+  end_timestamp: number
+  subscription_id?: number
+  model?: string
+  include_cache?: boolean
+}) {
+  const res = await api.get<{
+    success: boolean
+    data: SubscriptionUsageDataItem[]
+  }>('/api/data/subscription-usage', { params })
+  return res.data
+}
+
+// Get subscription model usage for current user
+export async function getSelfSubscriptionModelUsage(params: {
+  start_timestamp: number
+  end_timestamp: number
+  subscription_id?: number
+  model?: string
+  include_cache?: boolean
+}) {
+  const res = await api.get<{
+    success: boolean
+    data: SubscriptionModelUsageDataItem[]
+  }>('/api/data/subscription-model-usage/self', { params })
+  return res.data
+}
+
+// Get platform-wide subscription model usage (admin only)
+export async function getAllSubscriptionModelUsage(params: {
+  start_timestamp: number
+  end_timestamp: number
+  subscription_id?: number
+  model?: string
+  include_cache?: boolean
+}) {
+  const res = await api.get<{
+    success: boolean
+    data: SubscriptionModelUsageDataItem[]
+  }>('/api/data/subscription-model-usage', { params })
+  return res.data
+}
+
+// Get current user's active subscriptions (for summary display)
+export async function getSelfSubscriptions() {
+  const res = await api.get<{
+    success: boolean
+    data?: {
+      billing_preference?: string
+      subscriptions?: Array<{
+        subscription: {
+          id: number
+          plan_id: number
+          status: string
+          amount_total: number
+          amount_used: number
+          tokens_total?: number
+          tokens_used?: number
+          start_time: number
+          end_time: number
+          next_reset_time?: number
+          token_next_reset_time?: number
+        }
+      }>
+    }
+  }>('/api/subscription/self')
   return res.data
 }

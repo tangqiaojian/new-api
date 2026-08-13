@@ -16,6 +16,16 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+func nonNegativeTokenDifference(total, deducted int) int {
+	if total <= 0 || total <= deducted {
+		return 0
+	}
+	if deducted <= 0 {
+		return total
+	}
+	return total - deducted
+}
+
 func streamResponseXAI2OpenAI(xAIResp *dto.ChatCompletionsStreamResponse, usage *dto.Usage) *dto.ChatCompletionsStreamResponse {
 	if xAIResp == nil {
 		return nil
@@ -55,7 +65,7 @@ func xAIStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 		if xAIResp.Usage != nil {
 			containStreamUsage = true
 			*usage = *xAIResp.Usage
-			usage.CompletionTokens = usage.TotalTokens - usage.PromptTokens
+			usage.CompletionTokens = nonNegativeTokenDifference(usage.TotalTokens, usage.PromptTokens)
 		}
 
 		openaiResponse := streamResponseXAI2OpenAI(xAIResp, usage)
@@ -89,8 +99,11 @@ func xAIHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Response
 		return nil, types.NewError(err, types.ErrorCodeBadResponseBody)
 	}
 	if xaiResponse.Usage != nil {
-		xaiResponse.Usage.CompletionTokens = xaiResponse.Usage.TotalTokens - xaiResponse.Usage.PromptTokens
-		xaiResponse.Usage.CompletionTokenDetails.TextTokens = xaiResponse.Usage.CompletionTokens - xaiResponse.Usage.CompletionTokenDetails.ReasoningTokens
+		xaiResponse.Usage.CompletionTokens = nonNegativeTokenDifference(xaiResponse.Usage.TotalTokens, xaiResponse.Usage.PromptTokens)
+		xaiResponse.Usage.CompletionTokenDetails.TextTokens = nonNegativeTokenDifference(
+			xaiResponse.Usage.CompletionTokens,
+			xaiResponse.Usage.CompletionTokenDetails.ReasoningTokens,
+		)
 	}
 
 	// new body

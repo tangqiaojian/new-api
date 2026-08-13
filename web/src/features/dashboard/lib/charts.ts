@@ -23,6 +23,11 @@ import type {
   QuotaDataItem,
   ProcessedChartData,
   ProcessedUserChartData,
+  ProcessedDailyTokensChartData,
+  ProcessedDailyModelTokensChartData,
+  DailyTokenDataItem,
+  DailyModelTokenDataItem,
+  TokenMetricType,
 } from '@/features/dashboard/types'
 import { getCurrencyDisplay } from '@/lib/currency'
 import { formatChartTime, type TimeGranularity } from '@/lib/time'
@@ -43,7 +48,9 @@ export function getDashboardChartColors(domainLength: number): string[] {
   const scheme =
     vchartDefaultDataScheme.find(
       (item) => !item.maxDomainLength || domainLength <= item.maxDomainLength
-    ) ?? vchartDefaultDataScheme[vchartDefaultDataScheme.length - 1]
+    ) ?? vchartDefaultDataScheme.at(-1)
+
+  if (!scheme) return []
 
   return scheme.scheme.filter(
     (color): color is string => typeof color === 'string'
@@ -58,7 +65,7 @@ function renderQuotaCompat(rawQuota: number, digits = 4): string {
   const symbol = 'symbol' in meta ? meta.symbol : '$'
   const value = usd * rate
   const fixed = value.toFixed(digits)
-  if (parseFloat(fixed) === 0 && rawQuota > 0 && value > 0) {
+  if (Number.parseFloat(fixed) === 0 && rawQuota > 0 && value > 0) {
     return symbol + Math.pow(10, -digits).toFixed(digits)
   }
   return symbol + fixed
@@ -234,10 +241,11 @@ export function processChartData(
     const tokens = Number(item.token_used) || 0
 
     // Aggregate by time and model
-    if (!timeModelMap.has(timeKey)) {
-      timeModelMap.set(timeKey, new Map())
+    let modelMap = timeModelMap.get(timeKey)
+    if (!modelMap) {
+      modelMap = new Map()
+      timeModelMap.set(timeKey, modelMap)
     }
-    const modelMap = timeModelMap.get(timeKey)!
     const existing = modelMap.get(model) || { quota: 0, count: 0, tokens: 0 }
     modelMap.set(model, {
       quota: existing.quota + quota,
@@ -258,10 +266,10 @@ export function processChartData(
     })
   })
 
-  const allModels = Array.from(modelTotalsMap.keys())
-  const sortedTimes = Array.from(timeModelMap.keys()).sort()
+  const allModels = [...modelTotalsMap.keys()]
+  const sortedTimes = [...timeModelMap.keys()].sort()
   const sortedModels = [...allModels].sort()
-  const modelColorDomain = Array.from(new Set([...sortedModels, otherLabel]))
+  const modelColorDomain = [...new Set([...sortedModels, otherLabel])]
   const modelColorRange = getDashboardChartColors(modelColorDomain.length)
   const otherColor = modelColorRange[modelColorDomain.indexOf(otherLabel)]
   const otherTooltipColor =
@@ -279,12 +287,12 @@ export function processChartData(
     const lastTime = Math.max(
       ...data.map((item) => Number(item.created_at) || 0)
     )
-    const intervalSec =
-      timeGranularity === 'week'
-        ? 604800
-        : timeGranularity === 'day'
-          ? 86400
-          : 3600
+    let intervalSec = 3600
+    if (timeGranularity === 'week') {
+      intervalSec = 604800
+    } else if (timeGranularity === 'day') {
+      intervalSec = 86400
+    }
     const padded = Array.from({ length: MAX_TREND_POINTS }, (_, i) =>
       formatChartTime(
         lastTime - (MAX_TREND_POINTS - 1 - i) * intervalSec,
@@ -295,17 +303,17 @@ export function processChartData(
   }
   const chartTimes = fillTimePoints(sortedTimes)
 
-  const totalTimes = Array.from(modelTotalsMap.values()).reduce(
+  const totalTimes = [...modelTotalsMap.values()].reduce(
     (sum, x) => sum + (Number(x.count) || 0),
     0
   )
-  const totalQuotaRaw = Array.from(modelTotalsMap.values()).reduce(
+  const totalQuotaRaw = [...modelTotalsMap.values()].reduce(
     (sum, x) => sum + (Number(x.quota) || 0),
     0
   )
 
   // Pie chart (model call count proportion)
-  const pieValues = Array.from(modelTotalsMap.entries())
+  const pieValues = [...modelTotalsMap.entries()]
     .map(([model, stats]) => ({
       type: model,
       value: Number(stats.count) || 0,
@@ -346,7 +354,7 @@ export function processChartData(
 
   // Area chart: top models by quota + "Other" bucket (too many series = unreadable)
   const MAX_AREA_MODELS = 15
-  const rankedQuotaModels = Array.from(modelTotalsMap.entries())
+  const rankedQuotaModels = [...modelTotalsMap.entries()]
     .map(([model, stats]) => ({
       Model: model,
       Quota: Number(stats.quota) || 0,
@@ -388,7 +396,7 @@ export function processChartData(
 
   // Line chart: model call trend (top models + "Other" bucket)
   const MAX_TREND_MODELS = 20
-  const rankedTrendModels = Array.from(modelTotalsMap.entries())
+  const rankedTrendModels = [...modelTotalsMap.entries()]
     .map(([model, stats]) => ({
       Model: model,
       Count: Number(stats.count) || 0,
@@ -432,7 +440,7 @@ export function processChartData(
 
   // Rank bar: model call count ranking (top 20 + "Other" bucket)
   const MAX_RANK_MODELS = 20
-  const allRankValues = Array.from(modelTotalsMap.entries())
+  const allRankValues = [...modelTotalsMap.entries()]
     .map(([model, stats]) => ({
       Model: model,
       Count: Number(stats.count) || 0,
@@ -757,9 +765,7 @@ export function processUserChartData(
     userQuotaTotal.set(username, prev + (Number(item.quota) || 0))
   })
 
-  const sorted = Array.from(userQuotaTotal.entries()).sort(
-    (a, b) => b[1] - a[1]
-  )
+  const sorted = [...userQuotaTotal.entries()].sort((a, b) => b[1] - a[1])
   const topUsers = sorted.slice(0, limit).map(([u]) => u)
   const topUserSet = new Set(topUsers)
   const totalQuota = sorted.slice(0, limit).reduce((s, [, q]) => s + q, 0)
@@ -787,12 +793,15 @@ export function processUserChartData(
     allTimePoints.add(timeKey)
     const user = item.username || 'unknown'
     if (!topUserSet.has(user)) return
-    if (!timeUserMap.has(timeKey)) timeUserMap.set(timeKey, new Map())
-    const map = timeUserMap.get(timeKey)!
+    let map = timeUserMap.get(timeKey)
+    if (!map) {
+      map = new Map()
+      timeUserMap.set(timeKey, map)
+    }
     map.set(user, (map.get(user) || 0) + (Number(item.quota) || 0))
   })
 
-  const sortedTimePoints = Array.from(allTimePoints).sort()
+  const sortedTimePoints = [...allTimePoints].sort()
   const trendValues: Array<{
     Time: string
     User: string
@@ -947,6 +956,722 @@ export function processUserChartData(
       },
       point: { visible: false },
       color: { specified: userColorMap },
+      background: { fill: 'transparent' },
+      animation: true,
+    },
+  }
+}
+const TOKEN_COLORS = [
+  '#5B8FF9',
+  '#5AD8A6',
+  '#F6BD16',
+  '#E8684A',
+  '#6DC8EC',
+  '#9270CA',
+  '#FF9D4D',
+  '#269A99',
+  '#FF99C3',
+  '#5D7092',
+]
+
+export function processDailyTokensChartData(
+  data: DailyTokenDataItem[],
+  t?: TFunction,
+  metricType: TokenMetricType = 'total',
+  limit = 10,
+  compact = true,
+  locale: Intl.LocalesArgument = undefined
+): ProcessedDailyTokensChartData {
+  const tt: TFunction = t ?? ((x) => x)
+
+  // Number formatter: compact mode uses locale-aware compact notation (万/亿 in zh)
+  // precise mode uses full number with separators
+  const formatInt = (value: number) =>
+    compact
+      ? Intl.NumberFormat(locale, {
+          notation: 'compact',
+          maximumFractionDigits: 1,
+        }).format(value)
+      : Intl.NumberFormat(locale, { maximumFractionDigits: 0 }).format(value)
+
+  const getTokenValue = (item: DailyTokenDataItem): number => {
+    switch (metricType) {
+      case 'prompt':
+        return item.prompt_tokens
+      case 'completion':
+        return item.completion_tokens
+      default:
+        return item.total_tokens
+    }
+  }
+
+  const emptyResult: ProcessedDailyTokensChartData = {
+    spec_tokens_trend: {
+      type: 'area',
+      data: [{ id: 'tokensTrendData', values: [] }],
+      xField: 'Date',
+      yField: 'Tokens',
+      seriesField: 'User',
+      title: {
+        visible: true,
+        text: tt('Daily Token Usage Trend'),
+        subtext: tt('No data available'),
+      },
+      legends: { visible: true, selectMode: 'single' },
+      color: { type: 'ordinal', range: TOKEN_COLORS },
+      point: { visible: false },
+      background: { fill: 'transparent' },
+    },
+    spec_tokens_rank: {
+      type: 'bar',
+      data: [{ id: 'tokensRankData', values: [] }],
+      xField: 'User',
+      yField: 'Tokens',
+      seriesField: 'User',
+      title: {
+        visible: true,
+        text: tt('User Token Ranking'),
+        subtext: tt('No data available'),
+      },
+      legends: { visible: false },
+      color: { type: 'ordinal', range: TOKEN_COLORS },
+      background: { fill: 'transparent' },
+    },
+    spec_tokens_pie: {
+      type: 'pie',
+      data: [{ id: 'tokensPieData', values: [] }],
+      valueField: 'Tokens',
+      categoryField: 'User',
+      title: {
+        visible: true,
+        text: tt('User Token Distribution'),
+        subtext: tt('No data available'),
+      },
+      legends: { visible: true, orient: 'left' },
+      label: { visible: false },
+      background: { fill: 'transparent' },
+    },
+  }
+
+  if (!data || data.length === 0) return emptyResult
+
+  // Aggregate total tokens per user for ranking
+  const userTokenTotal = new Map<string, number>()
+  data.forEach((item) => {
+    const username = item.username || 'unknown'
+    const tokens = getTokenValue(item)
+    const prev = userTokenTotal.get(username) || 0
+    userTokenTotal.set(username, prev + tokens)
+  })
+
+  // Get top users
+  const sorted = [...userTokenTotal.entries()].sort((a, b) => b[1] - a[1])
+  const topUsers = sorted.slice(0, limit).map(([u]) => u)
+  const topUserSet = new Set(topUsers)
+  const totalTokens = sorted.slice(0, limit).reduce((s, [, t]) => s + t, 0)
+
+  // Build rank chart data
+  const rankValues = sorted.slice(0, limit).map(([username, tokens]) => ({
+    User: username,
+    Tokens: tokens,
+  }))
+
+  // Build user color map
+  const userColorMap = topUsers.reduce<Record<string, string>>(
+    (acc, user, i) => {
+      acc[user] = TOKEN_COLORS[i % TOKEN_COLORS.length]
+      return acc
+    },
+    {}
+  )
+
+  // Build trend chart data
+  const dateUserMap = new Map<string, Map<string, number>>()
+  const allDates = new Set<string>()
+
+  data.forEach((item) => {
+    const date = item.date
+    allDates.add(date)
+    const user = item.username || 'unknown'
+    if (!topUserSet.has(user)) return
+    let map = dateUserMap.get(date)
+    if (!map) {
+      map = new Map()
+      dateUserMap.set(date, map)
+    }
+    map.set(user, (map.get(user) || 0) + getTokenValue(item))
+  })
+
+  const sortedDates = [...allDates].sort()
+  const trendValues: Array<{
+    Date: string
+    User: string
+    Tokens: number
+  }> = []
+
+  sortedDates.forEach((date) => {
+    topUsers.forEach((user) => {
+      const tokens = dateUserMap.get(date)?.get(user) || 0
+      trendValues.push({
+        Date: date,
+        User: user,
+        Tokens: tokens,
+      })
+    })
+  })
+
+  let metricLabel = tt('Total Tokens')
+  if (metricType === 'prompt') {
+    metricLabel = tt('Prompt Tokens')
+  } else if (metricType === 'completion') {
+    metricLabel = tt('Completion Tokens')
+  }
+
+  return {
+    spec_tokens_trend: {
+      type: 'area',
+      data: [{ id: 'tokensTrendData', values: trendValues }],
+      xField: 'Date',
+      yField: 'Tokens',
+      seriesField: 'User',
+      stack: false,
+      title: {
+        visible: true,
+        text: tt('Daily Token Usage Trend'),
+        subtext: `${metricLabel} - ${tt('Total:')} ${formatInt(totalTokens)}`,
+      },
+      legends: { visible: true, selectMode: 'single' },
+      axes: [
+        { orient: 'bottom', type: 'band' },
+        {
+          orient: 'left',
+          type: 'linear',
+          label: {
+            formatMethod: (value: number) => formatInt(value),
+          },
+        },
+      ],
+      tooltip: {
+        mark: {
+          content: [
+            {
+              key: (datum: Record<string, unknown>) => datum?.User,
+              value: (datum: Record<string, unknown>) =>
+                formatInt(Number(datum?.Tokens) || 0),
+            },
+          ],
+        },
+        dimension: {
+          content: [
+            {
+              key: (datum: Record<string, unknown>) => datum?.User,
+              value: (datum: Record<string, unknown>) =>
+                Number(datum?.Tokens) || 0,
+            },
+          ],
+          updateContent: (
+            array: Array<{
+              key: string
+              value: string | number
+            }>
+          ) => {
+            array.sort(
+              (a, b) => (Number(b.value) || 0) - (Number(a.value) || 0)
+            )
+            let sum = 0
+            for (let i = 0; i < array.length; i++) {
+              const v = Number(array[i].value) || 0
+              sum += v
+              array[i].value = formatInt(v)
+            }
+            array.unshift({
+              key: tt('Total:'),
+              value: formatInt(sum),
+            })
+            return array
+          },
+        },
+      },
+      area: {
+        style: {
+          fillOpacity: 0.15,
+          curveType: 'monotone',
+        },
+      },
+      line: {
+        style: {
+          lineWidth: 2,
+          curveType: 'monotone',
+        },
+      },
+      point: { visible: false },
+      color: { specified: userColorMap },
+      background: { fill: 'transparent' },
+      animation: true,
+    },
+    spec_tokens_rank: {
+      type: 'bar',
+      data: [{ id: 'tokensRankData', values: rankValues }],
+      xField: 'User',
+      yField: 'Tokens',
+      seriesField: 'User',
+      title: {
+        visible: true,
+        text: tt('User Token Ranking'),
+        subtext: `${metricLabel} - ${tt('Total:')} ${formatInt(totalTokens)}`,
+      },
+      legends: { visible: false },
+      bar: {
+        state: { hover: { stroke: '#000', lineWidth: 1 } },
+      },
+      label: {
+        visible: true,
+        position: 'top',
+        formatMethod: (value: number) => formatInt(value),
+        style: { fontSize: 11 },
+      },
+      axes: [
+        {
+          orient: 'bottom',
+          type: 'band',
+          label: { autoRotate: true, autoLimit: true, style: { fontSize: 10 } },
+        },
+        { orient: 'left', type: 'linear' },
+      ],
+      tooltip: {
+        mark: {
+          content: [
+            {
+              key: (datum: Record<string, unknown>) => datum?.User,
+              value: (datum: Record<string, unknown>) =>
+                formatInt(Number(datum?.Tokens) || 0),
+            },
+          ],
+        },
+      },
+      color: { specified: userColorMap },
+      background: { fill: 'transparent' },
+      animation: true,
+    },
+    spec_tokens_pie: {
+      type: 'pie',
+      data: [{ id: 'tokensPieData', values: rankValues }],
+      valueField: 'Tokens',
+      categoryField: 'User',
+      outerRadius: 0.8,
+      innerRadius: 0.5,
+      padAngle: 0.6,
+      title: {
+        visible: true,
+        text: tt('User Token Distribution'),
+        subtext: `${metricLabel} - ${tt('Total:')} ${formatInt(totalTokens)}`,
+      },
+      legends: { visible: true, orient: 'left' },
+      label: { visible: true },
+      color: { specified: userColorMap },
+      tooltip: {
+        mark: {
+          content: [
+            {
+              key: (datum: Record<string, unknown>) => datum?.User,
+              value: (datum: Record<string, unknown>) =>
+                formatInt(Number(datum?.Tokens) || 0),
+            },
+          ],
+        },
+      },
+      background: { fill: 'transparent' },
+      animation: true,
+    },
+  }
+}
+
+// ============================================================================
+// Daily Model Token Chart Processing
+// ============================================================================
+
+export function processDailyModelTokensChartData(
+  data: DailyModelTokenDataItem[],
+  t?: TFunction,
+  metricType: TokenMetricType = 'total',
+  limit = 10,
+  compact = true,
+  locale: Intl.LocalesArgument = undefined
+): ProcessedDailyModelTokensChartData {
+  const tt: TFunction = t ?? ((x) => x)
+
+  const formatInt = (value: number) =>
+    compact
+      ? Intl.NumberFormat(locale, {
+          notation: 'compact',
+          maximumFractionDigits: 1,
+        }).format(value)
+      : Intl.NumberFormat(locale, { maximumFractionDigits: 0 }).format(value)
+
+  const getTokenValue = (item: DailyModelTokenDataItem): number => {
+    switch (metricType) {
+      case 'prompt':
+        return item.prompt_tokens
+      case 'completion':
+        return item.completion_tokens
+      default:
+        return item.total_tokens
+    }
+  }
+
+  const emptyResult: ProcessedDailyModelTokensChartData = {
+    spec_model_trend: {
+      type: 'area',
+      data: [{ id: 'modelTrendData', values: [] }],
+      xField: 'Date',
+      yField: 'Tokens',
+      seriesField: 'Model',
+      title: {
+        visible: true,
+        text: tt('Daily Model Token Usage Trend'),
+        subtext: tt('No data available'),
+      },
+      legends: { visible: true, selectMode: 'single' },
+      color: { type: 'ordinal', range: TOKEN_COLORS },
+      point: { visible: false },
+      background: { fill: 'transparent' },
+    },
+    spec_model_rank: {
+      type: 'bar',
+      data: [{ id: 'modelRankData', values: [] }],
+      xField: 'Model',
+      yField: 'Tokens',
+      seriesField: 'Model',
+      title: {
+        visible: true,
+        text: tt('Model Token Ranking'),
+        subtext: tt('No data available'),
+      },
+      legends: { visible: false },
+      color: { type: 'ordinal', range: TOKEN_COLORS },
+      background: { fill: 'transparent' },
+    },
+    spec_model_request_count: {
+      type: 'bar',
+      data: [{ id: 'modelRequestCountData', values: [] }],
+      xField: 'Model',
+      yField: 'Requests',
+      seriesField: 'Model',
+      title: {
+        visible: true,
+        text: tt('Model Request Count Ranking'),
+        subtext: tt('No data available'),
+      },
+      legends: { visible: false },
+      color: { type: 'ordinal', range: TOKEN_COLORS },
+      background: { fill: 'transparent' },
+    },
+    spec_model_pie: {
+      type: 'pie',
+      data: [{ id: 'modelPieData', values: [] }],
+      valueField: 'Tokens',
+      categoryField: 'Model',
+      title: {
+        visible: true,
+        text: tt('Model Token Distribution'),
+        subtext: tt('No data available'),
+      },
+      legends: { visible: true, orient: 'left' },
+      label: { visible: false },
+      background: { fill: 'transparent' },
+    },
+  }
+
+  if (!data || data.length === 0) return emptyResult
+
+  // Aggregate total tokens per model for ranking
+  const modelTokenTotal = new Map<string, number>()
+  const modelRequestTotal = new Map<string, number>()
+  data.forEach((item) => {
+    const model = item.model_name || 'unknown'
+    const tokens = getTokenValue(item)
+    const prev = modelTokenTotal.get(model) || 0
+    modelTokenTotal.set(model, prev + tokens)
+    const prevReq = modelRequestTotal.get(model) || 0
+    modelRequestTotal.set(model, prevReq + item.request_count)
+  })
+
+  // Get top models
+  const sorted = [...modelTokenTotal.entries()].sort((a, b) => b[1] - a[1])
+  const topModels = sorted.slice(0, limit).map(([m]) => m)
+  const topModelSet = new Set(topModels)
+  const totalTokens = sorted.slice(0, limit).reduce((s, [, t]) => s + t, 0)
+
+  // Build rank chart data
+  const rankValues = sorted.slice(0, limit).map(([model, tokens]) => ({
+    Model: model,
+    Tokens: tokens,
+  }))
+
+  // Build model color map
+  const modelColorMap = topModels.reduce<Record<string, string>>(
+    (acc, model, i) => {
+      acc[model] = TOKEN_COLORS[i % TOKEN_COLORS.length]
+      return acc
+    },
+    {}
+  )
+
+  // Build trend chart data
+  const dateModelMap = new Map<string, Map<string, number>>()
+  const allDates = new Set<string>()
+
+  data.forEach((item) => {
+    const date = item.date
+    allDates.add(date)
+    const model = item.model_name || 'unknown'
+    if (!topModelSet.has(model)) return
+    let map = dateModelMap.get(date)
+    if (!map) {
+      map = new Map()
+      dateModelMap.set(date, map)
+    }
+    map.set(model, (map.get(model) || 0) + getTokenValue(item))
+  })
+
+  const sortedDates = [...allDates].sort()
+  const trendValues: Array<{
+    Date: string
+    Model: string
+    Tokens: number
+  }> = []
+
+  sortedDates.forEach((date) => {
+    topModels.forEach((model) => {
+      const tokens = dateModelMap.get(date)?.get(model) || 0
+      trendValues.push({
+        Date: date,
+        Model: model,
+        Tokens: tokens,
+      })
+    })
+  })
+
+  let metricLabel = tt('Total Tokens')
+  if (metricType === 'prompt') {
+    metricLabel = tt('Prompt Tokens')
+  } else if (metricType === 'completion') {
+    metricLabel = tt('Completion Tokens')
+  }
+
+  return {
+    spec_model_trend: {
+      type: 'area',
+      data: [{ id: 'modelTrendData', values: trendValues }],
+      xField: 'Date',
+      yField: 'Tokens',
+      seriesField: 'Model',
+      stack: false,
+      title: {
+        visible: true,
+        text: tt('Daily Model Token Usage Trend'),
+        subtext: `${metricLabel} - ${tt('Total:')} ${formatInt(totalTokens)}`,
+      },
+      legends: { visible: true, selectMode: 'single' },
+      axes: [
+        { orient: 'bottom', type: 'band' },
+        {
+          orient: 'left',
+          type: 'linear',
+          label: {
+            formatMethod: (value: number) => formatInt(value),
+          },
+        },
+      ],
+      tooltip: {
+        mark: {
+          content: [
+            {
+              key: (datum: Record<string, unknown>) => datum?.Model,
+              value: (datum: Record<string, unknown>) =>
+                formatInt(Number(datum?.Tokens) || 0),
+            },
+          ],
+        },
+        dimension: {
+          content: [
+            {
+              key: (datum: Record<string, unknown>) => datum?.Model,
+              value: (datum: Record<string, unknown>) =>
+                Number(datum?.Tokens) || 0,
+            },
+          ],
+          updateContent: (
+            array: Array<{
+              key: string
+              value: string | number
+            }>
+          ) => {
+            array.sort(
+              (a, b) => (Number(b.value) || 0) - (Number(a.value) || 0)
+            )
+            let sum = 0
+            for (let i = 0; i < array.length; i++) {
+              const v = Number(array[i].value) || 0
+              sum += v
+              array[i].value = formatInt(v)
+            }
+            array.unshift({
+              key: tt('Total:'),
+              value: formatInt(sum),
+            })
+            return array
+          },
+        },
+      },
+      area: {
+        style: {
+          fillOpacity: 0.15,
+          curveType: 'monotone',
+        },
+      },
+      line: {
+        style: {
+          lineWidth: 2,
+          curveType: 'monotone',
+        },
+      },
+      point: { visible: false },
+      color: { specified: modelColorMap },
+      background: { fill: 'transparent' },
+      animation: true,
+    },
+    spec_model_rank: {
+      type: 'bar',
+      data: [{ id: 'modelRankData', values: rankValues }],
+      xField: 'Model',
+      yField: 'Tokens',
+      seriesField: 'Model',
+      title: {
+        visible: true,
+        text: tt('Model Token Ranking'),
+        subtext: `${metricLabel} - ${tt('Total:')} ${formatInt(totalTokens)}`,
+      },
+      legends: { visible: false },
+      bar: {
+        state: { hover: { stroke: '#000', lineWidth: 1 } },
+      },
+      label: {
+        visible: true,
+        position: 'top',
+        formatMethod: (value: number) => formatInt(value),
+        style: { fontSize: 11 },
+      },
+      axes: [
+        {
+          orient: 'bottom',
+          type: 'band',
+          label: { autoRotate: true, autoLimit: true, style: { fontSize: 10 } },
+        },
+        { orient: 'left', type: 'linear' },
+      ],
+      tooltip: {
+        mark: {
+          content: [
+            {
+              key: (datum: Record<string, unknown>) => datum?.Model,
+              value: (datum: Record<string, unknown>) =>
+                formatInt(Number(datum?.Tokens) || 0),
+            },
+          ],
+        },
+      },
+      color: { specified: modelColorMap },
+      background: { fill: 'transparent' },
+      animation: true,
+    },
+    spec_model_request_count: (() => {
+      const requestRankValues = topModels
+        .map((model) => ({
+          Model: model,
+          Requests: modelRequestTotal.get(model) || 0,
+        }))
+        .sort((a, b) => b.Requests - a.Requests)
+      const totalRequests = requestRankValues.reduce(
+        (s, d) => s + d.Requests,
+        0
+      )
+      return {
+        type: 'bar',
+        data: [{ id: 'modelRequestCountData', values: requestRankValues }],
+        xField: 'Model',
+        yField: 'Requests',
+        seriesField: 'Model',
+        title: {
+          visible: true,
+          text: tt('Model Request Count Ranking'),
+          subtext: `${tt('Total:')} ${formatInt(totalRequests)}`,
+        },
+        legends: { visible: false },
+        bar: {
+          state: { hover: { stroke: '#000', lineWidth: 1 } },
+        },
+        label: {
+          visible: true,
+          position: 'top',
+          formatMethod: (value: number) => formatInt(value),
+          style: { fontSize: 11 },
+        },
+        axes: [
+          {
+            orient: 'bottom',
+            type: 'band',
+            label: {
+              autoRotate: true,
+              autoLimit: true,
+              style: { fontSize: 10 },
+            },
+          },
+          { orient: 'left', type: 'linear' },
+        ],
+        tooltip: {
+          mark: {
+            content: [
+              {
+                key: (datum: Record<string, unknown>) => datum?.Model,
+                value: (datum: Record<string, unknown>) =>
+                  formatInt(Number(datum?.Requests) || 0),
+              },
+            ],
+          },
+        },
+        color: { specified: modelColorMap },
+        background: { fill: 'transparent' },
+        animation: true,
+      }
+    })(),
+    spec_model_pie: {
+      type: 'pie',
+      data: [{ id: 'modelPieData', values: rankValues }],
+      valueField: 'Tokens',
+      categoryField: 'Model',
+      outerRadius: 0.8,
+      innerRadius: 0.5,
+      padAngle: 0.6,
+      title: {
+        visible: true,
+        text: tt('Model Token Distribution'),
+        subtext: `${metricLabel} - ${tt('Total:')} ${formatInt(totalTokens)}`,
+      },
+      legends: { visible: true, orient: 'left' },
+      label: { visible: true },
+      color: { specified: modelColorMap },
+      tooltip: {
+        mark: {
+          content: [
+            {
+              key: (datum: Record<string, unknown>) => datum?.Model,
+              value: (datum: Record<string, unknown>) =>
+                formatInt(Number(datum?.Tokens) || 0),
+            },
+          ],
+        },
+      },
       background: { fill: 'transparent' },
       animation: true,
     },

@@ -47,6 +47,9 @@ import {
 } from '@/components/page-transition'
 import { Button } from '@/components/ui/button'
 import { IconBadge, type IconBadgeTone } from '@/components/ui/icon-badge'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { TIME_RANGE_PRESETS } from '@/features/dashboard/constants'
+import { useAutoRefresh } from '@/features/dashboard/hooks/use-auto-refresh'
 import { fetchTokenKey, getApiKeys } from '@/features/keys/api'
 import type { ApiKey } from '@/features/keys/types'
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
@@ -465,9 +468,11 @@ export function OverviewDashboard() {
     faq: showFAQPanel,
     uptimeKuma: showUptimePanel,
   } = useDashboardContentVisibility()
+  const { refetchInterval } = useAutoRefresh()
   const [manualSetupGuideExpanded, setManualSetupGuideExpanded] = useState<
     boolean | null
   >(() => getSavedSetupGuideExpanded())
+  const [summaryDays, setSummaryDays] = useState(1)
 
   const requestCount = Number(user?.request_count ?? 0)
   const remainQuota = Number(user?.quota ?? 0)
@@ -481,6 +486,7 @@ export function OverviewDashboard() {
       return result.success ? (result.data?.items ?? []) : []
     },
     staleTime: 60 * 1000,
+    refetchInterval: refetchInterval || undefined,
   })
 
   const modelsQuery = useQuery({
@@ -490,6 +496,7 @@ export function OverviewDashboard() {
       return result.success ? (result.data ?? []) : []
     },
     staleTime: 5 * 60 * 1000,
+    refetchInterval: refetchInterval || undefined,
   })
 
   const preferredKey = useMemo(
@@ -749,7 +756,27 @@ export function OverviewDashboard() {
         </CardStaggerContainer>
       )}
 
-      <SummaryCards />
+      <div className='flex items-center gap-1.5 overflow-x-auto pb-1 sm:gap-2'>
+        <Tabs
+          value={String(summaryDays)}
+          onValueChange={(value) => setSummaryDays(Number(value))}
+          className='shrink-0'
+        >
+          <TabsList>
+            {TIME_RANGE_PRESETS.map((preset) => (
+              <TabsTrigger
+                key={preset.days}
+                value={String(preset.days)}
+                className='px-2.5 text-xs'
+              >
+                {t(preset.label)}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
+      </div>
+
+      <SummaryCards days={summaryDays} />
 
       {showContentPanels && (
         <CardStaggerContainer

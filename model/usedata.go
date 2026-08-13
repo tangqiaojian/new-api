@@ -138,46 +138,53 @@ func increaseQuotaData(quotaData *QuotaData) {
 	}
 }
 
-func GetQuotaDataByUsername(username string, startTime int64, endTime int64) (quotaData []*QuotaData, err error) {
+func quotaTokenUsedSumExpression(includeCache bool) string {
+	expression := "COALESCE(SUM(prompt_tokens), 0) + COALESCE(SUM(completion_tokens), 0)"
+	if includeCache {
+		expression += " + " + logCacheTokensSumExpr()
+	}
+	return expression
+}
+
+func GetQuotaDataByUsername(username string, startTime int64, endTime int64, includeCache bool) (quotaData []*QuotaData, err error) {
 	var quotaDatas []*QuotaData
-	// 从quota_data表中查询数据
-	err = DB.Table("quota_data").
-		Select("user_id, username, model_name, created_at, sum(count) as count, sum(quota) as quota, sum(token_used) as token_used").
-		Where("username = ? and created_at >= ? and created_at <= ?", username, startTime, endTime).
-		Group("user_id, username, model_name, created_at").
+	err = LOG_DB.Table("logs").
+		Select("user_id, username, model_name, created_at - (created_at % 3600) AS created_at, COUNT(*) AS count, COALESCE(SUM(quota), 0) AS quota, "+quotaTokenUsedSumExpression(includeCache)+" AS token_used").
+		Where("username = ? AND type = ? AND created_at >= ? AND created_at <= ?", username, LogTypeConsume, startTime, endTime).
+		Group("user_id, username, model_name, created_at - (created_at % 3600)").
 		Find(&quotaDatas).Error
 	return quotaDatas, err
 }
 
-func GetQuotaDataByUserId(userId int, startTime int64, endTime int64) (quotaData []*QuotaData, err error) {
+func GetQuotaDataByUserId(userId int, startTime int64, endTime int64, includeCache bool) (quotaData []*QuotaData, err error) {
 	var quotaDatas []*QuotaData
-	// 从quota_data表中查询数据
-	err = DB.Table("quota_data").
-		Select("user_id, username, model_name, created_at, sum(count) as count, sum(quota) as quota, sum(token_used) as token_used").
-		Where("user_id = ? and created_at >= ? and created_at <= ?", userId, startTime, endTime).
-		Group("user_id, username, model_name, created_at").
+	err = LOG_DB.Table("logs").
+		Select("user_id, username, model_name, created_at - (created_at % 3600) AS created_at, COUNT(*) AS count, COALESCE(SUM(quota), 0) AS quota, "+quotaTokenUsedSumExpression(includeCache)+" AS token_used").
+		Where("user_id = ? AND type = ? AND created_at >= ? AND created_at <= ?", userId, LogTypeConsume, startTime, endTime).
+		Group("user_id, username, model_name, created_at - (created_at % 3600)").
 		Find(&quotaDatas).Error
 	return quotaDatas, err
 }
 
-func GetQuotaDataGroupByUser(startTime int64, endTime int64) (quotaData []*QuotaData, err error) {
+func GetQuotaDataGroupByUser(startTime int64, endTime int64, includeCache bool) (quotaData []*QuotaData, err error) {
 	var quotaDatas []*QuotaData
-	err = DB.Table("quota_data").
-		Select("username, created_at, sum(count) as count, sum(quota) as quota, sum(token_used) as token_used").
-		Where("created_at >= ? and created_at <= ?", startTime, endTime).
-		Group("username, created_at").
+	err = LOG_DB.Table("logs").
+		Select("username, created_at - (created_at % 3600) AS created_at, COUNT(*) AS count, COALESCE(SUM(quota), 0) AS quota, "+quotaTokenUsedSumExpression(includeCache)+" AS token_used").
+		Where("type = ? AND created_at >= ? AND created_at <= ?", LogTypeConsume, startTime, endTime).
+		Group("username, created_at - (created_at % 3600)").
 		Find(&quotaDatas).Error
 	return quotaDatas, err
 }
 
-func GetAllQuotaDates(startTime int64, endTime int64, username string) (quotaData []*QuotaData, err error) {
+func GetAllQuotaDates(startTime int64, endTime int64, username string, includeCache bool) (quotaData []*QuotaData, err error) {
 	if username != "" {
-		return GetQuotaDataByUsername(username, startTime, endTime)
+		return GetQuotaDataByUsername(username, startTime, endTime, includeCache)
 	}
 	var quotaDatas []*QuotaData
-	// 从quota_data表中查询数据
-	// only select model_name, sum(count) as count, sum(quota) as quota, model_name, created_at from quota_data group by model_name, created_at;
-	//err = DB.Table("quota_data").Where("created_at >= ? and created_at <= ?", startTime, endTime).Find(&quotaDatas).Error
-	err = DB.Table("quota_data").Select("model_name, sum(count) as count, sum(quota) as quota, sum(token_used) as token_used, created_at").Where("created_at >= ? and created_at <= ?", startTime, endTime).Group("model_name, created_at").Find(&quotaDatas).Error
+	err = LOG_DB.Table("logs").
+		Select("model_name, created_at - (created_at % 3600) AS created_at, COUNT(*) AS count, COALESCE(SUM(quota), 0) AS quota, "+quotaTokenUsedSumExpression(includeCache)+" AS token_used").
+		Where("type = ? AND created_at >= ? AND created_at <= ?", LogTypeConsume, startTime, endTime).
+		Group("model_name, created_at - (created_at % 3600)").
+		Find(&quotaDatas).Error
 	return quotaDatas, err
 }

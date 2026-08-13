@@ -308,12 +308,22 @@ func SetApiRouter(router *gin.Engine) {
 			systemInfoRoute.DELETE("/instances/:node_name", controller.DeleteStaleSystemInstance)
 		}
 
+		apiRouter.GET("/data", middleware.AdminAuth(), controller.GetAllQuotaDates)
 		dataRoute := apiRouter.Group("/data")
-		dataRoute.GET("/", middleware.AdminAuth(), controller.GetAllQuotaDates)
 		dataRoute.GET("/users", middleware.AdminAuth(), controller.GetQuotaDatesByUser)
 		dataRoute.GET("/self", middleware.UserAuth(), controller.GetUserQuotaDates)
 		dataRoute.GET("/flow", middleware.AdminAuth(), controller.GetAllFlowQuotaDates)
 		dataRoute.GET("/flow/self", middleware.UserAuth(), controller.GetUserFlowQuotaDates)
+		dataRoute.GET("/daily-tokens", middleware.AdminAuth(), controller.GetAllDailyTokenData)
+		dataRoute.GET("/daily-tokens/self", middleware.UserAuth(), controller.GetUserDailyTokenData)
+		dataRoute.GET("/daily-model-tokens", middleware.AdminAuth(), controller.GetAllDailyModelTokenData)
+		dataRoute.GET("/daily-model-tokens/self", middleware.UserAuth(), controller.GetUserDailyModelTokenData)
+		dataRoute.GET("/channel-stats", middleware.AdminAuth(), controller.GetAllChannelModelStats)
+		dataRoute.GET("/channel-stats/self", middleware.UserAuth(), controller.GetSelfChannelModelStats)
+		dataRoute.GET("/subscription-usage", middleware.AdminAuth(), controller.GetAllSubscriptionUsage)
+		dataRoute.GET("/subscription-usage/self", middleware.UserAuth(), controller.GetSelfSubscriptionUsage)
+		dataRoute.GET("/subscription-model-usage", middleware.AdminAuth(), controller.GetAllSubscriptionModelUsage)
+		dataRoute.GET("/subscription-model-usage/self", middleware.UserAuth(), controller.GetSelfSubscriptionModelUsage)
 
 		logRoute.Use(middleware.CORS(), middleware.CriticalRateLimit())
 		{

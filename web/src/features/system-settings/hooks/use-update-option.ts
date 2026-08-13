@@ -29,6 +29,8 @@ const STATUS_RELATED_KEYS = new Set([
   'SidebarModulesAdmin',
   'Notice',
   'LogConsumeEnabled',
+  'LogRequestDebugEnabled',
+  'LogRequestBodyMaxBytes',
   'QuotaPerUnit',
   'USDExchangeRate',
   'DisplayInCurrencyEnabled',

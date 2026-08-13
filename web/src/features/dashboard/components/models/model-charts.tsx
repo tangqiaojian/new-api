@@ -107,13 +107,19 @@ export function ModelCharts(props: ModelChartsProps) {
     [props.data, props.loading, timeGranularity, t, chartRadius]
   )
 
+  const dataFingerprint = useMemo(() => {
+    let quotaSum = 0
+    for (const item of props.data) quotaSum += item.quota ?? 0
+    return `${props.data.length}-${quotaSum}`
+  }, [props.data])
+
   const spec = chartData[CHART_SPEC_KEYS[activeTab]]
   const specType = typeof spec?.type === 'string' ? spec.type : activeTab
   const chartKey = [
     activeTab,
     specType,
     props.loading ? 'loading' : 'ready',
-    props.data.length,
+    dataFingerprint,
     resolvedTheme,
     customization.preset,
   ].join('-')

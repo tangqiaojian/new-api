@@ -1,3 +1,6 @@
+import { useQuery } from '@tanstack/react-query'
+import { VChart } from '@visactor/react-vchart'
+import { Hash, Loader2, ArrowLeftRight } from 'lucide-react'
 /*
 Copyright (C) 2023-2026 QuantumNous
 
@@ -17,24 +20,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useEffect, useMemo, useState, useRef, useCallback } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import { VChart } from '@visactor/react-vchart'
-import { Hash, Loader2, ArrowLeftRight } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { toIntlLocale } from '@/i18n/languages'
-import { getRollingDateRange } from '@/lib/time'
-import { useAutoRefresh } from '@/features/dashboard/hooks/use-auto-refresh'
-import { VCHART_OPTION } from '@/lib/vchart'
-import { useTheme } from '@/context/theme-provider'
-import { useAuthStore } from '@/stores/auth-store'
-import { ROLE } from '@/lib/roles'
-import { formatQuotaWithCurrency } from '@/lib/currency'
-import { formatCompactNumber, formatNumber } from '@/lib/format'
-import { Skeleton } from '@/components/ui/skeleton'
-import { Switch } from '@/components/ui/switch'
-import { Label } from '@/components/ui/label'
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+
 import { Button } from '@/components/ui/button'
+import { Skeleton } from '@/components/ui/skeleton'
 import {
   Table,
   TableBody,
@@ -43,17 +32,27 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { useTheme } from '@/context/theme-provider'
 import {
   getDailyTokenData,
   getSelfDailyTokenData,
 } from '@/features/dashboard/api'
 import { TIME_RANGE_PRESETS } from '@/features/dashboard/constants'
+import { useAutoRefresh } from '@/features/dashboard/hooks/use-auto-refresh'
 import { processDailyTokensChartData } from '@/features/dashboard/lib'
 import type {
   DailyTokensFilters,
   ProcessedDailyTokensChartData,
   TokenMetricType,
 } from '@/features/dashboard/types'
+import { toIntlLocale } from '@/i18n/languages'
+import { formatQuotaWithCurrency } from '@/lib/currency'
+import { formatCompactNumber, formatNumber } from '@/lib/format'
+import { ROLE } from '@/lib/roles'
+import { getRollingDateRange } from '@/lib/time'
+import { VCHART_OPTION } from '@/lib/vchart'
+import { useAuthStore } from '@/stores/auth-store'
 
 let themeManagerPromise: Promise<
   (typeof import('@visactor/vchart'))['ThemeManager']
@@ -113,7 +112,6 @@ export function DailyTokensSection(props: DailyTokensSectionProps) {
 
   // Number format mode: 'compact' shows 万/亿, 'precise' shows full numbers
   const [compactMode, setCompactMode] = useState(true)
-  const [includeCache, setIncludeCache] = useState(true)
 
   const selectedRange = props.filters.selectedRange
   const topUserLimit = props.filters.topUserLimit
@@ -162,11 +160,20 @@ export function DailyTokensSection(props: DailyTokensSectionProps) {
   }, [resolvedTheme])
 
   const { data: dailyTokenData, isLoading } = useQuery({
-    queryKey: ['dashboard', 'daily-tokens', timeRange, isAdmin, props.includeCache],
+    queryKey: [
+      'dashboard',
+      'daily-tokens',
+      timeRange,
+      isAdmin,
+      props.includeCache,
+    ],
     queryFn: () =>
       isAdmin
         ? getDailyTokenData({ ...timeRange, include_cache: props.includeCache })
-        : getSelfDailyTokenData({ ...timeRange, include_cache: props.includeCache }),
+        : getSelfDailyTokenData({
+            ...timeRange,
+            include_cache: props.includeCache,
+          }),
     select: (res) => (res.success ? res.data : []),
     staleTime: 60_000,
     refetchInterval: refetchInterval || undefined,
@@ -182,7 +189,15 @@ export function DailyTokensSection(props: DailyTokensSectionProps) {
         compactMode,
         locale
       ),
-    [dailyTokenData, isLoading, t, metricType, topUserLimit, compactMode, locale]
+    [
+      dailyTokenData,
+      isLoading,
+      t,
+      metricType,
+      topUserLimit,
+      compactMode,
+      locale,
+    ]
   )
 
   // Data fingerprint so VChart remounts when the underlying data changes
@@ -203,10 +218,7 @@ export function DailyTokensSection(props: DailyTokensSectionProps) {
   const totalPages = Math.ceil(tableData.length / PAGE_SIZE)
   const paginatedData = useMemo(
     () =>
-      tableData.slice(
-        (currentPage - 1) * PAGE_SIZE,
-        currentPage * PAGE_SIZE
-      ),
+      tableData.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE),
     [tableData, currentPage]
   )
 
@@ -214,9 +226,7 @@ export function DailyTokensSection(props: DailyTokensSectionProps) {
 
   // Format number based on compact mode
   const formatNum = (value: number) =>
-    compactMode
-      ? formatCompactNumber(value, locale)
-      : formatNumber(value)
+    compactMode ? formatCompactNumber(value, locale) : formatNumber(value)
 
   return (
     <div className='space-y-3'>
@@ -285,29 +295,13 @@ export function DailyTokensSection(props: DailyTokensSectionProps) {
         <Button
           variant='outline'
           size='sm'
-          className='shrink-0 h-7 px-2 text-xs gap-1'
+          className='h-7 shrink-0 gap-1 px-2 text-xs'
           onClick={() => setCompactMode(!compactMode)}
           title={t('Number Format')}
         >
           <ArrowLeftRight className='h-3 w-3' />
           {compactMode ? t('Compact') : t('Precise')}
         </Button>
-
-        {/* Cache toggle */}
-        <div className='flex shrink-0 items-center gap-1.5'>
-          <Switch
-            id='daily-tokens-include-cache'
-            checked={includeCache}
-            onCheckedChange={setIncludeCache}
-            className='scale-90'
-          />
-          <Label
-            htmlFor='daily-tokens-include-cache'
-            className='text-muted-foreground cursor-pointer text-xs font-normal'
-          >
-            {t('Include cache')}
-          </Label>
-        </div>
 
         {isLoading && (
           <Loader2 className='text-muted-foreground size-4 animate-spin' />
@@ -362,15 +356,17 @@ export function DailyTokensSection(props: DailyTokensSectionProps) {
         </div>
 
         <div className='overflow-x-auto'>
-          {isLoading ? (
+          {isLoading && (
             <div className='p-4'>
               <Skeleton className='h-64 w-full' />
             </div>
-          ) : tableData.length === 0 ? (
+          )}
+          {!isLoading && tableData.length === 0 && (
             <div className='text-muted-foreground flex items-center justify-center p-8 text-sm'>
               {t('No data available')}
             </div>
-          ) : (
+          )}
+          {!isLoading && tableData.length > 0 && (
             <Table>
               <TableHeader>
                 <TableRow>
@@ -382,47 +378,47 @@ export function DailyTokensSection(props: DailyTokensSectionProps) {
                   <TableHead className='whitespace-nowrap'>
                     {t('Date')}
                   </TableHead>
-                  <TableHead className='whitespace-nowrap text-right'>
+                  <TableHead className='text-right whitespace-nowrap'>
                     {t('Prompt Tokens')}
                   </TableHead>
-                  <TableHead className='whitespace-nowrap text-right'>
+                  <TableHead className='text-right whitespace-nowrap'>
                     {t('Completion Tokens')}
                   </TableHead>
-                  <TableHead className='whitespace-nowrap text-right'>
+                  <TableHead className='text-right whitespace-nowrap'>
                     {t('Total Tokens')}
                   </TableHead>
-                  <TableHead className='whitespace-nowrap text-right'>
+                  <TableHead className='text-right whitespace-nowrap'>
                     {t('Request Count')}
                   </TableHead>
-                  <TableHead className='whitespace-nowrap text-right'>
+                  <TableHead className='text-right whitespace-nowrap'>
                     {t('Quota')}
                   </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {paginatedData.map((item, idx) => (
-                  <TableRow key={`${item.user_id}-${item.date}-${idx}`}>
+                {paginatedData.map((item) => (
+                  <TableRow key={`${item.user_id}-${item.date}`}>
                     {isAdmin && (
-                      <TableCell className='whitespace-nowrap font-medium'>
+                      <TableCell className='font-medium whitespace-nowrap'>
                         {item.username}
                       </TableCell>
                     )}
                     <TableCell className='whitespace-nowrap'>
                       {item.date}
                     </TableCell>
-                    <TableCell className='whitespace-nowrap text-right tabular-nums'>
+                    <TableCell className='text-right whitespace-nowrap tabular-nums'>
                       {formatNum(item.prompt_tokens)}
                     </TableCell>
-                    <TableCell className='whitespace-nowrap text-right tabular-nums'>
+                    <TableCell className='text-right whitespace-nowrap tabular-nums'>
                       {formatNum(item.completion_tokens)}
                     </TableCell>
-                    <TableCell className='whitespace-nowrap text-right tabular-nums font-medium'>
+                    <TableCell className='text-right font-medium whitespace-nowrap tabular-nums'>
                       {formatNum(item.total_tokens)}
                     </TableCell>
-                    <TableCell className='whitespace-nowrap text-right tabular-nums'>
+                    <TableCell className='text-right whitespace-nowrap tabular-nums'>
                       {formatNum(item.request_count)}
                     </TableCell>
-                    <TableCell className='whitespace-nowrap text-right tabular-nums'>
+                    <TableCell className='text-right whitespace-nowrap tabular-nums'>
                       {formatQuota(item.quota)}
                     </TableCell>
                   </TableRow>

@@ -24,6 +24,8 @@ export {
   getDefaultDays,
   getSavedChartPreferences,
   saveChartPreferences,
+  getSavedIncludeCache,
+  saveIncludeCache,
   buildDefaultDashboardFilters,
 } from './filters'
 export {
@@ -32,7 +34,12 @@ export {
   openExternalSpeedTest,
   getDefaultPingStatus,
 } from './api-info'
-export { processChartData, processUserChartData } from './charts'
+export {
+  processChartData,
+  processUserChartData,
+  processDailyTokensChartData,
+  processDailyModelTokensChartData,
+} from './charts'
 export {
   buildDashboardFlowData,
   buildFlowSankeySpec,
@@ -40,5 +47,10 @@ export {
   flowSankeyDatumValue,
   getFlowStages,
 } from './flow'
-export { safeDivide, calculateDashboardStats } from './stats'
+export {
+  safeDivide,
+  calculateDashboardStats,
+  aggregateTodayModelTokens,
+} from './stats'
+export type { TodayModelTokenRow, TodayModelTokenSummary } from './stats'
 export { getPreviewText } from './text'

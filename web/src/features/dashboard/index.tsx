@@ -16,15 +16,33 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { useIsFetching, useQueryClient } from '@tanstack/react-query'
 import { getRouteApi, useNavigate } from '@tanstack/react-router'
-import { Eye, EyeOff } from 'lucide-react'
-import { useState, useCallback, useMemo, lazy, Suspense } from 'react'
+import { Check, Eye, EyeOff, RotateCw } from 'lucide-react'
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { SectionPageLayout } from '@/components/layout'
 import { FadeIn } from '@/components/page-transition'
 import { Button } from '@/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import { Label } from '@/components/ui/label'
+import { Separator } from '@/components/ui/separator'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   Tooltip,
@@ -40,21 +58,33 @@ import { ModelsFilter } from './components/models/models-filter-dialog'
 import { OverviewDashboard } from './components/overview/overview-dashboard'
 import { DEFAULT_TIME_GRANULARITY } from './constants'
 import {
+  AUTO_REFRESH_OPTIONS,
+  AutoRefreshContext,
+  useAutoRefreshControls,
+  useAutoRefreshState,
+} from './hooks/use-auto-refresh'
+import {
   buildDefaultDashboardFilters,
   getDefaultDays,
   getSavedChartPreferences,
   getSavedGranularity,
+  getSavedIncludeCache,
   saveChartPreferences,
+  saveIncludeCache,
 } from './lib'
 import {
   type DashboardSectionId,
+  DASHBOARD_ADMIN_ONLY_SECTION_IDS,
   DASHBOARD_DEFAULT_SECTION,
   DASHBOARD_SECTION_IDS,
 } from './section-registry'
 import type {
+  ChannelStatsFilters,
+  DailyTokensFilters,
   DashboardChartPreferences,
   DashboardFilters,
   QuotaDataItem,
+  SubscriptionUsageFilters,
   UserChartsFilters,
 } from './types'
 
@@ -80,6 +110,12 @@ const PERFORMANCE_MODEL_FALLBACK_KEYS = [
 const LazyLogStatCards = lazy(() =>
   import('./components/models/log-stat-cards').then((m) => ({
     default: m.LogStatCards,
+  }))
+)
+
+const LazyTodayModelTokensPanel = lazy(() =>
+  import('./components/models/today-model-tokens-panel').then((module) => ({
+    default: module.TodayModelTokensPanel,
   }))
 )
 
@@ -111,6 +147,34 @@ const LazyFlowCharts = lazy(() =>
   import('./components/flow/flow-charts').then((m) => ({
     default: m.FlowCharts,
   }))
+)
+
+const LazyDailyTokensSection = lazy(() =>
+  import('./components/daily-tokens/daily-tokens-section').then((module) => ({
+    default: module.DailyTokensSection,
+  }))
+)
+
+const LazyDailyModelTokensSection = lazy(() =>
+  import('./components/daily-model-tokens/daily-model-tokens-section').then(
+    (module) => ({
+      default: module.DailyModelTokensSection,
+    })
+  )
+)
+
+const LazyChannelStatsSection = lazy(() =>
+  import('./components/channel-stats/channel-stats-section').then((module) => ({
+    default: module.ChannelStatsSection,
+  }))
+)
+
+const LazySubscriptionUsageSection = lazy(() =>
+  import('./components/subscription-usage/subscription-usage-section').then(
+    (module) => ({
+      default: module.SubscriptionUsageSection,
+    })
+  )
 )
 
 function LogStatCardsFallback() {
@@ -186,9 +250,156 @@ const SECTION_META: Record<DashboardSectionId, { titleKey: string }> = {
   flow: {
     titleKey: 'Flow',
   },
+  'daily-tokens': {
+    titleKey: 'Daily Token Usage',
+  },
+  'daily-model-tokens': {
+    titleKey: 'Daily Model Token Usage',
+  },
+  'channel-stats': {
+    titleKey: 'Channel Statistics',
+  },
+  'subscription-usage': {
+    titleKey: 'Subscription Usage',
+  },
   users: {
     titleKey: 'User Analytics',
   },
+}
+
+function DashboardAutoRefreshControls(props: {
+  includeCache: boolean
+  onIncludeCacheChange: (value: boolean) => void
+}) {
+  const { t } = useTranslation()
+  const queryClient = useQueryClient()
+  const dashboardFetchCount = useIsFetching({ queryKey: ['dashboard'] })
+  const performanceFetchCount = useIsFetching({
+    queryKey: ['perf-metrics-summary'],
+  })
+  const isRefreshing = dashboardFetchCount + performanceFetchCount > 0
+  const {
+    selectedInterval,
+    setSelectedInterval,
+    autoRefreshEnabled,
+    setAutoRefreshEnabled,
+    countdown,
+    resetCountdown,
+  } = useAutoRefreshControls()
+
+  const handleRefresh = useCallback(() => {
+    resetCountdown()
+    void Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] }),
+      queryClient.invalidateQueries({ queryKey: ['perf-metrics-summary'] }),
+    ])
+  }, [queryClient, resetCountdown])
+
+  const selectedOption = AUTO_REFRESH_OPTIONS.find(
+    (option) => option.value === selectedInterval
+  )
+
+  return (
+    <div className='flex flex-wrap items-center justify-end gap-1'>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <Button
+              variant='ghost'
+              size='icon'
+              onClick={handleRefresh}
+              aria-label={t('Refresh')}
+              className='text-muted-foreground hover:text-foreground size-8'
+            />
+          }
+        >
+          <RotateCw
+            aria-hidden='true'
+            className={cn(
+              'size-3.5 transition-transform',
+              isRefreshing && 'animate-spin'
+            )}
+          />
+        </TooltipTrigger>
+        <TooltipContent>{t('Refresh')}</TooltipContent>
+      </Tooltip>
+
+      {autoRefreshEnabled && (
+        <span
+          className='text-muted-foreground/60 min-w-[2ch] text-center text-[10px] tabular-nums'
+          aria-live='polite'
+        >
+          {countdown}
+        </span>
+      )}
+
+      <Separator orientation='vertical' className='mx-1 h-4 self-center' />
+
+      <div className='flex items-center gap-1.5'>
+        <Switch
+          checked={autoRefreshEnabled}
+          onCheckedChange={setAutoRefreshEnabled}
+          id='dashboard-auto-refresh-switch'
+        />
+        <Label
+          htmlFor='dashboard-auto-refresh-switch'
+          className='text-muted-foreground cursor-pointer text-xs font-normal'
+        >
+          {t('Auto Refresh')}
+        </Label>
+      </div>
+
+      <Separator orientation='vertical' className='mx-1 h-4 self-center' />
+
+      <div className='flex items-center gap-1.5'>
+        <Switch
+          checked={props.includeCache}
+          onCheckedChange={props.onIncludeCacheChange}
+          id='dashboard-include-cache-switch'
+        />
+        <Label
+          htmlFor='dashboard-include-cache-switch'
+          className='text-muted-foreground cursor-pointer text-xs font-normal'
+        >
+          {t('Include cache')}
+        </Label>
+      </div>
+
+      {autoRefreshEnabled && (
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            render={
+              <Button
+                variant='ghost'
+                size='sm'
+                className='text-muted-foreground hover:text-foreground h-8 gap-1.5 px-2 text-xs'
+              />
+            }
+          >
+            {t(selectedOption?.labelKey ?? 'Every 30s')}
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align='end'>
+            <DropdownMenuGroup>
+              {AUTO_REFRESH_OPTIONS.map((option) => (
+                <DropdownMenuItem
+                  key={option.value}
+                  onClick={() => setSelectedInterval(option.value)}
+                  className='flex items-center gap-2'
+                >
+                  <span className='w-4'>
+                    {selectedInterval === option.value && (
+                      <Check aria-hidden='true' className='size-3.5' />
+                    )}
+                  </span>
+                  {t(option.labelKey)}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
+    </div>
+  )
 }
 
 export function Dashboard() {
@@ -198,6 +409,7 @@ export function Dashboard() {
   const userRole = useAuthStore((state) => state.auth.user?.role)
   const activeSection = (params.section ??
     DASHBOARD_DEFAULT_SECTION) as DashboardSectionId
+  const autoRefresh = useAutoRefreshState()
 
   const [modelData, setModelData] = useState<QuotaDataItem[]>([])
   const [dataLoading, setDataLoading] = useState(false)
@@ -217,6 +429,25 @@ export function Dashboard() {
     }
   )
   const [flowSensitiveVisible, setFlowSensitiveVisible] = useState(true)
+  const [includeCache, setIncludeCache] = useState(getSavedIncludeCache)
+  const [dailyTokensFilters, setDailyTokensFilters] =
+    useState<DailyTokensFilters>(() => ({
+      timeGranularity: 'day',
+      selectedRange: 7,
+      topUserLimit: 10,
+    }))
+  const [channelStatsFilters, setChannelStatsFilters] =
+    useState<ChannelStatsFilters>(() => ({
+      timeGranularity: 'day',
+      selectedRange: 1,
+      topLimit: 10,
+    }))
+  const [subscriptionUsageFilters, setSubscriptionUsageFilters] =
+    useState<SubscriptionUsageFilters>(() => ({
+      timeGranularity: 'day',
+      selectedRange: 7,
+      model: '',
+    }))
 
   const handleFilterChange = useCallback((filters: DashboardFilters) => {
     setModelFilters(filters)
@@ -243,15 +474,38 @@ export function Dashboard() {
     []
   )
 
+  const handleIncludeCacheChange = useCallback((enabled: boolean) => {
+    setIncludeCache(enabled)
+    saveIncludeCache(enabled)
+  }, [])
+
   const meta = SECTION_META[activeSection] ?? SECTION_META.overview
   const isAdmin = Boolean(userRole && userRole >= ROLE.ADMIN)
+  const activeSectionIsAdminOnly = (
+    DASHBOARD_ADMIN_ONLY_SECTION_IDS as readonly DashboardSectionId[]
+  ).includes(activeSection)
   const visibleSections = useMemo(
     () =>
       DASHBOARD_SECTION_IDS.filter(
-        (section) => section !== 'overview' && (section !== 'users' || isAdmin)
+        (section) =>
+          section !== 'overview' &&
+          (!(
+            DASHBOARD_ADMIN_ONLY_SECTION_IDS as readonly DashboardSectionId[]
+          ).includes(section) ||
+            isAdmin)
       ),
     [isAdmin]
   )
+
+  useEffect(() => {
+    if (!isAdmin && activeSectionIsAdminOnly) {
+      void navigate({
+        to: '/dashboard/$section',
+        params: { section: DASHBOARD_DEFAULT_SECTION },
+        replace: true,
+      })
+    }
+  }, [activeSectionIsAdminOnly, isAdmin, navigate])
   const handleSectionChange = useCallback(
     (section: string) => {
       void navigate({
@@ -318,100 +572,163 @@ export function Dashboard() {
   const sectionActions = modelActions ?? flowActions
 
   return (
-    <SectionPageLayout>
-      <SectionPageLayout.Title>{t(meta.titleKey)}</SectionPageLayout.Title>
-      <SectionPageLayout.Content>
-        <div className='space-y-3 sm:space-y-4'>
-          {activeSection !== 'overview' && (
-            <div className='flex flex-wrap items-center justify-between gap-1.5 sm:gap-2'>
-              {showSectionTabs ? (
-                <Tabs value={activeSection} onValueChange={handleSectionChange}>
-                  <TabsList className='max-w-full flex-wrap justify-start group-data-horizontal/tabs:h-auto'>
-                    {visibleSections.map((section) => (
-                      <TabsTrigger key={section} value={section}>
-                        {t(SECTION_META[section].titleKey)}
-                      </TabsTrigger>
-                    ))}
-                  </TabsList>
-                </Tabs>
-              ) : (
-                <div />
-              )}
-              {sectionActions != null && (
-                <div className='flex shrink-0 flex-wrap items-center gap-1.5 sm:gap-2'>
-                  {sectionActions}
-                </div>
-              )}
-            </div>
-          )}
-          {activeSection === 'overview' && <OverviewDashboard />}
-          {activeSection === 'models' && (
-            <>
-              <FadeIn>
-                <Suspense fallback={<LogStatCardsFallback />}>
-                  <LazyLogStatCards
-                    filters={modelFilters}
-                    onDataUpdate={handleDataUpdate}
-                  />
-                </Suspense>
-              </FadeIn>
-              {isAdmin && (
-                <FadeIn delay={0.05}>
-                  <Suspense fallback={<PerformanceOverviewFallback />}>
-                    <LazyPerformanceOverview />
+    <AutoRefreshContext.Provider value={autoRefresh}>
+      <SectionPageLayout>
+        <SectionPageLayout.Title>{t(meta.titleKey)}</SectionPageLayout.Title>
+        <SectionPageLayout.Actions>
+          <DashboardAutoRefreshControls
+            includeCache={includeCache}
+            onIncludeCacheChange={handleIncludeCacheChange}
+          />
+        </SectionPageLayout.Actions>
+        <SectionPageLayout.Content>
+          <div className='space-y-3 sm:space-y-4'>
+            {activeSection !== 'overview' && (
+              <div className='flex flex-wrap items-center justify-between gap-1.5 sm:gap-2'>
+                {showSectionTabs ? (
+                  <Tabs
+                    value={activeSection}
+                    onValueChange={handleSectionChange}
+                  >
+                    <TabsList className='max-w-full flex-wrap justify-start group-data-horizontal/tabs:h-auto'>
+                      {visibleSections.map((section) => (
+                        <TabsTrigger key={section} value={section}>
+                          {t(SECTION_META[section].titleKey)}
+                        </TabsTrigger>
+                      ))}
+                    </TabsList>
+                  </Tabs>
+                ) : (
+                  <div />
+                )}
+                {sectionActions != null && (
+                  <div className='flex shrink-0 flex-wrap items-center gap-1.5 sm:gap-2'>
+                    {sectionActions}
+                  </div>
+                )}
+              </div>
+            )}
+            {activeSection === 'overview' && <OverviewDashboard />}
+            {activeSection === 'models' && (
+              <>
+                <FadeIn>
+                  <Suspense fallback={<LogStatCardsFallback />}>
+                    <LazyLogStatCards
+                      filters={modelFilters}
+                      onDataUpdate={handleDataUpdate}
+                      includeCache={includeCache}
+                    />
                   </Suspense>
                 </FadeIn>
-              )}
-              <FadeIn delay={0.1}>
+                <FadeIn delay={0.04}>
+                  <Suspense fallback={<LogStatCardsFallback />}>
+                    <LazyTodayModelTokensPanel includeCache={includeCache} />
+                  </Suspense>
+                </FadeIn>
+                {isAdmin && (
+                  <FadeIn delay={0.08}>
+                    <Suspense fallback={<PerformanceOverviewFallback />}>
+                      <LazyPerformanceOverview />
+                    </Suspense>
+                  </FadeIn>
+                )}
+                <FadeIn delay={0.12}>
+                  <Suspense fallback={<ModelChartsFallback />}>
+                    <LazyConsumptionDistributionChart
+                      data={modelData}
+                      loading={dataLoading}
+                      defaultChartType={
+                        chartPreferences.consumptionDistributionChart
+                      }
+                      timeGranularity={
+                        modelFilters.time_granularity ||
+                        DEFAULT_TIME_GRANULARITY
+                      }
+                    />
+                  </Suspense>
+                </FadeIn>
+                <FadeIn delay={0.16}>
+                  <Suspense fallback={<ModelChartsFallback />}>
+                    <LazyModelCharts
+                      data={modelData}
+                      loading={dataLoading}
+                      defaultChartTab={chartPreferences.modelAnalyticsChart}
+                      timeGranularity={
+                        modelFilters.time_granularity ||
+                        DEFAULT_TIME_GRANULARITY
+                      }
+                    />
+                  </Suspense>
+                </FadeIn>
+              </>
+            )}
+            {activeSection === 'users' && isAdmin && (
+              <FadeIn>
                 <Suspense fallback={<ModelChartsFallback />}>
-                  <LazyConsumptionDistributionChart
-                    data={modelData}
-                    loading={dataLoading}
-                    defaultChartType={
-                      chartPreferences.consumptionDistributionChart
-                    }
-                    timeGranularity={
-                      modelFilters.time_granularity || DEFAULT_TIME_GRANULARITY
-                    }
+                  <LazyUserCharts
+                    filters={userChartsFilters}
+                    onFiltersChange={setUserChartsFilters}
                   />
                 </Suspense>
               </FadeIn>
-              <FadeIn delay={0.15}>
+            )}
+            {activeSection === 'flow' && (
+              <FadeIn>
                 <Suspense fallback={<ModelChartsFallback />}>
-                  <LazyModelCharts
-                    data={modelData}
-                    loading={dataLoading}
-                    defaultChartTab={chartPreferences.modelAnalyticsChart}
-                    timeGranularity={
-                      modelFilters.time_granularity || DEFAULT_TIME_GRANULARITY
-                    }
+                  <LazyFlowCharts
+                    filters={modelFilters}
+                    sensitiveVisible={flowSensitiveVisible}
                   />
                 </Suspense>
               </FadeIn>
-            </>
-          )}
-          {activeSection === 'users' && (
-            <FadeIn>
-              <Suspense fallback={<ModelChartsFallback />}>
-                <LazyUserCharts
-                  filters={userChartsFilters}
-                  onFiltersChange={setUserChartsFilters}
-                />
-              </Suspense>
-            </FadeIn>
-          )}
-          {activeSection === 'flow' && (
-            <FadeIn>
-              <Suspense fallback={<ModelChartsFallback />}>
-                <LazyFlowCharts
-                  filters={modelFilters}
-                  sensitiveVisible={flowSensitiveVisible}
-                />
-              </Suspense>
-            </FadeIn>
-          )}
-        </div>
-      </SectionPageLayout.Content>
-    </SectionPageLayout>
+            )}
+            {activeSection === 'daily-tokens' && (
+              <FadeIn>
+                <Suspense fallback={<ModelChartsFallback />}>
+                  <LazyDailyTokensSection
+                    filters={dailyTokensFilters}
+                    onFiltersChange={setDailyTokensFilters}
+                    includeCache={includeCache}
+                  />
+                </Suspense>
+              </FadeIn>
+            )}
+            {activeSection === 'daily-model-tokens' && (
+              <FadeIn>
+                <Suspense fallback={<ModelChartsFallback />}>
+                  <LazyDailyModelTokensSection
+                    filters={dailyTokensFilters}
+                    onFiltersChange={setDailyTokensFilters}
+                    includeCache={includeCache}
+                  />
+                </Suspense>
+              </FadeIn>
+            )}
+            {activeSection === 'channel-stats' && isAdmin && (
+              <FadeIn>
+                <Suspense fallback={<ModelChartsFallback />}>
+                  <LazyChannelStatsSection
+                    filters={channelStatsFilters}
+                    onFiltersChange={setChannelStatsFilters}
+                    includeCache={includeCache}
+                  />
+                </Suspense>
+              </FadeIn>
+            )}
+            {activeSection === 'subscription-usage' && (
+              <FadeIn>
+                <Suspense fallback={<ModelChartsFallback />}>
+                  <LazySubscriptionUsageSection
+                    filters={subscriptionUsageFilters}
+                    onFiltersChange={setSubscriptionUsageFilters}
+                    includeCache={includeCache}
+                  />
+                </Suspense>
+              </FadeIn>
+            )}
+          </div>
+        </SectionPageLayout.Content>
+      </SectionPageLayout>
+    </AutoRefreshContext.Provider>
   )
 }

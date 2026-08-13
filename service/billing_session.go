@@ -1,6 +1,7 @@
 package service
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -30,6 +31,8 @@ type BillingSession struct {
 	extraReserved    int  // 发送前补充预扣的额度（订阅退款时需要单独回滚）
 	trusted          bool // 是否命中信任额度旁路
 	fundingSettled   bool // funding.Settle 已成功，资金来源已提交
+	weeklyQuota      model.WeeklyQuotaReservation
+	weeklySettled    bool // 周额度已由预留值调整为实际消耗
 	settled          bool // Settle 全部完成（资金 + 令牌）
 	refunded         bool // Refund 已调用
 	mu               sync.Mutex
@@ -45,18 +48,35 @@ func (s *BillingSession) Settle(actualQuota int) error {
 		return nil
 	}
 	delta := actualQuota - s.preConsumedQuota
-	if delta == 0 {
-		s.settled = true
-		return nil
-	}
 	// 1) 调整资金来源（仅在尚未提交时执行，防止重复调用）
-	if !s.fundingSettled {
+	// 真实资金结算优先于周额度计数；即使周计数存储异常，也不能少扣
+	// 已经交付给用户的实际消费。重试时 fundingSettled 会阻止重复扣费。
+	if delta != 0 && !s.fundingSettled {
 		if err := s.funding.Settle(delta); err != nil {
 			return err
 		}
 		s.fundingSettled = true
 	}
-	// 2) 调整令牌额度
+	// 2) 将周额度预留调整为实际用量。周计数达到数据库上限时 model
+	// 层会饱和保存，不会让实际资金结算失败。
+	if !s.weeklySettled && s.relayInfo.UserId > 0 {
+		weeklyQuota, err := model.AdjustWeeklyQuotaReservation(
+			s.relayInfo.UserId,
+			s.weeklyQuota,
+			actualQuota,
+			false,
+		)
+		if err != nil {
+			return err
+		}
+		s.weeklyQuota = weeklyQuota
+		s.weeklySettled = true
+	}
+	if delta == 0 {
+		s.settled = true
+		return nil
+	}
+	// 3) 调整令牌额度
 	var tokenErr error
 	if !s.relayInfo.IsPlayground {
 		if delta > 0 {
@@ -70,7 +90,7 @@ func (s *BillingSession) Settle(actualQuota int) error {
 				s.relayInfo.UserId, s.relayInfo.TokenId, delta, tokenErr.Error()))
 		}
 	}
-	// 3) 更新 relayInfo 上的订阅 PostDelta（用于日志）
+	// 4) 更新 relayInfo 上的订阅 PostDelta（用于日志）
 	if s.funding.Source() == BillingSourceSubscription {
 		s.relayInfo.SubscriptionPostDelta += int64(delta)
 	}
@@ -86,7 +106,20 @@ func (s *BillingSession) Refund(c *gin.Context) {
 		return
 	}
 	s.refunded = true
+	weeklyQuota := s.weeklyQuota
 	s.mu.Unlock()
+	if weeklyQuota.Enabled && weeklyQuota.Amount > 0 {
+		updated, err := model.AdjustWeeklyQuotaReservation(s.relayInfo.UserId, weeklyQuota, 0, false)
+		if err != nil {
+			common.SysLog(fmt.Sprintf("error releasing weekly quota reservation (userId=%d, amount=%d): %s",
+				s.relayInfo.UserId, weeklyQuota.Amount, err.Error()))
+		} else {
+			s.mu.Lock()
+			s.weeklyQuota = updated
+			s.weeklySettled = true
+			s.mu.Unlock()
+		}
+	}
 
 	logger.LogInfo(c, fmt.Sprintf("用户 %d 请求失败, 返还预扣费（token_quota=%s, funding=%s）",
 		s.relayInfo.UserId,
@@ -137,6 +170,9 @@ func (s *BillingSession) needsRefundLocked() bool {
 	if s.tokenConsumed > 0 {
 		return true
 	}
+	if s.weeklyQuota.Enabled && s.weeklyQuota.Amount > 0 {
+		return true
+	}
 	// 订阅可能在 tokenConsumed=0 时仍预扣了额度
 	if sub, ok := s.funding.(*SubscriptionFunding); ok && sub.preConsumed > 0 {
 		return true
@@ -149,11 +185,57 @@ func (s *BillingSession) GetPreConsumedQuota() int {
 	return s.preConsumedQuota
 }
 
+// WeeklyQuotaReservation returns a copy suitable for persisting with an
+// asynchronous task. Polling uses it to reconcile the initial charge later.
+func (s *BillingSession) WeeklyQuotaReservation() *model.WeeklyQuotaReservation {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.weeklyQuota.Enabled {
+		return nil
+	}
+	reservation := s.weeklyQuota
+	return &reservation
+}
+
 func (s *BillingSession) Reserve(targetQuota int) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if s.settled || s.refunded || s.trusted || targetQuota <= s.preConsumedQuota {
+	if s.settled || s.refunded {
+		return nil
+	}
+
+	previousWeeklyQuota := s.weeklyQuota
+	if targetQuota > s.weeklyQuota.Amount {
+		weeklyQuota, err := model.AdjustWeeklyQuotaReservation(
+			s.relayInfo.UserId,
+			s.weeklyQuota,
+			targetQuota,
+			true,
+		)
+		if err != nil {
+			return err
+		}
+		s.weeklyQuota = weeklyQuota
+	}
+	rollbackWeeklyQuota := func() {
+		if s.weeklyQuota == previousWeeklyQuota {
+			return
+		}
+		weeklyQuota, err := model.AdjustWeeklyQuotaReservation(
+			s.relayInfo.UserId,
+			s.weeklyQuota,
+			previousWeeklyQuota.Amount,
+			false,
+		)
+		if err != nil {
+			common.SysLog(fmt.Sprintf("error rolling back weekly quota reservation (userId=%d): %s", s.relayInfo.UserId, err.Error()))
+			return
+		}
+		s.weeklyQuota = weeklyQuota
+	}
+
+	if s.trusted || targetQuota <= s.preConsumedQuota {
 		return nil
 	}
 
@@ -163,10 +245,12 @@ func (s *BillingSession) Reserve(targetQuota int) error {
 	}
 
 	if err := s.reserveFunding(delta); err != nil {
+		rollbackWeeklyQuota()
 		return err
 	}
 	if err := s.reserveToken(delta); err != nil {
 		s.rollbackFundingReserve(delta)
+		rollbackWeeklyQuota()
 		return err
 	}
 
@@ -347,6 +431,32 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 	if relayInfo == nil {
 		return nil, types.NewError(fmt.Errorf("relayInfo is nil"), types.ErrorCodeInvalidRequest, types.ErrOptionWithSkipRetry())
 	}
+	weeklyQuota, err := model.ReserveWeeklyQuota(relayInfo.UserId, preConsumedQuota)
+	if err != nil {
+		if errors.Is(err, model.ErrWeeklyQuotaExceeded) {
+			return nil, types.NewErrorWithStatusCode(
+				err,
+				types.ErrorCodeInsufficientUserQuota,
+				http.StatusForbidden,
+				types.ErrOptionWithSkipRetry(),
+				types.ErrOptionWithNoRecordErrorLog(),
+			)
+		}
+		return nil, types.NewError(err, types.ErrorCodeQueryDataError, types.ErrOptionWithSkipRetry())
+	}
+	finish := func(session *BillingSession, apiErr *types.NewAPIError) (*BillingSession, *types.NewAPIError) {
+		if apiErr == nil {
+			session.weeklyQuota = weeklyQuota
+			return session, nil
+		}
+		if weeklyQuota.Enabled && weeklyQuota.Amount > 0 {
+			if _, releaseErr := model.AdjustWeeklyQuotaReservation(relayInfo.UserId, weeklyQuota, 0, false); releaseErr != nil {
+				common.SysLog(fmt.Sprintf("error releasing weekly quota after pre-consume failure (userId=%d, amount=%d): %s",
+					relayInfo.UserId, weeklyQuota.Amount, releaseErr.Error()))
+			}
+		}
+		return nil, apiErr
+	}
 
 	pref := common.NormalizeBillingPreference(relayInfo.UserSetting.BillingPreference)
 
@@ -404,27 +514,27 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 
 	switch pref {
 	case "subscription_only":
-		return trySubscription()
+		return finish(trySubscription())
 	case "wallet_only":
-		return tryWallet()
+		return finish(tryWallet())
 	case "wallet_first":
-		session, err := tryWallet()
-		if err != nil {
-			if err.GetErrorCode() == types.ErrorCodeInsufficientUserQuota {
-				return trySubscription()
+		session, apiErr := tryWallet()
+		if apiErr != nil {
+			if apiErr.GetErrorCode() == types.ErrorCodeInsufficientUserQuota {
+				return finish(trySubscription())
 			}
-			return nil, err
+			return finish(nil, apiErr)
 		}
-		return session, nil
+		return finish(session, nil)
 	case "subscription_first":
 		fallthrough
 	default:
 		hasSub, subCheckErr := model.HasActiveUserSubscription(relayInfo.UserId)
 		if subCheckErr != nil {
-			return nil, types.NewError(subCheckErr, types.ErrorCodeQueryDataError, types.ErrOptionWithSkipRetry())
+			return finish(nil, types.NewError(subCheckErr, types.ErrorCodeQueryDataError, types.ErrOptionWithSkipRetry()))
 		}
 		if !hasSub {
-			return tryWallet()
+			return finish(tryWallet())
 		}
 		session, apiErr := trySubscription()
 		if apiErr != nil {
@@ -432,15 +542,15 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 				// 仅当用户的活跃订阅允许钱包回退时才回退到钱包，否则返回订阅额度不足错误
 				allowOverflow, overflowErr := model.UserActiveSubscriptionsAllowWalletOverflow(relayInfo.UserId)
 				if overflowErr != nil {
-					return nil, types.NewError(overflowErr, types.ErrorCodeQueryDataError, types.ErrOptionWithSkipRetry())
+					return finish(nil, types.NewError(overflowErr, types.ErrorCodeQueryDataError, types.ErrOptionWithSkipRetry()))
 				}
 				if allowOverflow {
-					return tryWallet()
+					return finish(tryWallet())
 				}
-				return nil, apiErr
+				return finish(nil, apiErr)
 			}
-			return nil, apiErr
+			return finish(nil, apiErr)
 		}
-		return session, nil
+		return finish(session, nil)
 	}
 }

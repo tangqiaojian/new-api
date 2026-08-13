@@ -33,3 +33,26 @@ func TestFormatUserLogsStripsQuotaSaturation(t *testing.T) {
 	// Non-admin billing fields remain visible.
 	require.Contains(t, parsed, "model_price")
 }
+
+func TestFilterSuperAdminFieldsPreservesDebugDataOnlyForRoot(t *testing.T) {
+	debugOther := common.MapToJsonStr(map[string]interface{}{
+		"request_headers": map[string]interface{}{"X-Trace": "safe"},
+		"request_body":    "payload",
+		"model_price":     0.004,
+	})
+
+	adminLogs := []*Log{{Other: debugOther}}
+	FilterSuperAdminFields(adminLogs, common.RoleAdminUser)
+	adminOther, err := common.StrToMap(adminLogs[0].Other)
+	require.NoError(t, err)
+	require.NotContains(t, adminOther, "request_headers")
+	require.NotContains(t, adminOther, "request_body")
+	require.Contains(t, adminOther, "model_price")
+
+	rootLogs := []*Log{{Other: debugOther}}
+	FilterSuperAdminFields(rootLogs, common.RoleRootUser)
+	rootOther, err := common.StrToMap(rootLogs[0].Other)
+	require.NoError(t, err)
+	require.Contains(t, rootOther, "request_headers")
+	require.Equal(t, "payload", rootOther["request_body"])
+}

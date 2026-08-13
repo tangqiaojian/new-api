@@ -79,45 +79,46 @@ func resolveUserSortOptions(sortOptions []UserSortOptions) UserSortOptions {
 // User if you add sensitive fields, don't forget to clean them in setupLogin function.
 // Otherwise, the sensitive information will be saved on local storage in plain text!
 type User struct {
-	Id               int                        `json:"id"`
-	Username         string                     `json:"username" gorm:"unique;index" validate:"max=20"`
-	Password         string                     `json:"password" gorm:"not null;" validate:"min=8,max=20"`
-	OriginalPassword string                     `json:"original_password" gorm:"-:all"` // this field is only for Password change verification, don't save it to database!
-	DisplayName      string                     `json:"display_name" gorm:"index" validate:"max=20"`
-	Role             int                        `json:"role" gorm:"type:int;default:1"`   // admin, common
-	Status           int                        `json:"status" gorm:"type:int;default:1"` // enabled, disabled
-	Email            string                     `json:"email" gorm:"index" validate:"max=50"`
-	GitHubId         string                     `json:"github_id" gorm:"column:github_id;index"`
-	DiscordId        string                     `json:"discord_id" gorm:"column:discord_id;index"`
-	OidcId           string                     `json:"oidc_id" gorm:"column:oidc_id;index"`
-	WeChatId         string                     `json:"wechat_id" gorm:"column:wechat_id;index"`
-	TelegramId       string                     `json:"telegram_id" gorm:"column:telegram_id;index"`
-	VerificationCode string                     `json:"verification_code" gorm:"-:all"`                         // this field is only for Email verification, don't save it to database!
-	AccessToken      *string                    `json:"-" gorm:"type:char(32);column:access_token;uniqueIndex"` // this token is for system management
+	Id                 int                        `json:"id"`
+	Username           string                     `json:"username" gorm:"unique;index" validate:"max=20"`
+	Password           string                     `json:"password" gorm:"not null;" validate:"min=8,max=20"`
+	OriginalPassword   string                     `json:"original_password" gorm:"-:all"` // this field is only for Password change verification, don't save it to database!
+	DisplayName        string                     `json:"display_name" gorm:"index" validate:"max=20"`
+	Role               int                        `json:"role" gorm:"type:int;default:1"`   // admin, common
+	Status             int                        `json:"status" gorm:"type:int;default:1"` // enabled, disabled
+	Email              string                     `json:"email" gorm:"index" validate:"max=50"`
+	GitHubId           string                     `json:"github_id" gorm:"column:github_id;index"`
+	DiscordId          string                     `json:"discord_id" gorm:"column:discord_id;index"`
+	OidcId             string                     `json:"oidc_id" gorm:"column:oidc_id;index"`
+	WeChatId           string                     `json:"wechat_id" gorm:"column:wechat_id;index"`
+	TelegramId         string                     `json:"telegram_id" gorm:"column:telegram_id;index"`
+	VerificationCode   string                     `json:"verification_code" gorm:"-:all"`                         // this field is only for Email verification, don't save it to database!
+	AccessToken        *string                    `json:"-" gorm:"type:char(32);column:access_token;uniqueIndex"` // this token is for system management
 	Quota              int                        `json:"quota" gorm:"type:int;default:0"`
-	UsedQuota          int                        `json:"used_quota" gorm:"type:int;default:0;column:used_quota"` // used quota
+	UsedQuota          int                        `json:"used_quota" gorm:"type:int;default:0;column:used_quota"`                 // used quota
 	RequestCount       int                        `json:"request_count" gorm:"type:int;default:0;"`                               // request number
 	WeeklyQuota        int                        `json:"weekly_quota" gorm:"type:int;default:0;column:weekly_quota"`             // 周额度上限，0表示不限
 	WeeklyQuotaUsed    int                        `json:"weekly_quota_used" gorm:"type:int;default:0;column:weekly_quota_used"`   // 本周已用周额度
 	WeeklyQuotaResetAt int64                      `json:"weekly_quota_reset_at" gorm:"default:0;column:weekly_quota_reset_at"`    // 下次重置时间(unix timestamp)
+	WeeklyQuotaVersion int64                      `json:"-" gorm:"type:bigint;not null;default:0;column:weekly_quota_version"`    // 周额度周期版本，重置时递增
 	RateLimitTotal     int                        `json:"rate_limit_total" gorm:"type:int;default:0;column:rate_limit_total"`     // 每分钟总请求数限制，0=按group默认
 	RateLimitSuccess   int                        `json:"rate_limit_success" gorm:"type:int;default:0;column:rate_limit_success"` // 每分钟成功请求数限制，0=按group默认
 	Group              string                     `json:"group" gorm:"type:varchar(64);default:'default'"`
 	Groups             string                     `json:"groups" gorm:"type:varchar(512);default:''"` // 逗号分隔的多个分组，为空时回退到 Group
-	AffCode          string                     `json:"aff_code" gorm:"type:varchar(32);column:aff_code;uniqueIndex"`
-	AffCount         int                        `json:"aff_count" gorm:"type:int;default:0;column:aff_count"`
-	AffQuota         int                        `json:"aff_quota" gorm:"type:int;default:0;column:aff_quota"`           // 邀请剩余额度
-	AffHistoryQuota  int                        `json:"aff_history_quota" gorm:"type:int;default:0;column:aff_history"` // 邀请历史额度
-	InviterId        int                        `json:"inviter_id" gorm:"type:int;column:inviter_id;index"`
-	DeletedAt        gorm.DeletedAt             `gorm:"index"`
-	LinuxDOId        string                     `json:"linux_do_id" gorm:"column:linux_do_id;index"`
-	Setting          string                     `json:"setting" gorm:"type:text;column:setting"`
-	Remark           string                     `json:"remark,omitempty" gorm:"type:varchar(255)" validate:"max=255"`
-	StripeCustomer   string                     `json:"stripe_customer" gorm:"type:varchar(64);column:stripe_customer;index"`
-	CreatedAt        int64                      `json:"created_at" gorm:"autoCreateTime;column:created_at"`
-	LastLoginAt      int64                      `json:"last_login_at" gorm:"default:0;column:last_login_at"`
-	AuthVersion      int64                      `json:"-" gorm:"type:bigint;not null;default:1;column:auth_version"`
-	AdminPermissions map[string]map[string]bool `json:"admin_permissions,omitempty" gorm:"-:all"`
+	AffCode            string                     `json:"aff_code" gorm:"type:varchar(32);column:aff_code;uniqueIndex"`
+	AffCount           int                        `json:"aff_count" gorm:"type:int;default:0;column:aff_count"`
+	AffQuota           int                        `json:"aff_quota" gorm:"type:int;default:0;column:aff_quota"`           // 邀请剩余额度
+	AffHistoryQuota    int                        `json:"aff_history_quota" gorm:"type:int;default:0;column:aff_history"` // 邀请历史额度
+	InviterId          int                        `json:"inviter_id" gorm:"type:int;column:inviter_id;index"`
+	DeletedAt          gorm.DeletedAt             `gorm:"index"`
+	LinuxDOId          string                     `json:"linux_do_id" gorm:"column:linux_do_id;index"`
+	Setting            string                     `json:"setting" gorm:"type:text;column:setting"`
+	Remark             string                     `json:"remark,omitempty" gorm:"type:varchar(255)" validate:"max=255"`
+	StripeCustomer     string                     `json:"stripe_customer" gorm:"type:varchar(64);column:stripe_customer;index"`
+	CreatedAt          int64                      `json:"created_at" gorm:"autoCreateTime;column:created_at"`
+	LastLoginAt        int64                      `json:"last_login_at" gorm:"default:0;column:last_login_at"`
+	AuthVersion        int64                      `json:"-" gorm:"type:bigint;not null;default:1;column:auth_version"`
+	AdminPermissions   map[string]map[string]bool `json:"admin_permissions,omitempty" gorm:"-:all"`
 }
 
 func (user *User) ToBaseUser() *UserBase {
@@ -1561,9 +1562,25 @@ func RootUserExists() bool {
 	return true
 }
 
+var ErrWeeklyQuotaExceeded = errors.New("weekly quota exceeded")
+
+// WeeklyQuotaReservation records the amount tentatively counted against the
+// user's current weekly quota cycle. ResetAt identifies that cycle so a
+// request spanning a weekly reset never subtracts a reservation that the reset
+// already cleared.
+type WeeklyQuotaReservation struct {
+	Amount  int   `json:"amount"`
+	ResetAt int64 `json:"reset_at"`
+	Version int64 `json:"version"`
+	Enabled bool  `json:"enabled"`
+}
+
 // CalcNextWeeklyResetTime 计算下一个周一 00:00 的 unix 时间戳。
 func CalcNextWeeklyResetTime() int64 {
-	now := time.Now()
+	return calcNextWeeklyResetTime(time.Now())
+}
+
+func calcNextWeeklyResetTime(now time.Time) int64 {
 	weekday := now.Weekday()
 	// Sunday = 0, Monday = 1, ..., Saturday = 6
 	daysUntilMonday := int(time.Monday - weekday)
@@ -1574,30 +1591,129 @@ func CalcNextWeeklyResetTime() int64 {
 	return nextMonday.Unix()
 }
 
+func resetWeeklyQuotaIfDueTx(tx *gorm.DB, user *User, now time.Time) error {
+	if user.WeeklyQuotaResetAt > now.Unix() {
+		return nil
+	}
+	user.WeeklyQuotaUsed = 0
+	user.WeeklyQuotaResetAt = calcNextWeeklyResetTime(now)
+	user.WeeklyQuotaVersion++
+	if user.WeeklyQuotaVersion <= 0 {
+		user.WeeklyQuotaVersion = 1
+	}
+	return tx.Model(&User{}).Where("id = ?", user.Id).Updates(map[string]interface{}{
+		"weekly_quota_used":     user.WeeklyQuotaUsed,
+		"weekly_quota_reset_at": user.WeeklyQuotaResetAt,
+		"weekly_quota_version":  user.WeeklyQuotaVersion,
+	}).Error
+}
+
 // CheckAndResetWeeklyQuota 检查用户的周额度是否需要重置，如果需要则重置。
 // 返回 (weeklyQuotaLimit, weeklyQuotaUsed, error)。
 func CheckAndResetWeeklyQuota(userId int) (int, int, error) {
-	var user User
-	if err := DB.Where("id = ?", userId).First(&user).Error; err != nil {
-		return 0, 0, err
-	}
-	// 周额度上限为 0 表示不限制
-	if user.WeeklyQuota <= 0 {
-		return 0, 0, nil
-	}
-	now := time.Now().Unix()
-	if user.WeeklyQuotaResetAt <= 0 || now >= user.WeeklyQuotaResetAt {
-		// 需要重置
-		nextReset := CalcNextWeeklyResetTime()
-		if err := DB.Model(&User{}).Where("id = ?", userId).Updates(map[string]interface{}{
-			"weekly_quota_used":     0,
-			"weekly_quota_reset_at": nextReset,
-		}).Error; err != nil {
-			return user.WeeklyQuota, user.WeeklyQuotaUsed, err
+	var limit int
+	var used int
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		var user User
+		if err := lockForUpdate(tx).
+			Select("id", "weekly_quota", "weekly_quota_used", "weekly_quota_reset_at", "weekly_quota_version").
+			Where("id = ?", userId).
+			First(&user).Error; err != nil {
+			return err
 		}
-		return user.WeeklyQuota, 0, nil
+		if user.WeeklyQuota <= 0 {
+			return nil
+		}
+		if err := resetWeeklyQuotaIfDueTx(tx, &user, time.Now()); err != nil {
+			return err
+		}
+		limit = user.WeeklyQuota
+		used = user.WeeklyQuotaUsed
+		return nil
+	})
+	return limit, used, err
+}
+
+// AdjustWeeklyQuotaReservation atomically replaces a request's current
+// reservation with targetQuota. When enforceLimit is true it rejects a target
+// that would exceed the configured weekly cap. Settlement passes false so an
+// unexpectedly high actual charge is still recorded and blocks later calls.
+func AdjustWeeklyQuotaReservation(userId int, reservation WeeklyQuotaReservation, targetQuota int, enforceLimit bool) (WeeklyQuotaReservation, error) {
+	return adjustWeeklyQuotaReservationAt(userId, reservation, targetQuota, enforceLimit, time.Now())
+}
+
+func adjustWeeklyQuotaReservationAt(userId int, reservation WeeklyQuotaReservation, targetQuota int, enforceLimit bool, now time.Time) (WeeklyQuotaReservation, error) {
+	if userId <= 0 {
+		return WeeklyQuotaReservation{}, nil
 	}
-	return user.WeeklyQuota, user.WeeklyQuotaUsed, nil
+	if targetQuota < 0 {
+		return reservation, fmt.Errorf("weekly quota target cannot be negative: %d", targetQuota)
+	}
+	if targetQuota > common.MaxQuota {
+		return reservation, fmt.Errorf("weekly quota target exceeds maximum: %d", common.MaxQuota)
+	}
+
+	updated := WeeklyQuotaReservation{}
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		var user User
+		if err := lockForUpdate(tx).
+			Select("id", "weekly_quota", "weekly_quota_used", "weekly_quota_reset_at", "weekly_quota_version").
+			Where("id = ?", userId).
+			First(&user).Error; err != nil {
+			return err
+		}
+		// A zero limit disables the feature. Do not turn weekly quota into a
+		// third funding source or maintain an unbounded usage counter.
+		if user.WeeklyQuota <= 0 {
+			return nil
+		}
+		if err := resetWeeklyQuotaIfDueTx(tx, &user, now); err != nil {
+			return err
+		}
+
+		baseUsed := int64(user.WeeklyQuotaUsed)
+		if reservation.Enabled &&
+			reservation.ResetAt == user.WeeklyQuotaResetAt &&
+			reservation.Version == user.WeeklyQuotaVersion {
+			baseUsed -= int64(reservation.Amount)
+			if baseUsed < 0 {
+				baseUsed = 0
+			}
+		}
+		requestedUsed := baseUsed + int64(targetQuota)
+		if enforceLimit && requestedUsed > int64(user.WeeklyQuota) {
+			return fmt.Errorf("%w, 本周已用: %s, 周额度上限: %s, 本次需要: %s",
+				ErrWeeklyQuotaExceeded,
+				logger.FormatQuota(int(baseUsed)),
+				logger.FormatQuota(user.WeeklyQuota),
+				logger.FormatQuota(targetQuota))
+		}
+		nextUsed := requestedUsed
+		if nextUsed > int64(common.MaxQuota) {
+			// Weekly usage is an enforcement counter, not a funding source. Once
+			// it reaches the storage ceiling, keep it saturated so settlement of
+			// the actual wallet/subscription charge can still complete.
+			nextUsed = int64(common.MaxQuota)
+		}
+		if err := tx.Model(&User{}).Where("id = ?", userId).
+			Update("weekly_quota_used", int(nextUsed)).Error; err != nil {
+			return err
+		}
+		updated = WeeklyQuotaReservation{
+			Amount:  int(nextUsed - baseUsed),
+			ResetAt: user.WeeklyQuotaResetAt,
+			Version: user.WeeklyQuotaVersion,
+			Enabled: true,
+		}
+		return nil
+	})
+	return updated, err
+}
+
+// ReserveWeeklyQuota reserves estimated usage before the upstream request is
+// sent. BillingSession later replaces this estimate with actual usage or zero.
+func ReserveWeeklyQuota(userId int, quota int) (WeeklyQuotaReservation, error) {
+	return AdjustWeeklyQuotaReservation(userId, WeeklyQuotaReservation{}, quota, true)
 }
 
 // IncreaseWeeklyQuotaUsed 增加用户周额度已用量。如果超过上限则返回错误。
@@ -1605,32 +1721,38 @@ func IncreaseWeeklyQuotaUsed(userId int, quota int) error {
 	if quota <= 0 {
 		return nil
 	}
-	// 先检查并重置（如果需要）
-	limit, used, err := CheckAndResetWeeklyQuota(userId)
-	if err != nil {
-		return err
-	}
-	if limit <= 0 {
-		// 不限制周额度
-		return DB.Model(&User{}).Where("id = ?", userId).
-			Update("weekly_quota_used", gorm.Expr("weekly_quota_used + ?", quota)).Error
-	}
-	if used+quota > limit {
-		return fmt.Errorf("周额度不足, 本周已用: %s, 周额度上限: %s, 本次需要: %s",
-			logger.LogQuota(used), logger.LogQuota(limit), logger.LogQuota(quota))
-	}
-	return DB.Model(&User{}).Where("id = ? AND weekly_quota_used + ? <= weekly_quota", userId, quota).
-		Update("weekly_quota_used", gorm.Expr("weekly_quota_used + ?", quota)).Error
+	_, err := ReserveWeeklyQuota(userId, quota)
+	return err
 }
 
 // SetUserWeeklyQuota 设置用户的周额度上限（管理员操作）。
 func SetUserWeeklyQuota(userId int, weeklyQuota int) error {
-	nextReset := CalcNextWeeklyResetTime()
-	return DB.Model(&User{}).Where("id = ?", userId).Updates(map[string]interface{}{
-		"weekly_quota":          weeklyQuota,
-		"weekly_quota_used":     0,
-		"weekly_quota_reset_at": nextReset,
-	}).Error
+	return setUserWeeklyQuotaAt(userId, weeklyQuota, time.Now())
+}
+
+func setUserWeeklyQuotaAt(userId int, weeklyQuota int, now time.Time) error {
+	if weeklyQuota < 0 || weeklyQuota > common.MaxQuota {
+		return fmt.Errorf("weekly quota must be between 0 and %d", common.MaxQuota)
+	}
+	return DB.Transaction(func(tx *gorm.DB) error {
+		var user User
+		if err := lockForUpdate(tx).
+			Select("id", "weekly_quota_version").
+			Where("id = ?", userId).
+			First(&user).Error; err != nil {
+			return err
+		}
+		user.WeeklyQuotaVersion++
+		if user.WeeklyQuotaVersion <= 0 {
+			user.WeeklyQuotaVersion = 1
+		}
+		return tx.Model(&User{}).Where("id = ?", userId).Updates(map[string]interface{}{
+			"weekly_quota":          weeklyQuota,
+			"weekly_quota_used":     0,
+			"weekly_quota_reset_at": calcNextWeeklyResetTime(now),
+			"weekly_quota_version":  user.WeeklyQuotaVersion,
+		}).Error
+	})
 }
 
 // SetUserRateLimit 设置用户级每分钟请求限制（0 表示按 group 默认）。
@@ -1643,17 +1765,38 @@ func SetUserRateLimit(userId int, total int, success int) error {
 
 // ResetDueWeeklyQuotas 批量重置到期用户的周额度。返回重置的用户数。
 func ResetDueWeeklyQuotas(batchSize int) (int, error) {
-	now := time.Now().Unix()
-	nextReset := CalcNextWeeklyResetTime()
-	result := DB.Model(&User{}).
-		Where("weekly_quota > 0 AND weekly_quota_reset_at > 0 AND weekly_quota_reset_at <= ?", now).
-		Limit(batchSize).
-		Updates(map[string]interface{}{
-			"weekly_quota_used":     0,
-			"weekly_quota_reset_at": nextReset,
-		})
-	if result.Error != nil {
-		return 0, result.Error
+	return resetDueWeeklyQuotasAt(batchSize, time.Now())
+}
+
+func resetDueWeeklyQuotasAt(batchSize int, now time.Time) (int, error) {
+	if batchSize <= 0 {
+		batchSize = 500
 	}
-	return int(result.RowsAffected), nil
+	resetCount := 0
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		var ids []int
+		if err := lockForUpdate(tx).Model(&User{}).
+			Where("weekly_quota > 0 AND weekly_quota_reset_at > 0 AND weekly_quota_reset_at <= ?", now.Unix()).
+			Order("id asc").
+			Limit(batchSize).
+			Pluck("id", &ids).Error; err != nil {
+			return err
+		}
+		if len(ids) == 0 {
+			return nil
+		}
+		result := tx.Model(&User{}).
+			Where("id IN ? AND weekly_quota > 0 AND weekly_quota_reset_at > 0 AND weekly_quota_reset_at <= ?", ids, now.Unix()).
+			Updates(map[string]interface{}{
+				"weekly_quota_used":     0,
+				"weekly_quota_reset_at": calcNextWeeklyResetTime(now),
+				"weekly_quota_version":  gorm.Expr("weekly_quota_version + ?", 1),
+			})
+		if result.Error != nil {
+			return result.Error
+		}
+		resetCount = int(result.RowsAffected)
+		return nil
+	})
+	return resetCount, err
 }

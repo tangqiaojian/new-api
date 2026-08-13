@@ -794,10 +794,12 @@ func logCacheTokensSumExpr() string {
 		// guards against empty/whitespace values that would fail the jsonb cast.
 		return "COALESCE(SUM(CAST((NULLIF(btrim(other), '')::jsonb)->>'" + key + "' AS BIGINT)), 0)"
 	case common.UsingLogDatabase(common.DatabaseTypeSQLite):
-		// SQLite: json_extract returns a value cast to INTEGER.
-		return "COALESCE(SUM(CAST(json_extract(other, '$." + key + "') AS INTEGER)), 0)"
+		// Old log rows may contain an empty `other` value. json_extract rejects
+		// malformed JSON, so substitute an empty object before extraction.
+		return "COALESCE(SUM(CAST(json_extract(CASE WHEN json_valid(other) THEN other ELSE '{}' END, '$." + key + "') AS INTEGER)), 0)"
 	default:
-		// MySQL: JSON_EXTRACT returns a JSON value cast to SIGNED.
-		return "COALESCE(SUM(CAST(JSON_EXTRACT(other, '$." + key + "') AS SIGNED)), 0)"
+		// MySQL: JSON_EXTRACT returns a JSON value cast to SIGNED. Guard legacy
+		// empty values for the same reason as SQLite.
+		return "COALESCE(SUM(CAST(JSON_EXTRACT(CASE WHEN JSON_VALID(other) THEN other ELSE JSON_OBJECT() END, '$." + key + "') AS SIGNED)), 0)"
 	}
 }

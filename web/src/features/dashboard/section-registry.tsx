@@ -40,6 +40,27 @@ const DASHBOARD_SECTIONS = [
     build: () => null,
   },
   {
+    id: 'daily-tokens',
+    titleKey: 'Daily Token Usage',
+    build: () => null,
+  },
+  {
+    id: 'daily-model-tokens',
+    titleKey: 'Daily Model Token Usage',
+    build: () => null,
+  },
+  {
+    id: 'channel-stats',
+    titleKey: 'Channel Statistics',
+    adminOnly: true,
+    build: () => null,
+  },
+  {
+    id: 'subscription-usage',
+    titleKey: 'Subscription Usage',
+    build: () => null,
+  },
+  {
     id: 'users',
     titleKey: 'User Analytics',
     adminOnly: true,
@@ -49,7 +70,14 @@ const DASHBOARD_SECTIONS = [
 
 export type DashboardSectionId = (typeof DASHBOARD_SECTIONS)[number]['id']
 
-const ADMIN_ONLY_SECTIONS = new Set<string>(['users'])
+export const DASHBOARD_ADMIN_ONLY_SECTION_IDS = [
+  'users',
+  'channel-stats',
+] as const satisfies readonly DashboardSectionId[]
+
+const ADMIN_ONLY_SECTIONS = new Set<DashboardSectionId>(
+  DASHBOARD_ADMIN_ONLY_SECTION_IDS
+)
 
 const dashboardRegistry = createSectionRegistry<
   DashboardSectionId,
