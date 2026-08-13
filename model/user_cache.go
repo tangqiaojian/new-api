@@ -86,6 +86,12 @@ func invalidateUserCache(userId int) error {
 	return common.RedisDelKey(getUserCacheKey(userId))
 }
 
+// InvalidateUserCache exposes full cache invalidation to controllers after
+// privileged status, role, or hard-delete mutations.
+func InvalidateUserCache(userId int) error {
+	return invalidateUserCache(userId)
+}
+
 func populateUserCache(user User) error {
 	if !common.RedisEnabled {
 		return nil
