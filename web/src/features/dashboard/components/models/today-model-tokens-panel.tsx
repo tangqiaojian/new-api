@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useMemo } from 'react'
+import { useMemo, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
   ArrowDownToLine,
@@ -60,6 +60,12 @@ const MODEL_BAR_TONES = [
 ] as const
 
 const MAX_VISIBLE_MODELS = 12
+const MODEL_SKELETON_KEYS = [
+  'model-skeleton-1',
+  'model-skeleton-2',
+  'model-skeleton-3',
+  'model-skeleton-4',
+] as const
 
 interface TodayModelTokensPanelProps {
   includeCache?: boolean
@@ -197,6 +203,118 @@ export function TodayModelTokensPanel(props: TodayModelTokensPanelProps) {
     ]
   })()
 
+  let modelUsageContent: ReactNode
+  if (loading) {
+    modelUsageContent = (
+      <div className='space-y-3'>
+        {MODEL_SKELETON_KEYS.map((key) => (
+          <div key={key} className='space-y-1.5'>
+            <div className='flex justify-between gap-2'>
+              <Skeleton className='h-4 w-36' />
+              <Skeleton className='h-4 w-16' />
+            </div>
+            <Skeleton className='h-2 w-full' />
+          </div>
+        ))}
+      </div>
+    )
+  } else if (error) {
+    modelUsageContent = (
+      <div className='text-muted-foreground py-6 text-center text-sm'>
+        {t('Failed to load today model tokens')}
+      </div>
+    )
+  } else if (summary.models.length === 0) {
+    modelUsageContent = (
+      <div className='text-muted-foreground flex flex-col items-center justify-center gap-1 py-10 text-center'>
+        <Cpu className='text-muted-foreground/50 mb-1 size-8' />
+        <div className='text-sm font-medium'>{t('No token usage today')}</div>
+        <div className='max-w-sm text-xs leading-relaxed'>
+          {t(
+            'Model token stats will appear here after you make API calls today.'
+          )}
+        </div>
+      </div>
+    )
+  } else {
+    modelUsageContent = (
+      <div className='space-y-3'>
+        {visibleModels.map((row, index) => {
+          const tokensFmt = formatStatNumber(row.totalTokens, locale)
+          const sharePct = Math.round(row.share * 1000) / 10
+          const barWidth = `${Math.max(row.share * 100, row.totalTokens > 0 ? 1.5 : 0)}%`
+          const barTone = MODEL_BAR_TONES[index % MODEL_BAR_TONES.length]
+          return (
+            <div
+              key={row.modelName}
+              className='group rounded-lg border border-transparent px-1 py-1.5 transition-colors hover:border-border/70 hover:bg-muted/30 sm:px-2'
+            >
+              <div className='mb-1.5 flex min-w-0 items-center justify-between gap-3'>
+                <div className='flex min-w-0 items-center gap-2'>
+                  <span className='text-muted-foreground/70 w-5 shrink-0 text-right font-mono text-[11px] tabular-nums'>
+                    {index + 1}
+                  </span>
+                  <span
+                    className='truncate text-sm font-medium'
+                    title={row.modelName}
+                  >
+                    {row.modelName}
+                  </span>
+                  <span className='text-muted-foreground hidden shrink-0 text-[11px] tabular-nums sm:inline'>
+                    {t('{{count}} requests', {
+                      count: row.requestCount,
+                    })}
+                  </span>
+                </div>
+                <div className='flex shrink-0 items-baseline gap-2'>
+                  <span
+                    className='font-mono text-sm font-semibold tabular-nums'
+                    title={tokensFmt.fullValue}
+                  >
+                    {tokensFmt.displayValue}
+                  </span>
+                  <span className='text-muted-foreground w-12 text-right text-xs tabular-nums'>
+                    {sharePct}%
+                  </span>
+                </div>
+              </div>
+              <div className='bg-muted ml-7 h-2 overflow-hidden rounded-full sm:ml-7'>
+                <div
+                  className={cn(
+                    'h-full rounded-full transition-all duration-500 ease-out',
+                    barTone
+                  )}
+                  style={{ width: barWidth }}
+                />
+              </div>
+              <div className='text-muted-foreground/70 ml-7 mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] tabular-nums'>
+                <span>
+                  {t('In')}:{' '}
+                  {formatStatNumber(row.promptTokens, locale).displayValue}
+                </span>
+                <span>
+                  {t('Out')}:{' '}
+                  {formatStatNumber(row.completionTokens, locale).displayValue}
+                </span>
+                {row.cachedTokens > 0 && (
+                  <span>
+                    {t('Cache')}:{' '}
+                    {formatStatNumber(row.cachedTokens, locale).displayValue}
+                  </span>
+                )}
+              </div>
+            </div>
+          )
+        })}
+        {hiddenModelCount > 0 && (
+          <div className='text-muted-foreground pt-1 text-center text-xs'>
+            {t('+{{count}} more models', { count: hiddenModelCount })}
+          </div>
+        )}
+      </div>
+    )
+  }
+
   return (
     <div className='overflow-hidden rounded-xl border bg-gradient-to-br from-background via-background to-muted/30 shadow-sm'>
       <div className='flex flex-col gap-2 border-b px-3 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5 sm:py-3.5'>
@@ -225,6 +343,41 @@ export function TodayModelTokensPanel(props: TodayModelTokensPanelProps) {
         {summaryCards.map((card, idx) => {
           const Icon = card.icon
           const barWidth = `${Math.max(0, Math.min(card.ratio, 1)) * 100}%`
+          let cardValue: ReactNode
+          if (loading) {
+            cardValue = (
+              <div className='mt-2 flex flex-col gap-1.5'>
+                <Skeleton className='h-6 w-16 sm:h-7 sm:w-20' />
+                <Skeleton className='h-1.5 w-full' />
+              </div>
+            )
+          } else if (error) {
+            cardValue = (
+              <div className='text-muted-foreground mt-2 font-mono text-base font-bold sm:text-2xl'>
+                --
+              </div>
+            )
+          } else {
+            cardValue = (
+              <>
+                <div
+                  className='text-foreground mt-1.5 max-w-full truncate font-mono text-base leading-tight font-bold tracking-tight tabular-nums sm:mt-2 sm:text-2xl sm:leading-normal'
+                  title={card.fullValue}
+                >
+                  {card.value}
+                </div>
+                <div className='bg-muted mt-2 h-1.5 w-full overflow-hidden rounded-full'>
+                  <div
+                    className={cn(
+                      'h-full rounded-full transition-all duration-500',
+                      card.barClass
+                    )}
+                    style={{ width: barWidth }}
+                  />
+                </div>
+              </>
+            )
+          }
           return (
             <div
               key={card.key}
@@ -247,34 +400,7 @@ export function TodayModelTokensPanel(props: TodayModelTokensPanelProps) {
                   {card.title}
                 </div>
               </div>
-              {loading ? (
-                <div className='mt-2 flex flex-col gap-1.5'>
-                  <Skeleton className='h-6 w-16 sm:h-7 sm:w-20' />
-                  <Skeleton className='h-1.5 w-full' />
-                </div>
-              ) : error ? (
-                <div className='text-muted-foreground mt-2 font-mono text-base font-bold sm:text-2xl'>
-                  --
-                </div>
-              ) : (
-                <>
-                  <div
-                    className='text-foreground mt-1.5 max-w-full truncate font-mono text-base leading-tight font-bold tracking-tight tabular-nums sm:mt-2 sm:text-2xl sm:leading-normal'
-                    title={card.fullValue}
-                  >
-                    {card.value}
-                  </div>
-                  <div className='bg-muted mt-2 h-1.5 w-full overflow-hidden rounded-full'>
-                    <div
-                      className={cn(
-                        'h-full rounded-full transition-all duration-500',
-                        card.barClass
-                      )}
-                      style={{ width: barWidth }}
-                    />
-                  </div>
-                </>
-              )}
+              {cardValue}
             </div>
           )
         })}
@@ -300,117 +426,7 @@ export function TodayModelTokensPanel(props: TodayModelTokensPanelProps) {
           )}
         </div>
 
-        {loading ? (
-          <div className='space-y-3'>
-            {Array.from({ length: 4 }).map((_, i) => (
-              <div key={i} className='space-y-1.5'>
-                <div className='flex justify-between gap-2'>
-                  <Skeleton className='h-4 w-36' />
-                  <Skeleton className='h-4 w-16' />
-                </div>
-                <Skeleton className='h-2 w-full' />
-              </div>
-            ))}
-          </div>
-        ) : error ? (
-          <div className='text-muted-foreground py-6 text-center text-sm'>
-            {t('Failed to load today model tokens')}
-          </div>
-        ) : summary.models.length === 0 ? (
-          <div className='text-muted-foreground flex flex-col items-center justify-center gap-1 py-10 text-center'>
-            <Cpu className='text-muted-foreground/50 mb-1 size-8' />
-            <div className='text-sm font-medium'>{t('No token usage today')}</div>
-            <div className='max-w-sm text-xs leading-relaxed'>
-              {t(
-                'Model token stats will appear here after you make API calls today.'
-              )}
-            </div>
-          </div>
-        ) : (
-          <div className='space-y-3'>
-            {visibleModels.map((row, index) => {
-              const tokensFmt = formatStatNumber(row.totalTokens, locale)
-              const sharePct = Math.round(row.share * 1000) / 10
-              const barWidth = `${Math.max(row.share * 100, row.totalTokens > 0 ? 1.5 : 0)}%`
-              const barTone = MODEL_BAR_TONES[index % MODEL_BAR_TONES.length]
-              return (
-                <div
-                  key={row.modelName}
-                  className='group rounded-lg border border-transparent px-1 py-1.5 transition-colors hover:border-border/70 hover:bg-muted/30 sm:px-2'
-                >
-                  <div className='mb-1.5 flex min-w-0 items-center justify-between gap-3'>
-                    <div className='flex min-w-0 items-center gap-2'>
-                      <span className='text-muted-foreground/70 w-5 shrink-0 text-right font-mono text-[11px] tabular-nums'>
-                        {index + 1}
-                      </span>
-                      <span
-                        className='truncate text-sm font-medium'
-                        title={row.modelName}
-                      >
-                        {row.modelName}
-                      </span>
-                      <span className='text-muted-foreground hidden shrink-0 text-[11px] tabular-nums sm:inline'>
-                        {t('{{count}} requests', {
-                          count: row.requestCount,
-                        })}
-                      </span>
-                    </div>
-                    <div className='flex shrink-0 items-baseline gap-2'>
-                      <span
-                        className='font-mono text-sm font-semibold tabular-nums'
-                        title={tokensFmt.fullValue}
-                      >
-                        {tokensFmt.displayValue}
-                      </span>
-                      <span className='text-muted-foreground w-12 text-right text-xs tabular-nums'>
-                        {sharePct}%
-                      </span>
-                    </div>
-                  </div>
-                  <div className='bg-muted ml-7 h-2 overflow-hidden rounded-full sm:ml-7'>
-                    <div
-                      className={cn(
-                        'h-full rounded-full transition-all duration-500 ease-out',
-                        barTone
-                      )}
-                      style={{ width: barWidth }}
-                    />
-                  </div>
-                  <div className='text-muted-foreground/70 ml-7 mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] tabular-nums'>
-                    <span>
-                      {t('In')}:{' '}
-                      {
-                        formatStatNumber(row.promptTokens, locale)
-                          .displayValue
-                      }
-                    </span>
-                    <span>
-                      {t('Out')}:{' '}
-                      {
-                        formatStatNumber(row.completionTokens, locale)
-                          .displayValue
-                      }
-                    </span>
-                    {row.cachedTokens > 0 && (
-                      <span>
-                        {t('Cache')}:{' '}
-                        {
-                          formatStatNumber(row.cachedTokens, locale)
-                            .displayValue
-                        }
-                      </span>
-                    )}
-                  </div>
-                </div>
-              )
-            })}
-            {hiddenModelCount > 0 && (
-              <div className='text-muted-foreground pt-1 text-center text-xs'>
-                {t('+{{count}} more models', { count: hiddenModelCount })}
-              </div>
-            )}
-          </div>
-        )}
+        {modelUsageContent}
       </div>
     </div>
   )
