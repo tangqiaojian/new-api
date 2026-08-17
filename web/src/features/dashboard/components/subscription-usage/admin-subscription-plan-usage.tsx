@@ -447,7 +447,8 @@ export function AdminSubscriptionPlanUsage() {
                       {row.username || `#${row.user_id}`}
                     </TableCell>
                     <TableCell className='text-muted-foreground max-w-[180px] truncate'>
-                      {row.plan_title || `Plan #${row.plan_id}`}
+                      {row.plan_title ||
+                        t('Plan #{{id}}', { id: row.plan_id })}
                     </TableCell>
                     <TableCell>
                       <StatusCell status={row.status} />

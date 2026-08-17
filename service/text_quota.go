@@ -471,12 +471,10 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 		model.UpdateChannelUsedQuota(relayInfo.ChannelId, summary.Quota)
 	}
 
-	// Subscription token quota tracking is performed via the channel pool
-	// settle call below for channel-bound traffic. Per-subscription token
-	// accounting is wired through BillingSession once relay_info token
-	// snapshot fields are introduced; for now we mirror the dashboard's
-	// "include cache" semantics (prompt + completion + optional cache) when
-	// reporting channel pool usage.
+	// User-plan token quota is settled after money/quota settle (token
+	// pre-consume stays 0). Channel-bound traffic still settles through the
+	// pool call below. Both use dashboard "include cache" semantics:
+	// prompt + completion + optional cache.
 	cacheForSub := summary.CacheTokens
 	if billingUsage != nil && billingUsage.PromptTokensDetails.CachedTokens > 0 {
 		cacheForSub = billingUsage.PromptTokensDetails.CachedTokens
@@ -493,8 +491,13 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 
 	if err := SettleBilling(ctx, relayInfo, summary.Quota); err != nil {
 		logger.LogError(ctx, "error settling billing: "+err.Error())
-	} else if err := SettleChannelPoolActualUsage(ctx, relayInfo.ChannelId, relayInfo.RequestId, summary.Quota, promptForSub, completionForSub, cacheForSub); err != nil {
-		logger.LogError(ctx, fmt.Sprintf("error settling channel pool usage (channel=%d, request=%s): %s", relayInfo.ChannelId, relayInfo.RequestId, err.Error()))
+	} else {
+		if err := SettleUserSubscriptionActualUsage(relayInfo, promptForSub, completionForSub, cacheForSub); err != nil {
+			logger.LogError(ctx, fmt.Sprintf("error settling user subscription token usage (subscription=%d, request=%s): %s", relayInfo.SubscriptionId, relayInfo.RequestId, err.Error()))
+		}
+		if err := SettleChannelPoolActualUsage(ctx, relayInfo.ChannelId, relayInfo.RequestId, summary.Quota, promptForSub, completionForSub, cacheForSub); err != nil {
+			logger.LogError(ctx, fmt.Sprintf("error settling channel pool usage (channel=%d, request=%s): %s", relayInfo.ChannelId, relayInfo.RequestId, err.Error()))
+		}
 	}
 
 	logModel := summary.ModelName

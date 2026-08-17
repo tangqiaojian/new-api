@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/model"
+	relaycommon "github.com/QuantumNous/new-api/relay/common"
 )
 
 type ChannelSubscriptionPoolService struct{}
@@ -55,6 +56,23 @@ func SettleChannelPoolActualUsage(ctx context.Context, channelId int, settlement
 	desiredTokens := subscriptionTokenQuotaUsage(promptTokens, completionTokens, cacheTokens, pool.IncludeCacheTokens)
 	if _, err := model.SettleChannelPoolUsage(channelId, settlementKey, int64(actualQuota), desiredTokens); err != nil {
 		return fmt.Errorf("settle channel subscription pool usage: %w", err)
+	}
+	return nil
+}
+
+// SettleUserSubscriptionActualUsage charges the selected user subscription's
+// token quota after money/quota settle. Token pre-consume stays 0; this is the
+// only place user-plan TokensUsed is incremented on the relay path.
+func SettleUserSubscriptionActualUsage(relayInfo *relaycommon.RelayInfo, promptTokens, completionTokens, cacheTokens int) error {
+	if relayInfo == nil || relayInfo.SubscriptionId <= 0 || relayInfo.BillingSource != BillingSourceSubscription {
+		return nil
+	}
+	desiredTokens := subscriptionTokenQuotaUsage(promptTokens, completionTokens, cacheTokens, relayInfo.SubscriptionIncludeCacheTokens)
+	if desiredTokens <= 0 {
+		return nil
+	}
+	if err := model.PostConsumeUserSubscriptionDelta(relayInfo.SubscriptionId, 0, desiredTokens); err != nil {
+		return fmt.Errorf("settle user subscription token usage: %w", err)
 	}
 	return nil
 }

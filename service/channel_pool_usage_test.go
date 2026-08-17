@@ -56,6 +56,71 @@ func TestSettleChannelPoolActualUsageAppliesIndependentCachePolicy(t *testing.T)
 	}
 }
 
+func TestSettleUserSubscriptionActualUsageAppliesCachePolicy(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		includeCache bool
+		wantTokens   int64
+	}{
+		{name: "exclude cache", includeCache: false, wantTokens: 150},
+		{name: "include cache", includeCache: true, wantTokens: 190},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			truncate(t)
+			seedUser(t, 9101, 10000)
+			sub := &model.UserSubscription{
+				UserId:             9101,
+				AmountTotal:        10000,
+				TokensTotal:        10000,
+				IncludeCacheTokens: tc.includeCache,
+				Status:             "active",
+				StartTime:          time.Now().Unix() - 60,
+				EndTime:            time.Now().Add(time.Hour).Unix(),
+			}
+			require.NoError(t, model.DB.Create(sub).Error)
+
+			info := &relaycommon.RelayInfo{
+				BillingSource:                  BillingSourceSubscription,
+				SubscriptionId:                 sub.Id,
+				SubscriptionIncludeCacheTokens: tc.includeCache,
+			}
+			require.NoError(t, SettleUserSubscriptionActualUsage(info, 100, 50, 40))
+
+			var got model.UserSubscription
+			require.NoError(t, model.DB.First(&got, sub.Id).Error)
+			assert.EqualValues(t, tc.wantTokens, got.TokensUsed)
+			assert.Zero(t, got.AmountUsed)
+		})
+	}
+}
+
+func TestSettleUserSubscriptionActualUsageSkipsWalletAndMissingId(t *testing.T) {
+	truncate(t)
+	seedUser(t, 9102, 10000)
+	sub := &model.UserSubscription{
+		UserId:      9102,
+		AmountTotal: 10000,
+		TokensTotal: 10000,
+		Status:      "active",
+		StartTime:   time.Now().Unix() - 60,
+		EndTime:     time.Now().Add(time.Hour).Unix(),
+	}
+	require.NoError(t, model.DB.Create(sub).Error)
+
+	require.NoError(t, SettleUserSubscriptionActualUsage(&relaycommon.RelayInfo{
+		BillingSource:  BillingSourceWallet,
+		SubscriptionId: sub.Id,
+	}, 100, 50, 40))
+	require.NoError(t, SettleUserSubscriptionActualUsage(&relaycommon.RelayInfo{
+		BillingSource: BillingSourceSubscription,
+	}, 100, 50, 40))
+	require.NoError(t, SettleUserSubscriptionActualUsage(nil, 100, 50, 40))
+
+	var got model.UserSubscription
+	require.NoError(t, model.DB.First(&got, sub.Id).Error)
+	assert.Zero(t, got.TokensUsed)
+}
+
 func TestSettleChannelPoolActualUsageWithoutPoolIsNoop(t *testing.T) {
 	truncate(t)
 	channelID := 8150
