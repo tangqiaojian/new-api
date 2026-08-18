@@ -144,6 +144,33 @@ func TestChannelAnalyticsScopeMetricsAndResolveNames(t *testing.T) {
 	assert.InDelta(t, 1, bobData[0].SuccessRate, 0.0001)
 }
 
+// 平均首字节必须只统计真实记录到首字节的请求。历史日志里非流式请求写过
+// -1000 哨兵（FirstResponseTime 初始为 startTime-1s），ClickHouse 对缺失键
+// 返回 0，这些值都必须被过滤，否则平均值被拖低甚至拖负。
+func TestChannelAnalyticsAvgFirstByteFiltersSentinelAndZero(t *testing.T) {
+	truncateTables(t)
+	require.NoError(t, DB.Create(&Channel{Id: 30, Name: "frt-channel"}).Error)
+
+	frtLog := func(createdAt int64, other map[string]interface{}) Log {
+		return analyticsLog(1, "carol", "gpt-frt", 30, createdAt, 10, 5, 1, 3, other)
+	}
+	logs := []Log{
+		frtLog(analyticsTestStart+100, map[string]interface{}{"frt": -1000.0}), // 非流式哨兵
+		frtLog(analyticsTestStart+200, map[string]interface{}{"frt": 0.0}),     // ClickHouse 缺失键等效值
+		frtLog(analyticsTestStart+300, map[string]interface{}{"cache_tokens": 1}), // 无 frt
+		frtLog(analyticsTestStart+400, map[string]interface{}{"frt": 100.0}),
+		frtLog(analyticsTestStart+500, map[string]interface{}{"frt": 200.0}),
+	}
+	require.NoError(t, LOG_DB.Create(&logs).Error)
+
+	data, err := GetChannelModelStats(analyticsTestStart, analyticsTestStart+3600, "carol", true)
+	require.NoError(t, err)
+	require.Len(t, data, 1)
+	assert.Equal(t, 5, data[0].RequestCount)
+	assert.InDelta(t, 150.0, data[0].AvgFirstByteMs, 0.0001,
+		"AVG 只应覆盖 frt>0 的两行：(100+200)/2")
+}
+
 func TestSubscriptionAnalyticsUseStructuredFilters(t *testing.T) {
 	seedAnalyticsLogs(t)
 	endTime := analyticsTestStart + 3600

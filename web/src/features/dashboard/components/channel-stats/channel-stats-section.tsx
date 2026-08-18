@@ -684,7 +684,7 @@ export function ChannelStatsSection(props: ChannelStatsSectionProps) {
                       {formatNum(item.cached_tokens)}
                     </TableCell>
                     <TableCell className='text-right whitespace-nowrap tabular-nums'>
-                      {formatFloat(item.avg_first_byte_ms)} ms
+                      {item.avg_first_byte_ms > 0 ? `${formatFloat(item.avg_first_byte_ms)} ms` : '—'}
                     </TableCell>
                     <TableCell className='text-right whitespace-nowrap tabular-nums'>
                       {formatFloat(item.avg_speed_tok_per_s)} tok/s

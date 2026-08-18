@@ -80,7 +80,12 @@ func GenerateTextOtherInfo(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, m
 	other["cache_ratio"] = cacheRatio
 	other["model_price"] = modelPrice
 	other["user_group_ratio"] = userGroupRatio
-	other["frt"] = float64(relayInfo.FirstResponseTime.UnixMilli() - relayInfo.StartTime.UnixMilli())
+	// 仅在真的记录到首字节时间时写 frt。非流式响应没有首字节概念，
+	// FirstResponseTime 停留在 startTime-1s 哨兵，写出去就是 -1000，
+	// 会混进渠道统计的 AVG(avg_first_byte_ms) 把平均值拖低甚至拖负。
+	if relayInfo.HasSendResponse() {
+		other["frt"] = float64(relayInfo.FirstResponseTime.UnixMilli() - relayInfo.StartTime.UnixMilli())
+	}
 	if relayInfo.ReasoningEffort != "" {
 		other["reasoning_effort"] = relayInfo.ReasoningEffort
 	}

@@ -68,6 +68,17 @@ func logJSONFloatExpression(key string) string {
 	}
 }
 
+// logJSONPositiveFloatExpression 仅保留正的浮点值，其余归 NULL（AVG 自动跳过）。
+// 历史 consume 日志在 frt 上写过 -1000 哨兵（非流式请求没有首字节时间），
+// ClickHouse 对缺失键返回 0 而非 NULL，两种污染都必须过滤，否则平均值被拖低。
+func logJSONPositiveFloatExpression(key string) string {
+	expr := logJSONFloatExpression(key)
+	if common.UsingLogDatabase(common.DatabaseTypeClickHouse) {
+		return "if(JSONHas(" + logOtherColumn() + ", '" + key + "') AND " + expr + " > 0, " + expr + ", NULL)"
+	}
+	return "CASE WHEN " + expr + " > 0 THEN " + expr + " ELSE NULL END"
+}
+
 func logStreamSuccessExpression() string {
 	otherColumn := logOtherColumn()
 	switch {
@@ -102,7 +113,7 @@ func channelStatsSelectColumns(includeCache bool) string {
 		"COALESCE(SUM(completion_tokens), 0) AS completion_tokens, " +
 		totalTokensExpression + " AS total_tokens, " +
 		"COALESCE(SUM(" + cachedTokensExpression + "), 0) AS cached_tokens, " +
-		"COALESCE(AVG(" + logJSONFloatExpression("frt") + "), 0.0) AS avg_first_byte_ms, " +
+		"COALESCE(AVG(" + logJSONPositiveFloatExpression("frt") + "), 0.0) AS avg_first_byte_ms, " +
 		"COALESCE(1.0 * COALESCE(SUM(completion_tokens), 0) / NULLIF(COALESCE(SUM(" + logUseTimeColumn() + "), 0), 0), 0.0) AS avg_speed_tok_per_s, " +
 		"COALESCE(1.0 * COALESCE(SUM(" + cachedTokensExpression + "), 0) / NULLIF(COALESCE(SUM(prompt_tokens), 0), 0), 0.0) AS cache_hit_ratio, " +
 		"COALESCE(1.0 * COALESCE(SUM(" + logStreamSuccessExpression() + "), 0) / NULLIF(COUNT(*), 0), 0.0) AS success_rate, " +
