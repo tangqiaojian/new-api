@@ -434,18 +434,28 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 	taskResult := relaycommon.TaskInfo{}
 	if resTask.Code == 10000 {
 		taskResult.Code = 0
+		// 仅在请求成功时映射任务状态；Data.Status 取值见火山引擎
+		// CVSync2AsyncGetResult：in_queue / generating / done / not_found / expired
+		switch resTask.Data.Status {
+		case "in_queue":
+			taskResult.Status = model.TaskStatusQueued
+			taskResult.Progress = "10%"
+		case "generating":
+			// 生成中间态必须保持 IN_PROGRESS，空状态会被轮询侧当作失败并触发退款
+			taskResult.Status = model.TaskStatusInProgress
+			taskResult.Progress = "50%"
+		case "done":
+			taskResult.Status = model.TaskStatusSuccess
+			taskResult.Progress = "100%"
+		case "not_found", "expired":
+			taskResult.Status = model.TaskStatusFailure
+			taskResult.Progress = "100%"
+			taskResult.Reason = "upstream task status: " + resTask.Data.Status
+		}
 	} else {
 		taskResult.Code = resTask.Code // todo uni code
 		taskResult.Reason = resTask.Message
 		taskResult.Status = model.TaskStatusFailure
-		taskResult.Progress = "100%"
-	}
-	switch resTask.Data.Status {
-	case "in_queue":
-		taskResult.Status = model.TaskStatusQueued
-		taskResult.Progress = "10%"
-	case "done":
-		taskResult.Status = model.TaskStatusSuccess
 		taskResult.Progress = "100%"
 	}
 	taskResult.Url = resTask.Data.VideoUrl

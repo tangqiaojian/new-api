@@ -4,9 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"math"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
@@ -358,14 +356,9 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 			video := videos[0]
 			taskInfo.Url = video.Url
 		}
-		if tokens, err := strconv.ParseFloat(resPayload.Data.FinalUnitDeduction, 64); err == nil {
-			// 上游返回的扣费数值，饱和转换防止超大数值回绕成负数
-			rounded := common.QuotaFromFloat(math.Ceil(tokens))
-			if rounded > 0 {
-				taskInfo.CompletionTokens = rounded
-				taskInfo.TotalTokens = rounded
-			}
-		}
+		// FinalUnitDeduction 是上游扣费单元数而非 token，不能填入
+		// TotalTokens/CompletionTokens 参与按倍率重算——单元会被当作 token
+		// 乘以模型倍率，把预扣费几乎全额退还。原始值保留在 task.Data 中。
 	case "failed":
 		taskInfo.Status = model.TaskStatusFailure
 	default:

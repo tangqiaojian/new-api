@@ -108,11 +108,11 @@ func runProgram(prog *vm.Program, requestRules []RequestRuleTrace, params TokenP
 			}
 			return strings.Contains(fmt.Sprint(source), substr)
 		},
-		"hour":    func(tz string) int { return timeInZone(tz).Hour() },
-		"minute":  func(tz string) int { return timeInZone(tz).Minute() },
-		"weekday": func(tz string) int { return int(timeInZone(tz).Weekday()) },
-		"month":   func(tz string) int { return int(timeInZone(tz).Month()) },
-		"day":     func(tz string) int { return timeInZone(tz).Day() },
+		"hour":    func(tz string) int { return timeInZone(tz, request.NowUnix).Hour() },
+		"minute":  func(tz string) int { return timeInZone(tz, request.NowUnix).Minute() },
+		"weekday": func(tz string) int { return int(timeInZone(tz, request.NowUnix).Weekday()) },
+		"month":   func(tz string) int { return int(timeInZone(tz, request.NowUnix).Month()) },
+		"day":     func(tz string) int { return timeInZone(tz, request.NowUnix).Day() },
 		"max":     math.Max,
 		"min":     math.Min,
 		"abs":     math.Abs,
@@ -128,19 +128,32 @@ func runProgram(prog *vm.Program, requestRules []RequestRuleTrace, params TokenP
 	if !ok {
 		return 0, trace, fmt.Errorf("expr result is %T, want float64", out)
 	}
+	// IEEE arithmetic never errors: `x / 0` yields +Inf and `0 / 0` yields NaN.
+	// A non-finite cost would saturate settlement to MaxInt32 (overcharge) or
+	// floor to 0 (free request), so surface it as an error and let the caller
+	// fall back to the pre-consumed estimate.
+	if math.IsNaN(f) || math.IsInf(f, 0) {
+		return 0, trace, fmt.Errorf("expr result is not finite: %v", f)
+	}
 	return f, trace, nil
 }
 
-func timeInZone(tz string) time.Time {
+func timeInZone(tz string, nowUnix int64) time.Time {
+	// A frozen evaluation time (set at pre-consume) keeps time-based request
+	// rules deterministic between pre-consume and settlement; 0 means live clock.
+	now := time.Now()
+	if nowUnix > 0 {
+		now = time.Unix(nowUnix, 0)
+	}
 	tz = strings.TrimSpace(tz)
 	if tz == "" {
-		return time.Now().UTC()
+		return now.UTC()
 	}
 	loc, err := time.LoadLocation(tz)
 	if err != nil {
-		return time.Now().UTC()
+		return now.UTC()
 	}
-	return time.Now().In(loc)
+	return now.In(loc)
 }
 
 func normalizeHeaders(headers map[string]string) map[string]string {

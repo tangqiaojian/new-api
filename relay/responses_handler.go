@@ -151,9 +151,15 @@ func ResponsesHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *
 
 		_, err := helper.ModelPriceHelper(c, info, info.GetEstimatePromptTokens(), &types.TokenCountMeta{})
 		if err != nil {
+			// The compact response has already been delivered to the client;
+			// returning an error here would refund a result the user kept.
+			// Settle with the original pricing and log the re-price failure.
+			common.SysError(fmt.Sprintf("compact re-price failed after delivery (model=%s), settling with original pricing: %s",
+				originModelName, err.Error()))
 			info.OriginModelName = originModelName
 			info.PriceData = originPriceData
-			return types.NewError(err, types.ErrorCodeModelPriceError, types.ErrOptionWithSkipRetry(), types.ErrOptionWithStatusCode(http.StatusBadRequest))
+			service.PostTextConsumeQuota(c, info, usageDto, nil)
+			return nil
 		}
 		service.PostTextConsumeQuota(c, info, usageDto, nil)
 

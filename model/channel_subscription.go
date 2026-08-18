@@ -446,6 +446,13 @@ func ResetChannelSubscriptionPool(id int, scope string) error {
 				updates["token_last_reset_time"] = 0
 			}
 		}
+		// Usage counters restart from zero, so settlement contributions from the
+		// previous cycle must go too: a late settle-to-zero on an old key would
+		// otherwise subtract from fresh usage. Deleting is safe for pools — a
+		// re-settled old key over-counts, which only throttles earlier.
+		if err := tx.Where("pool_id = ?", id).Delete(&ChannelPoolSettlement{}).Error; err != nil {
+			return err
+		}
 		return tx.Model(&pool).Updates(updates).Error
 	})
 }
@@ -517,6 +524,11 @@ func recoverChannelPoolDueTx(tx *gorm.DB, pool *ChannelSubscriptionPool, now int
 		return nil
 	}
 	updates["updated_at"] = common.GetTimestamp()
+	// See ResetChannelSubscriptionPool: old-cycle settlement rows must not eat
+	// the fresh counters this recovery just zeroed.
+	if err := tx.Where("pool_id = ?", pool.Id).Delete(&ChannelPoolSettlement{}).Error; err != nil {
+		return err
+	}
 	if err := tx.Model(pool).Updates(updates).Error; err != nil {
 		return err
 	}
@@ -634,7 +646,11 @@ func SettleChannelPoolUsage(channelId int, key string, desiredAmount, desiredTok
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			settlement = ChannelPoolSettlement{PoolId: pool.Id, ChannelId: channelId, SettlementKey: strings.TrimSpace(key)}
 			if err := tx.Create(&settlement).Error; err != nil {
-				return err
+				// A concurrent settle with the same key committed first; fall
+				// through to the stored row instead of failing the whole settle.
+				if err2 := tx.Where("pool_id = ? AND settlement_key = ?", pool.Id, strings.TrimSpace(key)).First(&settlement).Error; err2 != nil {
+					return err
+				}
 			}
 		} else if err != nil {
 			return err

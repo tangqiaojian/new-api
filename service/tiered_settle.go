@@ -31,7 +31,16 @@ func BuildTieredTokenParams(usage *dto.Usage, isClaudeUsageSemantic bool, usedVa
 	cc5m := float64(usage.PromptTokensDetails.CacheCreationTokensTotal())
 	cc1h := float64(0)
 
-	if usage.UsageSemantic == "anthropic" {
+	// Legacy Claude-derived OpenAI usage carries the 5m/1h cache-creation
+	// split without an anthropic semantic tag (mirrors the ratio path's
+	// isLegacyClaudeDerivedOpenAIUsage). Those tokens are not part of
+	// prompt_tokens, so they must be billed at their own cc/cc1h rates and
+	// must NOT be subtracted from p below.
+	legacyClaudeDerived := !isClaudeUsageSemantic &&
+		usage.UsageSource == "" && usage.UsageSemantic == "" &&
+		(usage.ClaudeCacheCreation5mTokens > 0 || usage.ClaudeCacheCreation1hTokens > 0)
+
+	if usage.UsageSemantic == "anthropic" || legacyClaudeDerived {
 		cc1h = float64(usage.ClaudeCacheCreation1hTokens)
 		cc5m = float64(usage.ClaudeCacheCreation5mTokens)
 	}
@@ -40,6 +49,37 @@ func BuildTieredTokenParams(usage *dto.Usage, isClaudeUsageSemantic bool, usedVa
 	ai := float64(usage.PromptTokensDetails.AudioTokens)
 	imgO := float64(usage.CompletionTokenDetails.ImageTokens)
 	ao := float64(usage.CompletionTokenDetails.AudioTokens)
+
+	// Upstream token fields are untrusted: a hostile or buggy upstream can
+	// report negative counts, and a negative term would lower (or invert) the
+	// charge. Clamp every dimension at zero before it reaches the expression.
+	if p < 0 {
+		p = 0
+	}
+	if c < 0 {
+		c = 0
+	}
+	if cr < 0 {
+		cr = 0
+	}
+	if cc5m < 0 {
+		cc5m = 0
+	}
+	if cc1h < 0 {
+		cc1h = 0
+	}
+	if img < 0 {
+		img = 0
+	}
+	if ai < 0 {
+		ai = 0
+	}
+	if imgO < 0 {
+		imgO = 0
+	}
+	if ao < 0 {
+		ao = 0
+	}
 
 	// len = total input context length for tier condition evaluation.
 	// Non-Claude: prompt_tokens already includes everything.
@@ -50,14 +90,16 @@ func BuildTieredTokenParams(usage *dto.Usage, isClaudeUsageSemantic bool, usedVa
 	}
 
 	if !isClaudeUsageSemantic {
-		if usedVars["cr"] {
-			p -= cr
-		}
-		if usedVars["cc"] {
-			p -= cc5m
-		}
-		if usedVars["cc1h"] {
-			p -= cc1h
+		if !legacyClaudeDerived {
+			if usedVars["cr"] {
+				p -= cr
+			}
+			if usedVars["cc"] {
+				p -= cc5m
+			}
+			if usedVars["cc1h"] {
+				p -= cc1h
+			}
 		}
 		if usedVars["img"] {
 			p -= img

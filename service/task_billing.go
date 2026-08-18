@@ -353,33 +353,40 @@ func RecalculateTaskQuotaByTokens(ctx context.Context, task *model.Task, totalTo
 
 	modelName := taskModelName(task)
 
-	// 获取模型价格和倍率
-	modelRatio, hasRatioSetting, _ := ratio_setting.GetModelRatio(modelName)
-	// 只有配置了倍率(非固定价格)时才按 token 重新计费
-	if !hasRatioSetting || modelRatio <= 0 {
-		return
-	}
-
-	// 获取用户和组的倍率信息
-	group := task.Group
-	if group == "" {
-		user, err := model.GetUserById(task.UserId, false)
-		if err == nil {
-			group = user.Group
+	var modelRatio float64
+	var finalGroupRatio float64
+	if bc := task.PrivateData.BillingContext; bc != nil {
+		// 使用提交时快照的倍率，保证与预扣费口径一致。实时解析会漏掉
+		// (用户组, 使用组) 特殊倍率（任务只持久化 UsingGroup，按
+		// GetGroupGroupRatio(group, group) 自查永远查不到），且任务运行
+		// 期间管理员调价会让同一任务按两套价格预扣/结算。
+		modelRatio = bc.ModelRatio
+		finalGroupRatio = bc.GroupRatio
+	} else {
+		// 旧任务没有计费快照，退回实时配置解析（保持历史行为）。
+		var hasRatioSetting bool
+		modelRatio, hasRatioSetting, _ = ratio_setting.GetModelRatio(modelName)
+		if !hasRatioSetting {
+			return
+		}
+		group := task.Group
+		if group == "" {
+			user, err := model.GetUserById(task.UserId, false)
+			if err == nil {
+				group = user.Group
+			}
+		}
+		if group == "" {
+			return
+		}
+		finalGroupRatio = ratio_setting.GetGroupRatio(group)
+		if userGroupRatio, hasUserGroupRatio := ratio_setting.GetGroupGroupRatio(group, group); hasUserGroupRatio {
+			finalGroupRatio = userGroupRatio
 		}
 	}
-	if group == "" {
+	// 只有配置了倍率(非固定价格)时才按 token 重新计费
+	if modelRatio <= 0 {
 		return
-	}
-
-	groupRatio := ratio_setting.GetGroupRatio(group)
-	userGroupRatio, hasUserGroupRatio := ratio_setting.GetGroupGroupRatio(group, group)
-
-	var finalGroupRatio float64
-	if hasUserGroupRatio {
-		finalGroupRatio = userGroupRatio
-	} else {
-		finalGroupRatio = groupRatio
 	}
 
 	// 计算 OtherRatios 乘积（视频折扣、时长等）

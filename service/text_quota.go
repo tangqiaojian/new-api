@@ -228,6 +228,15 @@ func composeTieredTextQuota(relayInfo *relaycommon.RelayInfo, summary textQuotaS
 // calculateTextQuotaSummary expects a usage already remapped by
 // effectiveBillingUsage; PostTextConsumeQuota performs that remap once and shares
 // the result with tiered billing, affinity observation and logging.
+// isOpenRouterClaudeBilling reports whether this request is a Claude-format
+// relay served by an OpenRouter channel: the usage payload is OpenAI-shaped
+// (prompt_tokens includes cache) even though the semantic reads "anthropic".
+func isOpenRouterClaudeBilling(relayInfo *relaycommon.RelayInfo, summary *textQuotaSummary) bool {
+	return relayInfo.ChannelMeta != nil &&
+		relayInfo.ChannelType == constant.ChannelTypeOpenRouter &&
+		summary.IsClaudeUsageSemantic
+}
+
 func calculateTextQuotaSummary(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usage *dto.Usage) textQuotaSummary {
 	summary := textQuotaSummary{
 		ModelName:            relayInfo.OriginModelName,
@@ -256,19 +265,39 @@ func calculateTextQuotaSummary(ctx *gin.Context, relayInfo *relaycommon.RelayInf
 
 	summary.PromptTokens = usage.PromptTokens
 	summary.CompletionTokens = usage.CompletionTokens
-	summary.TotalTokens = usage.PromptTokens + usage.CompletionTokens
 	summary.CacheTokens = usage.PromptTokensDetails.CachedTokens
 	summary.CacheCreationTokens = usage.PromptTokensDetails.CacheCreationTokensTotal()
 	summary.CacheCreationTokens5m = usage.ClaudeCacheCreation5mTokens
 	summary.CacheCreationTokens1h = usage.ClaudeCacheCreation1hTokens
 	summary.ImageTokens = usage.PromptTokensDetails.ImageTokens
 	summary.AudioTokens = usage.PromptTokensDetails.AudioTokens
-	legacyClaudeDerived := isLegacyClaudeDerivedOpenAIUsage(relayInfo, usage)
-	isOpenRouterClaudeBilling := relayInfo.ChannelMeta != nil &&
-		relayInfo.ChannelType == constant.ChannelTypeOpenRouter &&
-		summary.IsClaudeUsageSemantic
 
-	if isOpenRouterClaudeBilling {
+	// Upstream usage is untrusted: a negative count must never reduce the
+	// charge, and an absurd sum must not overflow TotalTokens into
+	// "not billable" (which would refund the pre-consume on a real response).
+	summary.PromptTokens = max(summary.PromptTokens, 0)
+	summary.CompletionTokens = max(summary.CompletionTokens, 0)
+	summary.CacheTokens = max(summary.CacheTokens, 0)
+	summary.CacheCreationTokens = max(summary.CacheCreationTokens, 0)
+	summary.CacheCreationTokens5m = max(summary.CacheCreationTokens5m, 0)
+	summary.CacheCreationTokens1h = max(summary.CacheCreationTokens1h, 0)
+	summary.ImageTokens = max(summary.ImageTokens, 0)
+	summary.AudioTokens = max(summary.AudioTokens, 0)
+	summary.TotalTokens = summary.PromptTokens + summary.CompletionTokens
+	if summary.TotalTokens < 0 {
+		summary.TotalTokens = math.MaxInt
+	}
+	legacyClaudeDerived := isLegacyClaudeDerivedOpenAIUsage(relayInfo, usage)
+	openRouterClaudeBilling := isOpenRouterClaudeBilling(relayInfo, &summary)
+
+	if openRouterClaudeBilling {
+		// Upstream counts are untrusted: cap each subtraction at the remaining
+		// prompt so the remapped prompt (consume log + subscription token
+		// settlement) never goes negative and cache never bills more tokens
+		// than the prompt held.
+		if summary.CacheTokens > summary.PromptTokens {
+			summary.CacheTokens = summary.PromptTokens
+		}
 		summary.PromptTokens -= summary.CacheTokens
 		isUsingCustomSettings := relayInfo.PriceData.UsePrice || hasCustomModelRatio(summary.ModelName, relayInfo.PriceData.ModelRatio)
 		if summary.CacheCreationTokens == 0 && relayInfo.PriceData.CacheCreationRatio != 1 && usage.Cost != 0 && !isUsingCustomSettings {
@@ -276,6 +305,9 @@ func calculateTextQuotaSummary(ctx *gin.Context, relayInfo *relaycommon.RelayInf
 			if maybeCacheCreationTokens >= 0 && summary.PromptTokens >= maybeCacheCreationTokens {
 				summary.CacheCreationTokens = maybeCacheCreationTokens
 			}
+		}
+		if summary.CacheCreationTokens > summary.PromptTokens {
+			summary.CacheCreationTokens = summary.PromptTokens
 		}
 		summary.PromptTokens -= summary.CacheCreationTokens
 	}
@@ -437,7 +469,12 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 		if snap := relayInfo.TieredBillingSnapshot; snap != nil {
 			tieredUsedVars = billingexpr.UsedVars(snap.ExprString)
 		}
-		tieredOk, tieredQuota, tieredRes := TryTieredSettle(relayInfo, BuildTieredTokenParams(billingUsage, summary.IsClaudeUsageSemantic, tieredUsedVars))
+		// OpenRouter returns OpenAI-shaped usage (prompt_tokens includes cache)
+		// even for Claude-format requests; the ratio path remaps it above. The
+		// tiered path must apply the same OpenAI exclusion semantics, otherwise
+		// cache tokens are billed twice: once inside p and again via cr.
+		tieredClaudeSemantic := summary.IsClaudeUsageSemantic && !isOpenRouterClaudeBilling(relayInfo, &summary)
+		tieredOk, tieredQuota, tieredRes := TryTieredSettle(relayInfo, BuildTieredTokenParams(billingUsage, tieredClaudeSemantic, tieredUsedVars))
 		if tieredOk {
 			tieredBillingApplied = true
 			tieredResult = tieredRes

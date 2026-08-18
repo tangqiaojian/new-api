@@ -47,12 +47,21 @@ func (s *BillingSession) Settle(actualQuota int) error {
 	if s.settled {
 		return nil
 	}
-	delta := actualQuota - s.preConsumedQuota
+	if actualQuota < 0 {
+		// 结算金额为负会产生贷记（退款），属于上游计费缺陷；按 0 兜底并记录。
+		common.SysError(fmt.Sprintf("negative actualQuota %d clamped to 0 (userId=%d, requestId=%s)",
+			actualQuota, s.relayInfo.UserId, s.relayInfo.RequestId))
+		actualQuota = 0
+	}
+	// 资金来源与令牌额度各自跟踪实际预扣量（Reserve 时订阅侧可能因达到上限
+	// 只部分入账），结算必须按各自的差额调整，不能共用一个 delta。
+	fundingDelta := actualQuota - s.preConsumedQuota
+	tokenDelta := actualQuota - s.tokenConsumed
 	// 1) 调整资金来源（仅在尚未提交时执行，防止重复调用）
 	// 真实资金结算优先于周额度计数；即使周计数存储异常，也不能少扣
 	// 已经交付给用户的实际消费。重试时 fundingSettled 会阻止重复扣费。
-	if delta != 0 && !s.fundingSettled {
-		if err := s.funding.Settle(delta); err != nil {
+	if fundingDelta != 0 && !s.fundingSettled {
+		if err := s.funding.Settle(fundingDelta); err != nil {
 			return err
 		}
 		s.fundingSettled = true
@@ -76,27 +85,23 @@ func (s *BillingSession) Settle(actualQuota int) error {
 			s.weeklySettled = true
 		}
 	}
-	if delta == 0 {
-		s.settled = true
-		return nil
-	}
 	// 3) 调整令牌额度
-	if !s.relayInfo.IsPlayground {
+	if tokenDelta != 0 && !s.relayInfo.IsPlayground {
 		var tokenErr error
-		if delta > 0 {
-			tokenErr = model.DecreaseTokenQuota(s.relayInfo.TokenId, s.relayInfo.TokenKey, delta)
+		if tokenDelta > 0 {
+			tokenErr = model.DecreaseTokenQuota(s.relayInfo.TokenId, s.relayInfo.TokenKey, tokenDelta)
 		} else {
-			tokenErr = model.IncreaseTokenQuota(s.relayInfo.TokenId, s.relayInfo.TokenKey, -delta)
+			tokenErr = model.IncreaseTokenQuota(s.relayInfo.TokenId, s.relayInfo.TokenKey, -tokenDelta)
 		}
 		if tokenErr != nil {
 			// 资金来源已提交，令牌调整失败只能记录日志；标记 settled 防止 Refund 误退资金
 			common.SysLog(fmt.Sprintf("error adjusting token quota after funding settled (userId=%d, tokenId=%d, delta=%d): %s",
-				s.relayInfo.UserId, s.relayInfo.TokenId, delta, tokenErr.Error()))
+				s.relayInfo.UserId, s.relayInfo.TokenId, tokenDelta, tokenErr.Error()))
 		}
 	}
 	// 4) 更新 relayInfo 上的订阅 PostDelta（用于日志）
 	if s.funding.Source() == BillingSourceSubscription {
-		s.relayInfo.SubscriptionPostDelta += int64(delta)
+		s.relayInfo.SubscriptionPostDelta += int64(fundingDelta)
 	}
 	s.settled = true
 	// API-key token adjustment is best-effort after funding. Callers treat a
@@ -140,14 +145,27 @@ func (s *BillingSession) Refund(c *gin.Context) {
 	tokenConsumed := s.tokenConsumed
 	extraReserved := s.extraReserved
 	subscriptionId := s.relayInfo.SubscriptionId
+	requestId := s.relayInfo.RequestId
 	funding := s.funding
 
 	gopool.Go(func() {
+		// extraReserved 与基础预扣同属本次请求的预留：若预扣记录已被周期重置
+		// 作废（或已退/不存在），基础部分不会退，extra 部分也不能退，否则会
+		// 吃掉新周期的用量。状态查询失败时保持原有行为（尝试退款）。
+		extraRefundable := true
+		if extraReserved > 0 && funding.Source() == BillingSourceSubscription && subscriptionId > 0 {
+			status, statusErr := model.GetSubscriptionPreConsumeStatus(requestId)
+			if statusErr != nil {
+				common.SysLog("error checking subscription pre-consume status before extra refund: " + statusErr.Error())
+			} else {
+				extraRefundable = status == "consumed"
+			}
+		}
 		// 1) 退还资金来源
 		if err := funding.Refund(); err != nil {
 			common.SysLog("error refunding billing source: " + err.Error())
 		}
-		if extraReserved > 0 && funding.Source() == BillingSourceSubscription && subscriptionId > 0 {
+		if extraRefundable && extraReserved > 0 && funding.Source() == BillingSourceSubscription && subscriptionId > 0 {
 			if err := model.PostConsumeUserSubscriptionDelta(subscriptionId, -int64(extraReserved), 0); err != nil {
 				common.SysLog("error refunding subscription extra reserved quota: " + err.Error())
 			}
@@ -250,19 +268,22 @@ func (s *BillingSession) Reserve(targetQuota int) error {
 		return nil
 	}
 
-	if err := s.reserveFunding(delta); err != nil {
+	applied, err := s.reserveFunding(delta)
+	if err != nil {
 		rollbackWeeklyQuota()
 		return err
 	}
 	if err := s.reserveToken(delta); err != nil {
-		s.rollbackFundingReserve(delta)
+		s.rollbackFundingReserve(applied)
 		rollbackWeeklyQuota()
 		return err
 	}
 
-	s.preConsumedQuota += delta
+	// 订阅侧达到上限时只会部分入账，会话必须跟踪实际入账量，
+	// 否则结算会按未入账的差额多退（贷记）。
+	s.preConsumedQuota += applied
 	s.tokenConsumed += delta
-	s.extraReserved += delta
+	s.extraReserved += applied
 	s.syncRelayInfo()
 	return nil
 }
@@ -329,7 +350,9 @@ func (s *BillingSession) preConsume(c *gin.Context, quota int) *types.NewAPIErro
 	return nil
 }
 
-func (s *BillingSession) reserveFunding(delta int) error {
+// reserveFunding 返回实际入账的额度。钱包路径全额入账（允许负余额）；
+// 订阅路径在达到订阅上限时只部分入账，返回封顶后的实际值。
+func (s *BillingSession) reserveFunding(delta int) (int, error) {
 	switch funding := s.funding.(type) {
 	case *WalletFunding:
 		// 与结算补扣（SettleBilling 正差额 → WalletFunding.Settle）语义一致：
@@ -337,13 +360,14 @@ func (s *BillingSession) reserveFunding(delta int) error {
 		// 保证日志记录的预扣额度与用户余额的实际变动始终对账一致。
 		// DecreaseUserQuota 仅在数据库错误时失败。
 		if err := model.DecreaseUserQuota(funding.userId, delta, false); err != nil {
-			return types.NewError(err, types.ErrorCodeUpdateDataError, types.ErrOptionWithSkipRetry())
+			return 0, types.NewError(err, types.ErrorCodeUpdateDataError, types.ErrOptionWithSkipRetry())
 		}
 		funding.consumed += delta
-		return nil
+		return delta, nil
 	case *SubscriptionFunding:
-		if err := model.PostConsumeUserSubscriptionDelta(funding.subscriptionId, int64(delta), 0); err != nil {
-			return types.NewErrorWithStatusCode(
+		applied, err := model.ReserveUserSubscriptionAmount(funding.subscriptionId, int64(delta))
+		if err != nil {
+			return 0, types.NewErrorWithStatusCode(
 				fmt.Errorf("订阅额度不足或未配置订阅: %s", err.Error()),
 				types.ErrorCodeInsufficientUserQuota,
 				http.StatusForbidden,
@@ -351,9 +375,9 @@ func (s *BillingSession) reserveFunding(delta int) error {
 				types.ErrOptionWithNoRecordErrorLog(),
 			)
 		}
-		return nil
+		return int(applied), nil
 	default:
-		return types.NewError(fmt.Errorf("unsupported funding source: %s", s.funding.Source()), types.ErrorCodeUpdateDataError, types.ErrOptionWithSkipRetry())
+		return 0, types.NewError(fmt.Errorf("unsupported funding source: %s", s.funding.Source()), types.ErrorCodeUpdateDataError, types.ErrOptionWithSkipRetry())
 	}
 }
 

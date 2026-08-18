@@ -88,15 +88,16 @@ func calcViolationFeeQuota(amount, groupRatio float64) int {
 	if groupRatio <= 0 {
 		return 0
 	}
-	quota := decimal.NewFromFloat(amount).
+	// Quota conversion is centralized in common/quota_math.go: saturate at the
+	// int32 quota bound instead of a bare IntPart/int cast on unbounded admin
+	// settings.
+	quota := common.QuotaFromDecimal(decimal.NewFromFloat(amount).
 		Mul(decimal.NewFromFloat(common.QuotaPerUnit)).
-		Mul(decimal.NewFromFloat(groupRatio)).
-		Round(0).
-		IntPart()
+		Mul(decimal.NewFromFloat(groupRatio)))
 	if quota <= 0 {
 		return 0
 	}
-	return int(quota)
+	return quota
 }
 
 // ChargeViolationFeeIfNeeded charges an additional fee after the normal flow finishes (including refund).

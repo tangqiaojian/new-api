@@ -1,6 +1,11 @@
 package billingexpr
 
-import "github.com/QuantumNous/new-api/common"
+import (
+	"fmt"
+	"math"
+
+	"github.com/QuantumNous/new-api/common"
+)
 
 // quotaConversion converts raw expression output to quota based on the
 // expression version. This is the central dispatch point for future versions
@@ -25,6 +30,17 @@ func ComputeTieredQuotaWithRequest(snap *BillingSnapshot, params TokenParams, re
 	}
 
 	quotaBeforeGroup := quotaConversion(cost, snap)
+	// The conversion multiply can overflow to +Inf even when cost is finite,
+	// and a negative result (negative coefficients, hostile upstream token
+	// fields) must never become a credit. Both are settlement errors: callers
+	// fall back to the pre-consumed estimate instead of charging 0/MaxInt32.
+	if math.IsNaN(quotaBeforeGroup) || math.IsInf(quotaBeforeGroup, 0) {
+		return TieredResult{}, fmt.Errorf("tiered quota conversion is not finite (cost=%v, quotaPerUnit=%v)", cost, snap.QuotaPerUnit)
+	}
+	if quotaBeforeGroup < 0 {
+		common.SysError(fmt.Sprintf("tiered billing expression produced negative quota %v (cost=%v, expr hash %s)", quotaBeforeGroup, cost, snap.ExprHash))
+		return TieredResult{}, fmt.Errorf("tiered quota conversion produced negative quota: %v", quotaBeforeGroup)
+	}
 	afterGroup, clamp := common.QuotaRoundChecked(quotaBeforeGroup * snap.GroupRatio)
 	crossed := trace.MatchedTier != snap.EstimatedTier
 

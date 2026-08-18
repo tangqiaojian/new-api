@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 )
@@ -55,6 +56,11 @@ func SettleChannelPoolActualUsage(ctx context.Context, channelId int, settlement
 	}
 	desiredTokens := subscriptionTokenQuotaUsage(promptTokens, completionTokens, cacheTokens, pool.IncludeCacheTokens)
 	if _, err := model.SettleChannelPoolUsage(channelId, settlementKey, int64(actualQuota), desiredTokens); err != nil {
+		// The pool may expire between selection and settle; the task path treats
+		// this as a no-op too — user-side settlement is unaffected either way.
+		if errors.Is(err, model.ErrChannelPoolNotFound) {
+			return nil
+		}
 		return fmt.Errorf("settle channel subscription pool usage: %w", err)
 	}
 	return nil
@@ -75,6 +81,10 @@ func SettleUserSubscriptionActualUsage(relayInfo *relaycommon.RelayInfo, promptT
 	}
 	settlementKey := strings.TrimSpace(relayInfo.RequestId)
 	if settlementKey == "" {
+		// 无幂等键的兜底路径：重试会重复计数，仅应出现在测试或异常构造的
+		// RelayInfo 中，记录告警便于发现。
+		logger.LogWarn(context.Background(), fmt.Sprintf("settle user subscription %d token usage without request id (userId=%d, tokens=%d); retries will double-count",
+			relayInfo.SubscriptionId, relayInfo.UserId, desiredTokens))
 		if err := model.PostConsumeUserSubscriptionDelta(relayInfo.SubscriptionId, 0, desiredTokens); err != nil {
 			return fmt.Errorf("settle user subscription token usage: %w", err)
 		}

@@ -281,6 +281,11 @@ func modelPriceHelperTiered(c *gin.Context, info *relaycommon.RelayInfo, promptT
 	if err != nil {
 		return hosttypes.PriceData{}, err
 	}
+	// Freeze the evaluation clock at pre-consume: time-based request rules
+	// (hour/weekday/...) must produce the same multiplier at settlement.
+	if requestInput.NowUnix == 0 {
+		requestInput.NowUnix = common.GetTimestamp()
+	}
 
 	rawCost, trace, err := billingexpr.RunExprWithRequest(exprStr, billingexpr.TokenParams{
 		P:   float64(promptTokens),

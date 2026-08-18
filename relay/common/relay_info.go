@@ -853,6 +853,13 @@ func (info *RelayInfo) HasSendResponse() bool {
 	return info.FirstResponseTime.After(info.StartTime)
 }
 
+// ResetFirstResponseTime 重试时清除上一次尝试记录的首字节时间，
+// 让最终成功的尝试重新计时（否则 consume 日志的 frt 停留在失败尝试上）。
+func (info *RelayInfo) ResetFirstResponseTime() {
+	info.isFirstResponse = true
+	info.FirstResponseTime = info.StartTime.Add(-time.Second)
+}
+
 type TaskRelayInfo struct {
 	Action       string
 	OriginTaskID string

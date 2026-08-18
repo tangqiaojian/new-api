@@ -10,6 +10,10 @@ import (
 type RequestInput struct {
 	Headers map[string]string
 	Body    []byte
+	// NowUnix freezes the evaluation clock for time-based probes (hour,
+	// weekday, ...). Set at pre-consume and reused at settlement so the same
+	// request always evaluates time rules identically. 0 = live clock.
+	NowUnix int64 `json:"now_unix,omitempty"`
 }
 
 // TokenParams holds all token dimensions passed into an Expr evaluation.

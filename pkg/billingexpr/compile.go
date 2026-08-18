@@ -245,30 +245,21 @@ func extractUsedVars(prog *vm.Program) map[string]bool {
 }
 
 // UsedVars returns the set of identifier names referenced by an expression.
-// The result is cached alongside the compiled program. Returns nil for empty input.
+// The result is cached alongside the compiled program. Returns nil for empty
+// input or when the expression fails to compile.
 func UsedVars(exprStr string) map[string]bool {
 	if exprStr == "" {
 		return nil
 	}
-	hash := ExprHashString(exprStr)
-	cacheMu.RLock()
-	if entry, ok := cache[hash]; ok {
-		cacheMu.RUnlock()
-		return entry.usedVars
-	}
-	cacheMu.RUnlock()
-
-	// Compile (and cache) to populate usedVars
-	if _, err := compileFromCacheByHash(exprStr, hash); err != nil {
+	// Use the returned entry directly instead of re-reading the cache: a
+	// concurrent eviction (or InvalidateCache on settings update) can wipe the
+	// map between compile and re-lookup, which previously made UsedVars return
+	// nil and silently disabled sub-category token exclusion at settlement.
+	entry, err := compileEntryFromCacheByHash(exprStr, ExprHashString(exprStr))
+	if err != nil {
 		return nil
 	}
-	cacheMu.RLock()
-	entry, ok := cache[hash]
-	cacheMu.RUnlock()
-	if ok {
-		return entry.usedVars
-	}
-	return nil
+	return entry.usedVars
 }
 
 // InvalidateCache clears the compiled-expression cache.

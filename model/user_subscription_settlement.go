@@ -53,7 +53,11 @@ func SettleUserSubscriptionUsage(userSubscriptionId int, key string, desiredToke
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			settlement = UserSubscriptionSettlement{UserSubscriptionId: userSubscriptionId, SettlementKey: key}
 			if err := tx.Create(&settlement).Error; err != nil {
-				return err
+				// A concurrent settle with the same key committed first; fall
+				// through to the stored row instead of failing the whole settle.
+				if err2 := tx.Where("user_subscription_id = ? AND settlement_key = ?", userSubscriptionId, key).First(&settlement).Error; err2 != nil {
+					return err
+				}
 			}
 		} else if err != nil {
 			return err

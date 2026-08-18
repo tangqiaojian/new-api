@@ -12,6 +12,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/glebarez/sqlite"
 	"github.com/shopspring/decimal"
@@ -931,6 +932,107 @@ func TestRecalculate_Subscription_NegativeDelta(t *testing.T) {
 	log := getLastLog(t)
 	require.NotNil(t, log)
 	assert.Equal(t, model.LogTypeRefund, log.Type)
+}
+
+// ===========================================================================
+// RecalculateTaskQuotaByTokens tests
+// ===========================================================================
+
+// 回归：token 重算必须使用提交时 BillingContext 快照的倍率，而不是结算时刻的
+// 实时配置。任务只持久化 UsingGroup，实时解析 GetGroupGroupRatio(group, group)
+// 永远查不到 (用户组, 使用组) 特殊倍率，且任务运行期间管理员调价会让预扣与
+// 结算按两套价格执行。
+func TestRecalculateByTokens_UsesBillingSnapshot(t *testing.T) {
+	truncate(t)
+	ctx := context.Background()
+
+	const userID, tokenID, channelID = 30, 30, 30
+	const initQuota, preConsumed = 100000, 1000
+	const tokenRemain = 50000
+
+	seedUser(t, userID, initQuota)
+	seedToken(t, tokenID, userID, "sk-recalc-snapshot", tokenRemain)
+	seedChannel(t, channelID)
+	seedChargedAccounting(t, userID, channelID, tokenID, preConsumed, 1)
+
+	// 实时配置与快照刻意不同：若错误地走实时解析，会按 modelRatio=10 结算。
+	require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(`{"test-snapshot-model": 10}`))
+
+	task := makeTask(userID, channelID, preConsumed, tokenID, BillingSourceWallet, 0)
+	task.Properties.OriginModelName = "test-snapshot-model"
+	task.PrivateData.BillingContext = &model.TaskBillingContext{
+		ModelRatio:      2,
+		GroupRatio:      3,
+		OriginModelName: "test-snapshot-model",
+	}
+
+	RecalculateTaskQuotaByTokens(ctx, task, 1000)
+
+	// 快照口径：1000 tokens * 2 * 3 = 6000；delta = +5000
+	const actualQuota = 6000
+	assert.Equal(t, initQuota-(actualQuota-preConsumed), getUserQuota(t, userID))
+	assert.Equal(t, tokenRemain-(actualQuota-preConsumed), getTokenRemainQuota(t, tokenID))
+	assert.Equal(t, actualQuota, task.Quota)
+
+	log := getLastLog(t)
+	require.NotNil(t, log)
+	assert.Equal(t, model.LogTypeConsume, log.Type)
+	assert.Equal(t, actualQuota-preConsumed, log.Quota)
+}
+
+// 提交时为固定价格（快照 ModelRatio=0）的任务不做 token 重算，即使之后管理员
+// 为模型配置了倍率——预扣费按固定价格报给用户，不能在结算时改按倍率计费。
+func TestRecalculateByTokens_SnapshotFixedPriceSkips(t *testing.T) {
+	truncate(t)
+	ctx := context.Background()
+
+	const userID, channelID = 31, 31
+	const initQuota, preConsumed = 100000, 1000
+
+	seedUser(t, userID, initQuota)
+	seedChannel(t, channelID)
+	seedChargedAccounting(t, userID, channelID, 0, preConsumed, 1)
+
+	require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(`{"test-fixed-price-model": 10}`))
+
+	task := makeTask(userID, channelID, preConsumed, 0, BillingSourceWallet, 0)
+	task.PrivateData.BillingContext = &model.TaskBillingContext{
+		ModelPrice:      0.02,
+		GroupRatio:      1,
+		OriginModelName: "test-fixed-price-model",
+	}
+
+	RecalculateTaskQuotaByTokens(ctx, task, 1000)
+
+	assert.Equal(t, initQuota, getUserQuota(t, userID), "固定价格任务不做 token 重算")
+	assert.Equal(t, preConsumed, task.Quota)
+	assert.Equal(t, int64(0), countLogs(t))
+}
+
+// 无 BillingContext 快照的旧任务保持历史行为：退回实时配置解析。
+func TestRecalculateByTokens_LegacyLiveRatioFallback(t *testing.T) {
+	truncate(t)
+	ctx := context.Background()
+
+	const userID, channelID = 32, 32
+	const initQuota, preConsumed = 100000, 1000
+
+	seedUser(t, userID, initQuota)
+	seedChannel(t, channelID)
+	seedChargedAccounting(t, userID, channelID, 0, preConsumed, 1)
+
+	require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(`{"test-legacy-model": 2}`))
+
+	task := makeTask(userID, channelID, preConsumed, 0, BillingSourceWallet, 0)
+	task.Properties.OriginModelName = "test-legacy-model"
+	task.PrivateData.BillingContext = nil
+
+	RecalculateTaskQuotaByTokens(ctx, task, 1000)
+
+	// 实时口径：1000 * 2 * GetGroupRatio("default")=1 = 2000；delta = +1000
+	const actualQuota = 2000
+	assert.Equal(t, initQuota-(actualQuota-preConsumed), getUserQuota(t, userID))
+	assert.Equal(t, actualQuota, task.Quota)
 }
 
 // ===========================================================================

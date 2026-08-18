@@ -65,10 +65,12 @@ func calculateAudioQuota(info QuotaInfo) (int, *common.QuotaClamp) {
 	modelRatio := decimal.NewFromFloat(info.ModelRatio)
 	ratio := groupRatio.Mul(modelRatio)
 
-	inputTextTokens := decimal.NewFromInt(int64(info.InputDetails.TextTokens))
-	outputTextTokens := decimal.NewFromInt(int64(info.OutputDetails.TextTokens))
-	inputAudioTokens := decimal.NewFromInt(int64(info.InputDetails.AudioTokens))
-	outputAudioTokens := decimal.NewFromInt(int64(info.OutputDetails.AudioTokens))
+	// Upstream token fields are untrusted: a negative count must never reduce
+	// the charge below what the remaining dimensions cost.
+	inputTextTokens := decimal.NewFromInt(int64(max(info.InputDetails.TextTokens, 0)))
+	outputTextTokens := decimal.NewFromInt(int64(max(info.OutputDetails.TextTokens, 0)))
+	inputAudioTokens := decimal.NewFromInt(int64(max(info.InputDetails.AudioTokens, 0)))
+	outputAudioTokens := decimal.NewFromInt(int64(max(info.OutputDetails.AudioTokens, 0)))
 
 	quota := decimal.Zero
 	quota = quota.Add(inputTextTokens)
@@ -87,17 +89,9 @@ func calculateAudioQuota(info QuotaInfo) (int, *common.QuotaClamp) {
 }
 
 func PreWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usage *dto.RealtimeUsage) error {
-	if relayInfo.UsePrice {
+	// NOTE: relayInfo.UsePrice is never assigned; the live flag is PriceData.
+	if relayInfo.PriceData.UsePrice {
 		return nil
-	}
-	userQuota, err := model.GetUserQuota(relayInfo.UserId, false)
-	if err != nil {
-		return err
-	}
-
-	token, err := model.GetTokenByKey(strings.TrimPrefix(relayInfo.TokenKey, "sk-"), false)
-	if err != nil {
-		return err
 	}
 
 	modelName := relayInfo.OriginModelName
@@ -131,13 +125,32 @@ func PreWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usag
 			AudioTokens: audioOutTokens,
 		},
 		ModelName:  modelName,
-		UsePrice:   relayInfo.UsePrice,
 		ModelRatio: modelRatio,
 		GroupRatio: actualGroupRatio,
 	}
 
 	quota, clamp := calculateAudioQuota(quotaInfo)
 	noteQuotaClamp(relayInfo, clamp)
+
+	// Mid-session charges must go through the billing session when one exists
+	// (the normal relay path always creates one): a direct PostConsumeQuota
+	// here is invisible to the final PostWssConsumeQuota settle, which then
+	// charges the full session usage again — a double charge. Reserving makes
+	// the final settle reconcile to exactly the actual usage, and session
+	// Refund covers the increments on failure.
+	if relayInfo.Billing != nil {
+		return relayInfo.Billing.Reserve(relayInfo.Billing.GetPreConsumedQuota() + quota)
+	}
+
+	userQuota, err := model.GetUserQuota(relayInfo.UserId, false)
+	if err != nil {
+		return err
+	}
+
+	token, err := model.GetTokenByKey(strings.TrimPrefix(relayInfo.TokenKey, "sk-"), false)
+	if err != nil {
+		return err
+	}
 
 	if userQuota < quota {
 		return fmt.Errorf("user quota is not enough, user quota: %s, need quota: %s", logger.FormatQuota(userQuota), logger.FormatQuota(quota))
@@ -155,15 +168,71 @@ func PreWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usag
 	return nil
 }
 
+// buildRealtimeTieredTokenParams maps realtime (OpenAI-shaped) usage onto
+// tiered expression parameters with the same opt-in sub-category exclusion
+// and non-negative clamps as BuildTieredTokenParams: cache/audio tokens stay
+// in p/c unless the expression prices them via cr/ai/ao.
+func buildRealtimeTieredTokenParams(usage *dto.RealtimeUsage, usedVars map[string]bool) billingexpr.TokenParams {
+	p := float64(usage.InputTokens)
+	c := float64(usage.OutputTokens)
+	cr := float64(usage.InputTokenDetails.CachedTokens)
+	ai := float64(usage.InputTokenDetails.AudioTokens)
+	ao := float64(usage.OutputTokenDetails.AudioTokens)
+
+	// Upstream token fields are untrusted; clamp negatives before they reach
+	// the expression.
+	if p < 0 {
+		p = 0
+	}
+	if c < 0 {
+		c = 0
+	}
+	if cr < 0 {
+		cr = 0
+	}
+	if ai < 0 {
+		ai = 0
+	}
+	if ao < 0 {
+		ao = 0
+	}
+
+	inputLen := p
+	if usedVars["cr"] {
+		p -= cr
+	}
+	if usedVars["ai"] {
+		p -= ai
+	}
+	if usedVars["ao"] {
+		c -= ao
+	}
+	if p < 0 {
+		p = 0
+	}
+	if c < 0 {
+		c = 0
+	}
+
+	return billingexpr.TokenParams{
+		P:   p,
+		C:   c,
+		Len: inputLen,
+		CR:  cr,
+		AI:  ai,
+		AO:  ao,
+	}
+}
+
 func PostWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, modelName string,
 	usage *dto.RealtimeUsage, extraContent string) {
 
+	var tieredUsedVars map[string]bool
+	if snap := relayInfo.TieredBillingSnapshot; snap != nil {
+		tieredUsedVars = billingexpr.UsedVars(snap.ExprString)
+	}
 	var tieredResult *billingexpr.TieredResult
-	tieredOk, tieredQuota, tieredRes := TryTieredSettle(relayInfo, billingexpr.TokenParams{
-		P:   float64(usage.InputTokens),
-		C:   float64(usage.OutputTokens),
-		Len: float64(usage.InputTokens),
-	})
+	tieredOk, tieredQuota, tieredRes := TryTieredSettle(relayInfo, buildRealtimeTieredTokenParams(usage, tieredUsedVars))
 	if tieredOk {
 		tieredResult = tieredRes
 	}
@@ -286,11 +355,26 @@ func CalcOpenRouterCacheCreateTokens(usage dto.Usage, priceData types.PriceData)
 	completionTokens := float64(usage.CompletionTokens)
 	promptCacheReadTokens := float64(usage.PromptTokensDetails.CachedTokens)
 
-	return int(math.Round((cost -
+	denominator := promptCacheCreatePrice - quotaPrice
+	if !(denominator > 0) {
+		// Cache creation not priced above the base rate (or NaN): the
+		// inference equation has no usable solution.
+		return -1
+	}
+	inferred := (cost -
 		totalPromptTokens*quotaPrice +
 		promptCacheReadTokens*(quotaPrice-promptCacheReadPrice) -
 		completionTokens*completionPrice) /
-		(promptCacheCreatePrice - quotaPrice)))
+		denominator
+	// usage.Cost is upstream-controlled: a huge or non-finite cost, or a ratio
+	// epsilon above 1, produces an absurd quotient. Bound the inference to a
+	// plausible token count before converting to int — bare casts on unbounded
+	// floats are forbidden (see common/quota_math.go). -1 tells the caller to
+	// keep the existing (zero) cache-creation count.
+	if math.IsNaN(inferred) || math.IsInf(inferred, 0) || inferred < 0 || inferred > totalPromptTokens {
+		return -1
+	}
+	return common.QuotaRound(inferred)
 }
 
 func PostAudioConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usage *dto.Usage, extraContent string) {

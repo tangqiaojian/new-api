@@ -216,23 +216,10 @@ func updateSunoTasks(ctx context.Context, channelId int, taskIds []string, taskM
 	}
 	ch, err := model.CacheGetChannel(channelId)
 	if err != nil {
-		common.SysLog(fmt.Sprintf("CacheGetChannel: %v", err))
-		// Collect DB primary key IDs for bulk update (taskIds are upstream IDs, not task_id column values)
-		var failedIDs []int64
-		for _, upstreamID := range taskIds {
-			if t, ok := taskM[upstreamID]; ok {
-				failedIDs = append(failedIDs, t.ID)
-			}
-		}
-		err = model.TaskBulkUpdateByID(failedIDs, map[string]any{
-			"fail_reason": fmt.Sprintf("获取渠道信息失败，请联系管理员，渠道ID：%d", channelId),
-			"status":      "FAILURE",
-			"progress":    "100%",
-		})
-		if err != nil {
-			common.SysLog(fmt.Sprintf("UpdateSunoTask error: %v", err))
-		}
-		return err
+		// 渠道信息暂时不可用（缓存/DB 抖动或渠道被删除）：保持任务现状等待下
+		// 一轮轮询，不能在这里直接判负——判负不退款会让用户被扣费却拿不到结
+		// 果。渠道长期不可用时由超时清扫（CAS + 退款）统一收尾。
+		return fmt.Errorf("CacheGetChannel failed for channel %d: %w", channelId, err)
 	}
 	adaptor := GetTaskAdaptorFunc(constant.TaskPlatformSuno)
 	if adaptor == nil {
@@ -305,6 +292,10 @@ func updateSunoTasks(ctx context.Context, channelId int, taskIds []string, taskM
 			logger.LogWarn(ctx, fmt.Sprintf("Task %s CAS lost or no-op update, skip billing", task.TaskID))
 		} else if isFailure && prevStatus != model.TaskStatusFailure && task.Quota != 0 {
 			RefundTaskQuota(ctx, task, task.FailReason)
+		} else if task.Status == model.TaskStatusSuccess && prevStatus != model.TaskStatusSuccess {
+			// Suno 为按次计费，成功终态无差额结算，但仍需把渠道池与用户订阅
+			// token 用量落账（task:<id> 结算键），否则池/订阅统计漏计。
+			settleTaskActualUsage(ctx, task, task.Quota, 0)
 		}
 	}
 	return nil
@@ -389,22 +380,10 @@ func updateVideoTasks(ctx context.Context, platform constant.TaskPlatform, chann
 	}
 	cacheGetChannel, err := model.CacheGetChannel(channelId)
 	if err != nil {
-		// Collect DB primary key IDs for bulk update (taskIds are upstream IDs, not task_id column values)
-		var failedIDs []int64
-		for _, upstreamID := range taskIds {
-			if t, ok := taskM[upstreamID]; ok {
-				failedIDs = append(failedIDs, t.ID)
-			}
-		}
-		errUpdate := model.TaskBulkUpdateByID(failedIDs, map[string]any{
-			"fail_reason": fmt.Sprintf("Failed to get channel info, channel ID: %d", channelId),
-			"status":      "FAILURE",
-			"progress":    "100%",
-		})
-		if errUpdate != nil {
-			common.SysLog(fmt.Sprintf("UpdateVideoTask error: %v", errUpdate))
-		}
-		return fmt.Errorf("CacheGetChannel failed: %w", err)
+		// 渠道信息暂时不可用（缓存/DB 抖动或渠道被删除）：保持任务现状等待下
+		// 一轮轮询，不能在这里直接判负——判负不退款会让用户被扣费却拿不到结
+		// 果。渠道长期不可用时由超时清扫（CAS + 退款）统一收尾。
+		return fmt.Errorf("CacheGetChannel failed for channel %d: %w", channelId, err)
 	}
 	adaptor := GetTaskAdaptorFunc(platform)
 	if adaptor == nil {
@@ -633,6 +612,31 @@ func truncateBase64(s string) string {
 		return s
 	}
 	return s[:maxKeep] + "..."
+}
+
+// SettleTerminalTaskBilling 用户主动 fetch（Gemini/Vertex 实时查询）把任务推进到
+// 终态时的计费收尾：成功按完成路径结算，失败退款。必须在调用方 CAS 获胜后调用——
+// 终态任务从此退出轮询队列，错过这次收尾费用就永远挂账。
+func SettleTerminalTaskBilling(ctx context.Context, task *model.Task, taskResult *relaycommon.TaskInfo) {
+	switch task.Status {
+	case model.TaskStatusFailure:
+		if task.Quota != 0 {
+			RefundTaskQuota(ctx, task, task.FailReason)
+		}
+	case model.TaskStatusSuccess:
+		if GetTaskAdaptorFunc != nil {
+			if adaptor := GetTaskAdaptorFunc(task.Platform); adaptor != nil {
+				settleTaskBillingOnComplete(ctx, adaptor, task, taskResult)
+				return
+			}
+		}
+		// 无 adaptor 时退化为按预扣额度落账
+		tokens := int64(0)
+		if taskResult != nil {
+			tokens = int64(taskResult.TotalTokens)
+		}
+		settleTaskActualUsage(ctx, task, task.Quota, tokens)
+	}
 }
 
 // settleTaskBillingOnComplete 任务完成时的统一计费调整。

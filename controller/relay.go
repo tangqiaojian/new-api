@@ -214,6 +214,10 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 
 	for ; retryParam.GetRetry() <= common.RetryTimes; retryParam.IncreaseRetry() {
 		relayInfo.RetryIndex = retryParam.GetRetry()
+		if retryParam.GetRetry() > 0 {
+			// 新一轮尝试重新计首字节时间，避免沿用失败尝试的时间戳
+			relayInfo.ResetFirstResponseTime()
+		}
 		channel, channelErr := getChannel(c, relayInfo, retryParam)
 		if channelErr != nil {
 			logger.LogError(c, channelErr.Error())
@@ -600,8 +604,17 @@ func RelayTask(c *gin.Context) {
 
 	// ── 成功：结算 + 日志 + 插入任务 ──
 	if taskErr == nil {
+		settledQuota := result.Quota
 		if settleErr := service.SettleBilling(c, relayInfo, result.Quota); settleErr != nil {
+			// 结算失败 = 差额未入账（session 路径仅预扣生效，旧路径仅
+			// FinalPreConsumedQuota 生效）。task.Quota 必须反映实际扣到的金额，
+			// 否则任务失败退款会退超（贷记），token 重算会以虚高基数少扣。
 			common.SysError("settle task billing error: " + settleErr.Error())
+			if relayInfo.Billing != nil {
+				settledQuota = relayInfo.Billing.GetPreConsumedQuota()
+			} else {
+				settledQuota = relayInfo.FinalPreConsumedQuota
+			}
 		}
 		service.LogTaskConsumption(c, relayInfo)
 
@@ -626,11 +639,14 @@ func RelayTask(c *gin.Context) {
 			OriginModelName: relayInfo.OriginModelName,
 			PerCallBilling:  common.StringsContains(constant.TaskPricePatches, relayInfo.OriginModelName) || relayInfo.PriceData.UsePrice,
 		}
-		task.Quota = result.Quota
+		task.Quota = settledQuota
 		task.Data = result.TaskData
 		task.Action = relayInfo.Action
 		if insertErr := task.Insert(); insertErr != nil {
+			// 响应已下发、结算已完成但任务落库失败：用户持有 task_id 却永远查
+			// 不到记录，轮询也不会接管。必须立即退回已结算额度，避免资金孤儿。
 			common.SysError("insert task error: " + insertErr.Error())
+			service.RefundTaskQuota(c, task, "task insert failed, refunding settled quota")
 		}
 	}
 

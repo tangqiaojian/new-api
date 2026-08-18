@@ -2,7 +2,9 @@ package billing_setting
 
 import (
 	"fmt"
+	"strings"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	"github.com/QuantumNous/new-api/setting/config"
 	"github.com/samber/lo"
@@ -72,6 +74,27 @@ func GetPricingSyncData(base map[string]any) map[string]any {
 
 func SmokeTestExpr(exprStr string) error {
 	return smokeTestExpr(exprStr)
+}
+
+// ValidateBillingExprMapJSON validates a JSON-encoded map[model]expression
+// before it is stored (expr.md: expressions are compiled and smoke-tested on
+// save). Every non-empty expression must compile and produce non-negative,
+// finite results on the smoke vectors — a bad expression must fail the save,
+// not surface later as a settlement error for end users.
+func ValidateBillingExprMapJSON(value string) error {
+	var exprs map[string]string
+	if err := common.UnmarshalJsonStr(value, &exprs); err != nil {
+		return fmt.Errorf("billing expr must be a JSON object of model -> expression: %w", err)
+	}
+	for model, exprStr := range exprs {
+		if strings.TrimSpace(exprStr) == "" {
+			continue
+		}
+		if err := smokeTestExpr(exprStr); err != nil {
+			return fmt.Errorf("model %s: %w", model, err)
+		}
+	}
+	return nil
 }
 
 func smokeTestExpr(exprStr string) error {
