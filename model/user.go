@@ -544,9 +544,11 @@ func HardDeleteUserById(id int) error {
 	return user.HardDelete()
 }
 
-// BatchHardDeleteUsers hard-deletes a batch of users along with their OAuth
-// bindings. Callers are responsible for authorization (role/self checks);
-// each chunk is bounded to keep MySQL/SQLite IN-list sizes reasonable.
+// BatchHardDeleteUsers hard-deletes a batch of users along with their
+// authentication data, expiring their active subscriptions (rows kept for
+// billing audit) and purging subscription pre-consume records. Callers are
+// responsible for authorization (role/self checks); each chunk is bounded to
+// keep MySQL/SQLite IN-list sizes reasonable.
 func BatchHardDeleteUsers(ids []int) error {
 	if len(ids) == 0 {
 		return nil
@@ -560,6 +562,17 @@ func BatchHardDeleteUsers(ids []int) error {
 			}
 		}
 		for _, chunk := range lo.Chunk(ids, 200) {
+			// 先订婚后用户行：锁顺序与 ExpireDueSubscriptions（订婚后用户）保持一致，
+			// 避免与到期任务形成 AB-BA 死锁。订阅行保留作计费审计，仅把活跃订阅
+			// 标记 expired；预扣记录随用户删除清理（用户已无法再发起请求）。
+			if err := tx.Model(&UserSubscription{}).
+				Where("user_id IN ? AND status = ?", chunk, "active").
+				Updates(map[string]interface{}{"status": "expired", "updated_at": common.GetTimestamp()}).Error; err != nil {
+				return err
+			}
+			if err := tx.Where("user_id IN ?", chunk).Delete(&SubscriptionPreConsumeRecord{}).Error; err != nil {
+				return err
+			}
 			for _, id := range chunk {
 				v, err := IncrementUserAuthVersionWithTx(tx, id)
 				if err != nil {
@@ -1007,6 +1020,17 @@ func (user *User) HardDelete() error {
 	var tokens []Token
 	var deletedAuthVersion int64
 	err := DB.Transaction(func(tx *gorm.DB) error {
+		// 先订婚后用户行：锁顺序与 ExpireDueSubscriptions（订婚后用户）保持一致，
+		// 避免与到期任务形成 AB-BA 死锁。订阅行保留作计费审计，仅把活跃订阅
+		// 标记 expired；预扣记录随用户删除清理（用户已无法再发起请求）。
+		if err := tx.Model(&UserSubscription{}).
+			Where("user_id = ? AND status = ?", user.Id, "active").
+			Updates(map[string]interface{}{"status": "expired", "updated_at": common.GetTimestamp()}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("user_id = ?", user.Id).Delete(&SubscriptionPreConsumeRecord{}).Error; err != nil {
+			return err
+		}
 		var err error
 		deletedAuthVersion, err = IncrementUserAuthVersionWithTx(tx, user.Id)
 		if err != nil {

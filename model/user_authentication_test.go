@@ -129,6 +129,66 @@ func TestHardDeleteUserPublishesTombstoneAndPurgesAuthenticationData(t *testing.
 	assert.False(t, server.Exists(getUserCacheKey(user.Id)))
 }
 
+func TestHardDeleteUserExpiresSubscriptionsAndPurgesPreConsume(t *testing.T) {
+	truncateTables(t)
+	useUserCacheMiniRedis(t)
+
+	user := User{Username: "hard-delete-subscription", Password: "password", AuthVersion: 1}
+	require.NoError(t, DB.Create(&user).Error)
+	end := time.Now().Add(time.Hour).Unix()
+	active := UserSubscription{UserId: user.Id, PlanId: 1, AmountTotal: 100, AmountUsed: 30, TokensTotal: 100, TokensUsed: 40, Status: "active", StartTime: time.Now().Unix() - 60, EndTime: end}
+	require.NoError(t, DB.Create(&active).Error)
+	cancelled := UserSubscription{UserId: user.Id, PlanId: 1, Status: "cancelled", StartTime: time.Now().Unix() - 60, EndTime: end}
+	require.NoError(t, DB.Create(&cancelled).Error)
+	storedExpired := UserSubscription{UserId: user.Id, PlanId: 1, AmountUsed: 50, Status: "expired", StartTime: time.Now().Unix() - 120, EndTime: time.Now().Unix() - 60}
+	require.NoError(t, DB.Create(&storedExpired).Error)
+	require.NoError(t, DB.Create(&SubscriptionPreConsumeRecord{
+		RequestId: "hard-delete-preconsume", UserId: user.Id, UserSubscriptionId: active.Id, PreConsumed: 10, Status: "consumed",
+	}).Error)
+
+	require.NoError(t, HardDeleteUserById(user.Id))
+
+	// 订阅行保留作审计，活跃订阅必须被标记 expired，用量与 end_time 不变。
+	var got UserSubscription
+	require.NoError(t, DB.First(&got, active.Id).Error)
+	assert.Equal(t, "expired", got.Status)
+	assert.EqualValues(t, end, got.EndTime)
+	assert.EqualValues(t, 30, got.AmountUsed)
+	assert.EqualValues(t, 40, got.TokensUsed)
+	got = UserSubscription{}
+	require.NoError(t, DB.First(&got, cancelled.Id).Error)
+	assert.Equal(t, "cancelled", got.Status, "non-active subscriptions must stay untouched")
+	got = UserSubscription{}
+	require.NoError(t, DB.First(&got, storedExpired.Id).Error)
+	assert.Equal(t, "expired", got.Status)
+	assert.EqualValues(t, 50, got.AmountUsed, "already-expired rows must keep their usage")
+	var preConsumeCount int64
+	require.NoError(t, DB.Model(&SubscriptionPreConsumeRecord{}).Where("user_id = ?", user.Id).Count(&preConsumeCount).Error)
+	assert.Zero(t, preConsumeCount)
+}
+
+func TestBatchHardDeleteUsersExpiresSubscriptionsAndPurgesPreConsume(t *testing.T) {
+	truncateTables(t)
+	useUserCacheMiniRedis(t)
+
+	user := User{Username: "batch-hard-delete-subscription", Password: "password", AuthVersion: 1}
+	require.NoError(t, DB.Create(&user).Error)
+	sub := UserSubscription{UserId: user.Id, PlanId: 1, Status: "active", StartTime: time.Now().Unix() - 60, EndTime: time.Now().Add(time.Hour).Unix()}
+	require.NoError(t, DB.Create(&sub).Error)
+	require.NoError(t, DB.Create(&SubscriptionPreConsumeRecord{
+		RequestId: "batch-hard-delete-preconsume", UserId: user.Id, UserSubscriptionId: sub.Id, PreConsumed: 5, Status: "consumed",
+	}).Error)
+
+	require.NoError(t, BatchHardDeleteUsers([]int{user.Id}))
+
+	var got UserSubscription
+	require.NoError(t, DB.First(&got, sub.Id).Error)
+	assert.Equal(t, "expired", got.Status)
+	var preConsumeCount int64
+	require.NoError(t, DB.Model(&SubscriptionPreConsumeRecord{}).Where("user_id = ?", user.Id).Count(&preConsumeCount).Error)
+	assert.Zero(t, preConsumeCount)
+}
+
 func TestIncrementFailedAttemptsCountsConcurrentFailures(t *testing.T) {
 	truncateTables(t)
 

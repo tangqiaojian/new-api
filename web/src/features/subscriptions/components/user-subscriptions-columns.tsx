@@ -62,9 +62,17 @@ export function useUserSubscriptionsColumns({
         accessorKey: 'username',
         id: 'username',
         header: t('Username'),
-        cell: ({ row }) => (
-          <span className='font-medium'>{row.original.username}</span>
-        ),
+        cell: ({ row }) => {
+          const { username, user_id } = row.original
+          if (!username) {
+            return (
+              <span className='text-muted-foreground font-medium'>
+                {t('Deleted user (#{{id}})', { id: user_id })}
+              </span>
+            )
+          }
+          return <span className='font-medium'>{username}</span>
+        },
         size: 140,
       },
       {
@@ -257,26 +265,32 @@ export function useUserSubscriptionsColumns({
       {
         id: 'actions',
         header: () => t('Actions'),
-        cell: ({ row }) => (
-          <div className='flex items-center gap-1.5'>
-            <Button
-              variant='outline'
-              size='xs'
-              onClick={() => onAddQuota(row.original)}
-            >
-              <Plus className='size-3.5' />
-              {t('Add Quota')}
-            </Button>
-            <Button
-              variant='outline'
-              size='xs'
-              onClick={() => onReset(row.original)}
-            >
-              <RotateCcw className='size-3.5' />
-              {t('Reset Usage')}
-            </Button>
-          </div>
-        ),
+        cell: ({ row }) => {
+          // 已删除用户的订阅仅保留审计，不再提供加额度/重置操作。
+          if (!row.original.username) {
+            return null
+          }
+          return (
+            <div className='flex items-center gap-1.5'>
+              <Button
+                variant='outline'
+                size='xs'
+                onClick={() => onAddQuota(row.original)}
+              >
+                <Plus className='size-3.5' />
+                {t('Add Quota')}
+              </Button>
+              <Button
+                variant='outline'
+                size='xs'
+                onClick={() => onReset(row.original)}
+              >
+                <RotateCcw className='size-3.5' />
+                {t('Reset Usage')}
+              </Button>
+            </div>
+          )
+        },
         meta: { pinned: 'right' as const },
         size: 180,
       },

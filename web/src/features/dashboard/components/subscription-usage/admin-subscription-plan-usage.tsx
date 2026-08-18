@@ -444,7 +444,8 @@ export function AdminSubscriptionPlanUsage() {
                 {items.map((row) => (
                   <TableRow key={row.id}>
                     <TableCell className='font-medium whitespace-nowrap'>
-                      {row.username || `#${row.user_id}`}
+                      {row.username ||
+                        t('Deleted user (#{{id}})', { id: row.user_id })}
                     </TableCell>
                     <TableCell className='text-muted-foreground max-w-[180px] truncate'>
                       {row.plan_title ||
