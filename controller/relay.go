@@ -611,6 +611,10 @@ func RelayTask(c *gin.Context) {
 		task.PrivateData.SubscriptionId = relayInfo.SubscriptionId
 		task.PrivateData.TokenId = relayInfo.TokenId
 		task.PrivateData.NodeName = common.NodeName
+		if relayInfo.BillingSource == service.BillingSourceSubscription {
+			includeCache := relayInfo.SubscriptionIncludeCacheTokens
+			task.PrivateData.IncludeCacheTokens = &includeCache
+		}
 		if billingSession, ok := relayInfo.Billing.(*service.BillingSession); ok {
 			task.PrivateData.WeeklyQuotaReservation = billingSession.WeeklyQuotaReservation()
 		}

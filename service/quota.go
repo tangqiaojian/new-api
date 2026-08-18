@@ -228,13 +228,17 @@ func PostWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, mod
 		model.UpdateChannelUsedQuota(relayInfo.ChannelId, quota)
 	}
 
+	wssCacheTokens := 0
+	if usage != nil {
+		wssCacheTokens = usage.InputTokenDetails.CachedTokens
+	}
 	if err := SettleBilling(ctx, relayInfo, quota); err != nil {
 		logger.LogError(ctx, "error settling billing: "+err.Error())
 	} else {
-		if err := SettleUserSubscriptionActualUsage(relayInfo, usage.InputTokens, usage.OutputTokens, 0); err != nil {
+		if err := SettleUserSubscriptionActualUsage(relayInfo, usage.InputTokens, usage.OutputTokens, wssCacheTokens); err != nil {
 			logger.LogError(ctx, fmt.Sprintf("error settling user subscription token usage (subscription=%d, request=%s): %s", relayInfo.SubscriptionId, relayInfo.RequestId, err.Error()))
 		}
-		if err := SettleChannelPoolActualUsage(ctx, relayInfo.ChannelId, relayInfo.RequestId, quota, usage.InputTokens, usage.OutputTokens, 0); err != nil {
+		if err := SettleChannelPoolActualUsage(ctx, relayInfo.ChannelId, relayInfo.RequestId, quota, usage.InputTokens, usage.OutputTokens, wssCacheTokens); err != nil {
 			logger.LogError(ctx, fmt.Sprintf("error settling channel pool usage (channel=%d, request=%s): %s", relayInfo.ChannelId, relayInfo.RequestId, err.Error()))
 		}
 	}
@@ -429,7 +433,14 @@ type postConsumeQuotaResult struct {
 }
 
 func PostConsumeQuota(relayInfo *relaycommon.RelayInfo, quota int, preConsumedQuota int, sendEmail bool) error {
-	_, err := postConsumeQuotaWithResult(relayInfo, quota, preConsumedQuota, sendEmail)
+	result, err := postConsumeQuotaWithResult(relayInfo, quota, preConsumedQuota, sendEmail)
+	if result.FundingApplied {
+		if err != nil {
+			common.SysLog(fmt.Sprintf("error adjusting token quota after funding applied (userId=%d, tokenId=%d): %s",
+				relayInfo.UserId, relayInfo.TokenId, err.Error()))
+		}
+		return nil
+	}
 	return err
 }
 

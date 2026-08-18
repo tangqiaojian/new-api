@@ -8,6 +8,7 @@ import (
 
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -189,4 +190,121 @@ func TestSettleTaskChannelPoolUsageIsCumulativeAndRefundable(t *testing.T) {
 	var settlements int64
 	require.NoError(t, model.DB.Model(&model.ChannelPoolSettlement{}).Where("settlement_key = ?", "task:"+task.TaskID).Count(&settlements).Error)
 	assert.EqualValues(t, 1, settlements)
+}
+
+func seedUserSubscriptionForUsage(t *testing.T, userID int, includeCache bool) *model.UserSubscription {
+	t.Helper()
+	sub := &model.UserSubscription{
+		UserId:             userID,
+		AmountTotal:        10000,
+		TokensTotal:        10000,
+		IncludeCacheTokens: includeCache,
+		Status:             "active",
+		StartTime:          time.Now().Unix() - 60,
+		EndTime:            time.Now().Add(time.Hour).Unix(),
+	}
+	require.NoError(t, model.DB.Create(sub).Error)
+	return sub
+}
+
+func TestSettleTaskUserSubscriptionUsageIsIdempotentByTaskKey(t *testing.T) {
+	truncate(t)
+	const userID = 9301
+	seedUser(t, userID, 10000)
+	sub := seedUserSubscriptionForUsage(t, userID, false)
+	task := makeTask(userID, 1, 60, 0, BillingSourceSubscription, sub.Id)
+	task.TaskID = "task_user_sub_idempotent"
+
+	require.NoError(t, SettleTaskUserSubscriptionUsage(context.Background(), task, 321))
+	require.NoError(t, SettleTaskUserSubscriptionUsage(context.Background(), task, 321))
+	var got model.UserSubscription
+	require.NoError(t, model.DB.First(&got, sub.Id).Error)
+	assert.EqualValues(t, 321, got.TokensUsed)
+
+	require.NoError(t, SettleTaskUserSubscriptionUsage(context.Background(), task, 0))
+	require.NoError(t, SettleTaskUserSubscriptionUsage(context.Background(), task, 0))
+	require.NoError(t, model.DB.First(&got, sub.Id).Error)
+	assert.Zero(t, got.TokensUsed)
+
+	var rows int64
+	require.NoError(t, model.DB.Model(&model.UserSubscriptionSettlement{}).Where("settlement_key = ?", "task:"+task.TaskID).Count(&rows).Error)
+	assert.EqualValues(t, 1, rows)
+}
+
+func TestTaskCompletionSettlesUserSubscriptionTokensIdempotently(t *testing.T) {
+	truncate(t)
+	const userID = 9302
+	channelID := 8260
+	seedUser(t, userID, 10000)
+	seedChannel(t, channelID)
+	sub := seedUserSubscriptionForUsage(t, userID, false)
+	task := makeTask(userID, channelID, 60, 0, BillingSourceSubscription, sub.Id)
+	task.TaskID = "task_user_sub_complete"
+
+	settleTaskBillingOnComplete(context.Background(), fixedTaskBillingAdaptor{actualQuota: 90}, task, &relaycommon.TaskInfo{TotalTokens: 321})
+	settleTaskBillingOnComplete(context.Background(), fixedTaskBillingAdaptor{actualQuota: 90}, task, &relaycommon.TaskInfo{TotalTokens: 321})
+
+	var got model.UserSubscription
+	require.NoError(t, model.DB.First(&got, sub.Id).Error)
+	assert.EqualValues(t, 321, got.TokensUsed)
+}
+
+func TestSettleUserSubscriptionActualUsageIsIdempotentByRequestId(t *testing.T) {
+	truncate(t)
+	const userID = 9303
+	seedUser(t, userID, 10000)
+	sub := seedUserSubscriptionForUsage(t, userID, false)
+	info := &relaycommon.RelayInfo{
+		BillingSource:                  BillingSourceSubscription,
+		SubscriptionId:                 sub.Id,
+		SubscriptionIncludeCacheTokens: false,
+		RequestId:                      "req-user-sub-idempotent",
+	}
+
+	require.NoError(t, SettleUserSubscriptionActualUsage(info, 100, 50, 40))
+	require.NoError(t, SettleUserSubscriptionActualUsage(info, 100, 50, 40))
+
+	var got model.UserSubscription
+	require.NoError(t, model.DB.First(&got, sub.Id).Error)
+	assert.EqualValues(t, 150, got.TokensUsed)
+	assert.Zero(t, got.AmountUsed)
+
+	var rows int64
+	require.NoError(t, model.DB.Model(&model.UserSubscriptionSettlement{}).Where("settlement_key = ?", info.RequestId).Count(&rows).Error)
+	assert.EqualValues(t, 1, rows)
+}
+
+func TestSettleUserSubscriptionActualUsageWssCacheFollowsIncludeCacheTokens(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		includeCache bool
+		wantTokens   int64
+	}{
+		{name: "exclude cache", includeCache: false, wantTokens: 150},
+		{name: "include cache", includeCache: true, wantTokens: 190},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			truncate(t)
+			const userID = 9304
+			seedUser(t, userID, 10000)
+			sub := seedUserSubscriptionForUsage(t, userID, tc.includeCache)
+			usage := &dto.RealtimeUsage{
+				InputTokens:       100,
+				OutputTokens:      50,
+				InputTokenDetails: dto.InputTokenDetails{CachedTokens: 40},
+			}
+			info := &relaycommon.RelayInfo{
+				BillingSource:                  BillingSourceSubscription,
+				SubscriptionId:                 sub.Id,
+				SubscriptionIncludeCacheTokens: tc.includeCache,
+				RequestId:                      "req-wss-cache-" + tc.name,
+			}
+
+			require.NoError(t, SettleUserSubscriptionActualUsage(info, usage.InputTokens, usage.OutputTokens, usage.InputTokenDetails.CachedTokens))
+
+			var got model.UserSubscription
+			require.NoError(t, model.DB.First(&got, sub.Id).Error)
+			assert.Equal(t, tc.wantTokens, got.TokensUsed)
+		})
+	}
 }

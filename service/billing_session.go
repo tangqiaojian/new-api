@@ -67,18 +67,22 @@ func (s *BillingSession) Settle(actualQuota int) error {
 			false,
 		)
 		if err != nil {
-			return err
+			// Funding is already applied (or no extra funding was needed).
+			// Weekly-counter failures must not skip subscription token settlement.
+			common.SysLog(fmt.Sprintf("error adjusting weekly quota after funding settled (userId=%d, actualQuota=%d): %s",
+				s.relayInfo.UserId, actualQuota, err.Error()))
+		} else {
+			s.weeklyQuota = weeklyQuota
+			s.weeklySettled = true
 		}
-		s.weeklyQuota = weeklyQuota
-		s.weeklySettled = true
 	}
 	if delta == 0 {
 		s.settled = true
 		return nil
 	}
 	// 3) 调整令牌额度
-	var tokenErr error
 	if !s.relayInfo.IsPlayground {
+		var tokenErr error
 		if delta > 0 {
 			tokenErr = model.DecreaseTokenQuota(s.relayInfo.TokenId, s.relayInfo.TokenKey, delta)
 		} else {
@@ -95,7 +99,9 @@ func (s *BillingSession) Settle(actualQuota int) error {
 		s.relayInfo.SubscriptionPostDelta += int64(delta)
 	}
 	s.settled = true
-	return tokenErr
+	// API-key token adjustment is best-effort after funding. Callers treat a
+	// nil error as "funding applied" and must still settle subscription tokens.
+	return nil
 }
 
 // Refund 退还所有预扣费，幂等安全，异步执行。

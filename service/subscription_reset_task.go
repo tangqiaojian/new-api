@@ -113,7 +113,8 @@ func runSubscriptionQuotaResetOnce() {
 	if time.Since(lastCleanup) >= subscriptionCleanupInterval {
 		_, preConsumeErr := model.CleanupSubscriptionPreConsumeRecords(7 * 24 * 3600)
 		_, settlementErr := model.CleanupChannelPoolSettlements(7 * 24 * 3600)
-		if preConsumeErr == nil && settlementErr == nil {
+		_, userSettlementErr := model.CleanupUserSubscriptionSettlements(7 * 24 * 3600)
+		if preConsumeErr == nil && settlementErr == nil && userSettlementErr == nil {
 			subscriptionCleanupLast.Store(time.Now().Unix())
 		}
 	}

@@ -189,9 +189,7 @@ func taskModelName(task *model.Task) string {
 func RefundTaskQuota(ctx context.Context, task *model.Task, reason string) bool {
 	quota := task.Quota
 	if quota == 0 {
-		if err := SettleTaskChannelPoolUsage(ctx, task, 0, 0); err != nil {
-			logger.LogError(ctx, fmt.Sprintf("任务渠道订阅池退款失败 task %s: %s", task.TaskID, err.Error()))
-		}
+		settleTaskActualUsage(ctx, task, 0, 0)
 		return true
 	}
 
@@ -209,9 +207,7 @@ func RefundTaskQuota(ctx context.Context, task *model.Task, reason string) bool 
 
 	// 3. 退还令牌额度
 	taskAdjustTokenQuota(ctx, task, -quota)
-	if err := SettleTaskChannelPoolUsage(ctx, task, 0, 0); err != nil {
-		logger.LogError(ctx, fmt.Sprintf("任务渠道订阅池退款失败 task %s: %s", task.TaskID, err.Error()))
-	}
+	settleTaskActualUsage(ctx, task, 0, 0)
 
 	// 回减预扣时累计的用户和渠道用量，请求次数保持不变
 	model.UpdateUserUsedQuota(task.UserId, -quota)
@@ -331,6 +327,20 @@ func RecalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int
 		Other:     other,
 		NodeName:  task.PrivateData.NodeName,
 	})
+}
+
+// settleTaskActualUsage writes the task's desired amount/tokens onto the
+// channel pool and the user subscription. Both use settlement key task:<id>.
+func settleTaskActualUsage(ctx context.Context, task *model.Task, actualQuota int, actualTokens int64) {
+	if actualTokens < 0 {
+		actualTokens = 0
+	}
+	if err := SettleTaskChannelPoolUsage(ctx, task, actualQuota, actualTokens); err != nil {
+		logger.LogError(ctx, fmt.Sprintf("任务渠道订阅池结算失败 task %s: %s", task.TaskID, err.Error()))
+	}
+	if err := SettleTaskUserSubscriptionUsage(ctx, task, actualTokens); err != nil {
+		logger.LogError(ctx, fmt.Sprintf("任务用户订阅 token 结算失败 task %s: %s", task.TaskID, err.Error()))
+	}
 }
 
 // RecalculateTaskQuotaByTokens 根据实际 token 消耗重新计费（异步差额结算）。

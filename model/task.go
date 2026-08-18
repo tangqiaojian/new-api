@@ -110,6 +110,11 @@ type TaskPrivateData struct {
 	TokenId        int                 `json:"token_id,omitempty"`        // 令牌 ID，用于令牌额度退款
 	NodeName       string              `json:"node_name,omitempty"`       // 发起任务的节点名，轮询结算阶段据此归属日志而非最后查询节点
 	BillingContext *TaskBillingContext `json:"billing_context,omitempty"` // 计费参数快照（用于轮询阶段重新计算）
+	// IncludeCacheTokens snapshots the selected user subscription's cache
+	// policy at submit time. Nil means a legacy task created before this
+	// field existed; task token settlement still uses TotalTokens as-is
+	// (same as the channel pool path).
+	IncludeCacheTokens *bool `json:"include_cache_tokens,omitempty"`
 	// WeeklyQuotaReservation persists the task's contribution to the user's
 	// weekly counter so polling can reconcile or release it after submission.
 	WeeklyQuotaReservation *WeeklyQuotaReservation `json:"weekly_quota_reservation,omitempty"`

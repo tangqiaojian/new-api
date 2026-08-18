@@ -471,23 +471,13 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 		model.UpdateChannelUsedQuota(relayInfo.ChannelId, summary.Quota)
 	}
 
-	// User-plan token quota is settled after money/quota settle (token
-	// pre-consume stays 0). Channel-bound traffic still settles through the
-	// pool call below. Both use dashboard "include cache" semantics:
-	// prompt + completion + optional cache.
-	cacheForSub := summary.CacheTokens
-	if billingUsage != nil && billingUsage.PromptTokensDetails.CachedTokens > 0 {
-		cacheForSub = billingUsage.PromptTokensDetails.CachedTokens
-	}
+	// Token settlement must use the same prompt/completion/cache counts as
+	// RecordConsumeLog below (summary fields), not raw upstream usage.
+	// OpenRouter Claude and similar remaps adjust summary.PromptTokens;
+	// overriding with billingUsage would diverge from the consume log.
 	promptForSub := summary.PromptTokens
 	completionForSub := summary.CompletionTokens
-	// Prefer raw usage columns so token quota tracks log prompt/completion fields.
-	if billingUsage != nil {
-		if billingUsage.PromptTokens > 0 || billingUsage.CompletionTokens > 0 {
-			promptForSub = billingUsage.PromptTokens
-			completionForSub = billingUsage.CompletionTokens
-		}
-	}
+	cacheForSub := summary.CacheTokens
 
 	if err := SettleBilling(ctx, relayInfo, summary.Quota); err != nil {
 		logger.LogError(ctx, "error settling billing: "+err.Error())

@@ -2286,42 +2286,54 @@ func GetSubscriptionPlanInfoByUserSubscriptionId(userSubscriptionId int) (*Subsc
 }
 
 // Update subscription used amount by delta (positive consume more, negative refund).
-// tokenDelta adjusts the token usage in the same transaction (positive consume more, negative refund).
+// tokenDelta adjusts the token usage (positive consume more, negative refund).
+// Increments and clamps run in SQL so concurrent callers cannot overwrite
+// each other's AmountUsed/TokensUsed via a whole-row Save.
 func PostConsumeUserSubscriptionDelta(userSubscriptionId int, delta int64, tokenDelta int64) error {
+	if userSubscriptionId <= 0 {
+		return errors.New("invalid userSubscriptionId")
+	}
+	return applyUserSubscriptionDeltaTx(DB, userSubscriptionId, delta, tokenDelta)
+}
+
+// applyUserSubscriptionDeltaTx increments amount/token usage atomically.
+// lockForUpdate is not required: CASE WHEN + column arithmetic is one UPDATE.
+func applyUserSubscriptionDeltaTx(tx *gorm.DB, userSubscriptionId int, delta int64, tokenDelta int64) error {
 	if userSubscriptionId <= 0 {
 		return errors.New("invalid userSubscriptionId")
 	}
 	if delta == 0 && tokenDelta == 0 {
 		return nil
 	}
-	return DB.Transaction(func(tx *gorm.DB) error {
-		var sub UserSubscription
-		if err := lockForUpdate(tx).
-			Where("id = ?", userSubscriptionId).
-			First(&sub).Error; err != nil {
-			return err
-		}
-		newUsed := sub.AmountUsed + delta
-		if newUsed < 0 {
-			newUsed = 0
-		}
-		// Clamp to AmountTotal instead of erroring, so users can use their
-		// full quota without being rejected at the last request.
-		if sub.AmountTotal > 0 && newUsed > sub.AmountTotal {
-			newUsed = sub.AmountTotal
-		}
-		sub.AmountUsed = newUsed
-		// Adjust token usage (independent from quota amount)
-		if tokenDelta != 0 {
-			newTokensUsed := sub.TokensUsed + tokenDelta
-			if newTokensUsed < 0 {
-				newTokensUsed = 0
-			}
-			if sub.TokensTotal > 0 && newTokensUsed > sub.TokensTotal {
-				newTokensUsed = sub.TokensTotal
-			}
-			sub.TokensUsed = newTokensUsed
-		}
-		return tx.Save(&sub).Error
-	})
+	updates := map[string]interface{}{
+		"updated_at": common.GetTimestamp(),
+	}
+	if delta != 0 {
+		// Clamp to [0, AmountTotal] when AmountTotal > 0; otherwise only floor at 0.
+		updates["amount_used"] = gorm.Expr(
+			"CASE WHEN amount_used + ? < 0 THEN 0 WHEN amount_total > 0 AND amount_used + ? > amount_total THEN amount_total ELSE amount_used + ? END",
+			delta, delta, delta,
+		)
+	}
+	if tokenDelta != 0 {
+		updates["tokens_used"] = gorm.Expr(
+			"CASE WHEN tokens_used + ? < 0 THEN 0 WHEN tokens_total > 0 AND tokens_used + ? > tokens_total THEN tokens_total ELSE tokens_used + ? END",
+			tokenDelta, tokenDelta, tokenDelta,
+		)
+	}
+	result := tx.Model(&UserSubscription{}).Where("id = ?", userSubscriptionId).Updates(updates)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected > 0 {
+		return nil
+	}
+	var exists int64
+	if err := tx.Model(&UserSubscription{}).Where("id = ?", userSubscriptionId).Limit(1).Count(&exists).Error; err != nil {
+		return err
+	}
+	if exists == 0 {
+		return errors.New("user subscription not found")
+	}
+	return nil
 }
