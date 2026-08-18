@@ -299,6 +299,15 @@ func UpdateOption(c *gin.Context) {
 			})
 			return
 		}
+	case "ModelContextLimit":
+		err = ratio_setting.UpdateModelContextLimitByJSONString(option.Value.(string))
+		if err != nil {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": "模型上下文限制设置失败: " + err.Error(),
+			})
+			return
+		}
 	case "ModelRequestRateLimitGroup":
 		err = setting.CheckModelRequestRateLimitGroup(option.Value.(string))
 		if err != nil {

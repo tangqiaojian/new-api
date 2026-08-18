@@ -30,6 +30,7 @@ export type ModelPricingSnapshotInput = {
   imageRatio: string
   audioRatio: string
   audioCompletionRatio: string
+  contextLimit: string
   billingMode: string
   billingExpr: string
 }
@@ -44,6 +45,7 @@ export type ModelPricingSnapshot = {
   imageRatio?: string
   audioRatio?: string
   audioCompletionRatio?: string
+  contextLimit?: string
   billingMode?: string
   billingExpr?: string
   requestRuleExpr?: string
@@ -172,6 +174,7 @@ export const buildModelSnapshots = ({
   imageRatio,
   audioRatio,
   audioCompletionRatio,
+  contextLimit,
   billingMode,
   billingExpr,
 }: ModelPricingSnapshotInput): ModelPricingSnapshot[] => {
@@ -207,6 +210,10 @@ export const buildModelSnapshots = ({
     audioCompletionRatio,
     { fallback: {}, context: 'audio completion ratios' }
   )
+  const contextLimitMap = safeJsonParse<Record<string, number>>(contextLimit, {
+    fallback: {},
+    context: 'context limits',
+  })
   const billingModeMap = safeJsonParse<Record<string, string>>(billingMode, {
     fallback: {},
     context: 'billing mode',
@@ -225,6 +232,7 @@ export const buildModelSnapshots = ({
     ...Object.keys(imageMap),
     ...Object.keys(audioMap),
     ...Object.keys(audioCompletionMap),
+    ...Object.keys(contextLimitMap),
     ...Object.keys(billingModeMap),
     ...Object.keys(billingExprMap),
   ])
@@ -238,6 +246,7 @@ export const buildModelSnapshots = ({
     const image = imageMap[name]?.toString() || ''
     const audio = audioMap[name]?.toString() || ''
     const audioCompletion = audioCompletionMap[name]?.toString() || ''
+    const contextLimitValue = contextLimitMap[name]?.toString() || ''
 
     const modeForModel = billingModeMap[name]
     if (modeForModel === 'tiered_expr') {
@@ -257,6 +266,7 @@ export const buildModelSnapshots = ({
         imageRatio: image,
         audioRatio: audio,
         audioCompletionRatio: audioCompletion,
+        contextLimit: contextLimitValue,
         hasConflict: false,
       }
     }
@@ -271,6 +281,7 @@ export const buildModelSnapshots = ({
       imageRatio: image,
       audioRatio: audio,
       audioCompletionRatio: audioCompletion,
+      contextLimit: contextLimitValue,
       billingMode: price !== '' ? 'per-request' : 'per-token',
       hasConflict:
         price !== '' &&
@@ -296,6 +307,7 @@ export const getSnapshotSignature = (snapshot?: ModelPricingSnapshot) => {
     imageRatio: snapshot.imageRatio || '',
     audioRatio: snapshot.audioRatio || '',
     audioCompletionRatio: snapshot.audioCompletionRatio || '',
+    contextLimit: snapshot.contextLimit || '',
     billingMode: snapshot.billingMode || 'per-token',
     billingExpr: snapshot.billingExpr || '',
     requestRuleExpr: snapshot.requestRuleExpr || '',

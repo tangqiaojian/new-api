@@ -144,6 +144,18 @@ export function buildModelRatioColumns({
       meta: { label: t('Price summary') },
     },
     {
+      accessorKey: 'contextLimit',
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title={t('Context limit')} />
+      ),
+      cell: ({ row }) => (
+        <span className='text-muted-foreground truncate'>
+          {row.original.contextLimit || '—'}
+        </span>
+      ),
+      meta: { label: t('Context limit') },
+    },
+    {
       id: 'actions',
       header: () => <div>{t('Actions')}</div>,
       cell: ({ row }) => (

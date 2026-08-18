@@ -76,6 +76,7 @@ type UpstreamRatioSyncProps = {
     ImageRatio: string
     AudioRatio: string
     AudioCompletionRatio: string
+    ModelContextLimit: string
     'billing_setting.billing_mode': string
     'billing_setting.billing_expr': string
   }

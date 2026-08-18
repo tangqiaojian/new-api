@@ -56,6 +56,7 @@ type ModelFormValues = {
   ImageRatio: string
   AudioRatio: string
   AudioCompletionRatio: string
+  ModelContextLimit: string
   ExposeRatioEnabled: boolean
   BillingMode: string
   BillingExpr: string
@@ -80,6 +81,7 @@ type ModelJsonFieldName =
   | 'ImageRatio'
   | 'AudioRatio'
   | 'AudioCompletionRatio'
+  | 'ModelContextLimit'
 
 const modelJsonFields: Array<{
   name: ModelJsonFieldName
@@ -129,6 +131,12 @@ const modelJsonFields: Array<{
     name: 'AudioCompletionRatio',
     labelKey: 'Audio completion ratio',
     descriptionKey: 'Ratio applied to audio completions for streaming models.',
+  },
+  {
+    name: 'ModelContextLimit',
+    labelKey: 'Context limit',
+    descriptionKey:
+      'JSON map of model → maximum context window in tokens.',
   },
 ]
 
@@ -273,6 +281,7 @@ export const ModelRatioForm = memo(function ModelRatioForm({
               savedImageRatio={savedValues.ImageRatio}
               savedAudioRatio={savedValues.AudioRatio}
               savedAudioCompletionRatio={savedValues.AudioCompletionRatio}
+              savedModelContextLimit={savedValues.ModelContextLimit}
               savedBillingMode={savedValues.BillingMode}
               savedBillingExpr={savedValues.BillingExpr}
               modelPrice={form.watch('ModelPrice')}
@@ -283,6 +292,7 @@ export const ModelRatioForm = memo(function ModelRatioForm({
               imageRatio={form.watch('ImageRatio')}
               audioRatio={form.watch('AudioRatio')}
               audioCompletionRatio={form.watch('AudioCompletionRatio')}
+              modelContextLimit={form.watch('ModelContextLimit')}
               billingMode={form.watch('BillingMode')}
               billingExpr={form.watch('BillingExpr')}
               candidateModelNames={

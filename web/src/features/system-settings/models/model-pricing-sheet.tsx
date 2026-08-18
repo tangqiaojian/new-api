@@ -170,6 +170,7 @@ export const ModelPricingEditorPanel = forwardRef<
       imageRatio: '',
       audioRatio: '',
       audioCompletionRatio: '',
+      contextLimit: '',
     },
   })
 
@@ -187,6 +188,7 @@ export const ModelPricingEditorPanel = forwardRef<
         imageRatio: editData.imageRatio || '',
         audioRatio: editData.audioRatio || '',
         audioCompletionRatio: editData.audioCompletionRatio || '',
+        contextLimit: editData.contextLimit || '',
       })
       setPricingMode(
         editData.billingMode === 'tiered_expr'
@@ -208,6 +210,7 @@ export const ModelPricingEditorPanel = forwardRef<
         imageRatio: '',
         audioRatio: '',
         audioCompletionRatio: '',
+        contextLimit: '',
       })
       setPricingMode('per-token')
       setBillingExpr('')
@@ -451,6 +454,7 @@ export const ModelPricingEditorPanel = forwardRef<
         imageRatio: values.imageRatio || '',
         audioRatio: values.audioRatio || '',
         audioCompletionRatio: values.audioCompletionRatio || '',
+        contextLimit: values.contextLimit || '',
       }
 
       if (pricingMode === 'tiered_expr') {
@@ -532,6 +536,36 @@ export const ModelPricingEditorPanel = forwardRef<
                       <FormDescription>
                         {t(
                           'The exact model identifier as used in API requests.'
+                        )}
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name='contextLimit'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('Context limit')}</FormLabel>
+                      <FormControl>
+                        <Input
+                          inputMode='numeric'
+                          placeholder={t('e.g. 128000')}
+                          {...field}
+                          onChange={(event) => {
+                            const value = event.target.value.replace(
+                              /[^0-9]/g,
+                              ''
+                            )
+                            field.onChange(value)
+                          }}
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        {t(
+                          'Maximum context window in tokens. Leave empty for no limit.'
                         )}
                       </FormDescription>
                       <FormMessage />
