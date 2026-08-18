@@ -1398,9 +1398,9 @@ type AdminUserSubscriptionDetail struct {
 // end_time has passed is treated as expired, because expiry flipping only runs
 // on the master node while this list may be served by a slave. The stored status
 // column is never rewritten here; the response Status is adjusted in memory.
-// Subscriptions whose owning user was hard-deleted keep username="" — the
-// frontend renders a "deleted user" placeholder; a pure-numeric username filter
-// also matches user_id so those orphan rows stay findable.
+//
+// Soft-deleted and hard-deleted owners are omitted (their leftover subscription
+// rows stay in the table for billing audit). Disabled users still appear.
 func AdminListAllUserSubscriptions(page, pageSize int, username string, status string) ([]AdminUserSubscriptionDetail, int64, error) {
 	if page < 1 {
 		page = 1
@@ -1416,7 +1416,7 @@ func AdminListAllUserSubscriptions(page, pageSize int, username string, status s
 	now := GetDBTimestamp()
 
 	query := DB.Model(&UserSubscription{}).
-		Joins("left join users on users.id = user_subscriptions.user_id").
+		Joins("inner join users on users.id = user_subscriptions.user_id AND users.deleted_at IS NULL").
 		Joins("left join subscription_plans on subscription_plans.id = user_subscriptions.plan_id")
 	if username = strings.TrimSpace(username); username != "" {
 		if numericId, convErr := strconv.Atoi(username); convErr == nil {

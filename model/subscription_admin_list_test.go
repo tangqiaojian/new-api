@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -30,32 +31,46 @@ func adminListById(details []AdminUserSubscriptionDetail) map[int]AdminUserSubsc
 	return byId
 }
 
-func TestAdminListAllUserSubscriptionsShowsOrphanWithEmptyUsername(t *testing.T) {
+func TestAdminListAllUserSubscriptionsHidesDeletedUsersKeepsDisabled(t *testing.T) {
 	truncateTables(t)
-	user := User{Username: "admin-list-user", Password: "password"}
-	require.NoError(t, DB.Create(&user).Error)
+	enabled := User{Username: "usage-enabled", Password: "password", Status: common.UserStatusEnabled, AffCode: "usage-enabled"}
+	require.NoError(t, DB.Create(&enabled).Error)
+	disabled := User{Username: "usage-disabled", Password: "password", Status: common.UserStatusDisabled, AffCode: "usage-disabled"}
+	require.NoError(t, DB.Create(&disabled).Error)
+	softDeleted := User{Username: "usage-soft-deleted", Password: "password", Status: common.UserStatusEnabled, AffCode: "usage-soft-deleted"}
+	require.NoError(t, DB.Create(&softDeleted).Error)
+	require.NoError(t, DB.Delete(&softDeleted).Error)
+
 	future := time.Now().Add(time.Hour).Unix()
-	normal := seedAdminListSubscription(t, user.Id, "active", future)
-	// 孤儿订阅：users 表中没有对应行（用户已被硬删除）。
-	orphan := seedAdminListSubscription(t, 987654, "active", future)
+	enabledSub := seedAdminListSubscription(t, enabled.Id, "active", future)
+	disabledSub := seedAdminListSubscription(t, disabled.Id, "active", future)
+	softDeletedSub := seedAdminListSubscription(t, softDeleted.Id, "active", future)
+	// 硬删除后订阅行会留下：users 表中没有对应行。
+	orphanSub := seedAdminListSubscription(t, 987654, "active", future)
 
 	details, total, err := AdminListAllUserSubscriptions(1, 10, "", "")
 	require.NoError(t, err)
 	assert.EqualValues(t, 2, total)
 	byId := adminListById(details)
-	require.Len(t, byId, 2)
-	assert.Equal(t, "admin-list-user", byId[normal.Id].Username)
-	assert.Equal(t, "", byId[orphan.Id].Username, "orphan subscription must keep empty username for the frontend placeholder")
-	assert.Equal(t, 987654, byId[orphan.Id].UserId)
+	require.Contains(t, byId, enabledSub.Id)
+	require.Contains(t, byId, disabledSub.Id)
+	assert.NotContains(t, byId, softDeletedSub.Id, "soft-deleted users must not appear in plan usage")
+	assert.NotContains(t, byId, orphanSub.Id, "hard-deleted users must not appear in plan usage")
+	assert.Equal(t, "usage-enabled", byId[enabledSub.Id].Username)
+	assert.Equal(t, "usage-disabled", byId[disabledSub.Id].Username)
 
-	// 按用户名搜不到孤儿（名字已随用户删除），纯数字过滤可兼匹配 user_id。
-	_, total, err = AdminListAllUserSubscriptions(1, 10, "no-such-user", "")
-	require.NoError(t, err)
-	assert.Zero(t, total)
-	details, total, err = AdminListAllUserSubscriptions(1, 10, strconv.Itoa(orphan.UserId), "")
+	details, total, err = AdminListAllUserSubscriptions(1, 10, "usage-disabled", "")
 	require.NoError(t, err)
 	require.EqualValues(t, 1, total)
-	assert.Equal(t, orphan.Id, details[0].Id)
+	assert.Equal(t, disabledSub.Id, details[0].Id)
+
+	// 已删除用户（含按 user_id 数字检索）不应再出现。
+	_, total, err = AdminListAllUserSubscriptions(1, 10, "usage-soft-deleted", "")
+	require.NoError(t, err)
+	assert.Zero(t, total)
+	_, total, err = AdminListAllUserSubscriptions(1, 10, strconv.Itoa(orphanSub.UserId), "")
+	require.NoError(t, err)
+	assert.Zero(t, total)
 }
 
 func TestAdminListAllUserSubscriptionsEffectiveStatus(t *testing.T) {
