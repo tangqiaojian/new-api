@@ -141,13 +141,16 @@ type RelayInfo struct {
 	// SubscriptionAmountTotal / SubscriptionAmountUsedAfterPreConsume are used to compute remaining in logs.
 	SubscriptionAmountTotal               int64
 	SubscriptionAmountUsedAfterPreConsume int64
-	IsClaudeBetaQuery                     bool // /v1/messages?beta=true
-	IsChannelTest                         bool // channel test request
-	RetryIndex                            int
-	LastError                             *types.NewAPIError
-	RuntimeHeadersOverride                map[string]interface{}
-	UseRuntimeHeadersOverride             bool
-	ParamOverrideAudit                    []string
+	// SubscriptionIncludeCacheTokens is copied from the selected user subscription
+	// so settle can charge cache tokens against token quota when the plan says so.
+	SubscriptionIncludeCacheTokens bool
+	IsClaudeBetaQuery              bool // /v1/messages?beta=true
+	IsChannelTest                  bool // channel test request
+	RetryIndex                     int
+	LastError                      *types.NewAPIError
+	RuntimeHeadersOverride         map[string]interface{}
+	UseRuntimeHeadersOverride      bool
+	ParamOverrideAudit             []string
 
 	PriceData hosttypes.PriceData
 
