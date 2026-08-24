@@ -155,8 +155,8 @@ func TestChannelAnalyticsAvgFirstByteFiltersSentinelAndZero(t *testing.T) {
 		return analyticsLog(1, "carol", "gpt-frt", 30, createdAt, 10, 5, 1, 3, other)
 	}
 	logs := []Log{
-		frtLog(analyticsTestStart+100, map[string]interface{}{"frt": -1000.0}), // 非流式哨兵
-		frtLog(analyticsTestStart+200, map[string]interface{}{"frt": 0.0}),     // ClickHouse 缺失键等效值
+		frtLog(analyticsTestStart+100, map[string]interface{}{"frt": -1000.0}),    // 非流式哨兵
+		frtLog(analyticsTestStart+200, map[string]interface{}{"frt": 0.0}),        // ClickHouse 缺失键等效值
 		frtLog(analyticsTestStart+300, map[string]interface{}{"cache_tokens": 1}), // 无 frt
 		frtLog(analyticsTestStart+400, map[string]interface{}{"frt": 100.0}),
 		frtLog(analyticsTestStart+500, map[string]interface{}{"frt": 200.0}),
