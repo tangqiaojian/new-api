@@ -80,28 +80,40 @@ func TestDailyTokenAnalyticsAggregateConsumeLogsAndCache(t *testing.T) {
 
 	withCache, err := GetDailyTokenDataByUserId(1, analyticsTestStart, endTime, true)
 	require.NoError(t, err)
-	require.Len(t, withCache, 1)
+	require.Len(t, withCache, 2)
+	assert.Equal(t, "gpt-a", withCache[0].ModelName)
 	assert.Equal(t, "2024-01-01", withCache[0].Date)
-	assert.Equal(t, 180, withCache[0].PromptTokens)
-	assert.Equal(t, 33, withCache[0].CompletionTokens)
-	assert.Equal(t, 58, withCache[0].CachedTokens)
-	assert.Equal(t, 271, withCache[0].TotalTokens)
-	assert.Equal(t, 4, withCache[0].RequestCount)
-	assert.Equal(t, 56, withCache[0].Quota)
+	assert.Equal(t, 170, withCache[0].PromptTokens)
+	assert.Equal(t, 32, withCache[0].CompletionTokens)
+	assert.Equal(t, 55, withCache[0].CachedTokens)
+	assert.Equal(t, 257, withCache[0].TotalTokens)
+	assert.Equal(t, 3, withCache[0].RequestCount)
+	assert.Equal(t, 54, withCache[0].Quota)
+	assert.Equal(t, "gpt-b", withCache[1].ModelName)
+	assert.Equal(t, 14, withCache[1].TotalTokens)
+	assert.Equal(t, 3, withCache[1].CachedTokens)
+	assert.Equal(t, 1, withCache[1].RequestCount)
 
 	withoutCache, err := GetDailyTokenDataByUserId(1, analyticsTestStart, endTime, false)
 	require.NoError(t, err)
-	require.Len(t, withoutCache, 1)
-	assert.Equal(t, 58, withoutCache[0].CachedTokens)
-	assert.Equal(t, 213, withoutCache[0].TotalTokens)
+	require.Len(t, withoutCache, 2)
+	assert.Equal(t, "gpt-a", withoutCache[0].ModelName)
+	assert.Equal(t, 55, withoutCache[0].CachedTokens)
+	assert.Equal(t, 202, withoutCache[0].TotalTokens)
+	assert.Equal(t, 11, withoutCache[1].TotalTokens)
 
 	allUsers, err := GetAllDailyTokenData(analyticsTestStart, endTime, "", true)
 	require.NoError(t, err)
-	require.Len(t, allUsers, 2)
+	require.Len(t, allUsers, 3)
 	assert.Equal(t, "alice", allUsers[0].Username)
+	assert.Equal(t, "gpt-a", allUsers[0].ModelName)
 	assert.Equal(t, "bob", allUsers[1].Username)
+	assert.Equal(t, "gpt-b", allUsers[1].ModelName)
 	assert.Equal(t, 35, allUsers[1].TotalTokens)
 	assert.Zero(t, allUsers[1].CachedTokens)
+	assert.Equal(t, "alice", allUsers[2].Username)
+	assert.Equal(t, "gpt-b", allUsers[2].ModelName)
+	assert.Equal(t, 14, allUsers[2].TotalTokens)
 
 	models, err := GetAllDailyModelTokenData(analyticsTestStart, endTime, true)
 	require.NoError(t, err)
@@ -111,6 +123,58 @@ func TestDailyTokenAnalyticsAggregateConsumeLogsAndCache(t *testing.T) {
 	assert.Equal(t, 55, models[0].CachedTokens)
 	assert.Equal(t, "gpt-b", models[1].ModelName)
 	assert.Equal(t, 49, models[1].TotalTokens)
+}
+
+func TestDailyTokenAnalyticsGroupByUserModelAndDate(t *testing.T) {
+	seedAnalyticsLogs(t)
+	endTime := analyticsTestStart + 3600
+
+	allUsers, err := GetAllDailyTokenData(analyticsTestStart, endTime, "", true)
+	require.NoError(t, err)
+	require.Len(t, allUsers, 3)
+
+	findRow := func(username string, modelName string) *DailyTokenData {
+		t.Helper()
+		for _, row := range allUsers {
+			if row.Username == username && row.ModelName == modelName {
+				return row
+			}
+		}
+		return nil
+	}
+
+	aliceA := findRow("alice", "gpt-a")
+	require.NotNil(t, aliceA)
+	assert.Equal(t, 1, aliceA.UserID)
+	assert.Equal(t, "2024-01-01", aliceA.Date)
+	assert.Equal(t, 170, aliceA.PromptTokens)
+	assert.Equal(t, 32, aliceA.CompletionTokens)
+	assert.Equal(t, 55, aliceA.CachedTokens)
+	assert.Equal(t, 257, aliceA.TotalTokens)
+	assert.Equal(t, 3, aliceA.RequestCount)
+	assert.Equal(t, 54, aliceA.Quota)
+
+	aliceB := findRow("alice", "gpt-b")
+	require.NotNil(t, aliceB)
+	assert.Equal(t, 1, aliceB.UserID)
+	assert.Equal(t, 10, aliceB.PromptTokens)
+	assert.Equal(t, 1, aliceB.CompletionTokens)
+	assert.Equal(t, 3, aliceB.CachedTokens)
+	assert.Equal(t, 14, aliceB.TotalTokens)
+	assert.Equal(t, 1, aliceB.RequestCount)
+	assert.Equal(t, 2, aliceB.Quota)
+
+	bobB := findRow("bob", "gpt-b")
+	require.NotNil(t, bobB)
+	assert.Equal(t, 2, bobB.UserID)
+	assert.Equal(t, 35, bobB.TotalTokens)
+	assert.Equal(t, 1, bobB.RequestCount)
+
+	aliceOnly, err := GetAllDailyTokenData(analyticsTestStart, endTime, "alice", true)
+	require.NoError(t, err)
+	require.Len(t, aliceOnly, 2)
+	assert.Equal(t, "gpt-a", aliceOnly[0].ModelName)
+	assert.Equal(t, "gpt-b", aliceOnly[1].ModelName)
 }
 
 func TestChannelAnalyticsScopeMetricsAndResolveNames(t *testing.T) {

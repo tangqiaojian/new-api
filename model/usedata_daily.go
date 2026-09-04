@@ -2,10 +2,11 @@ package model
 
 import "github.com/QuantumNous/new-api/common"
 
-// DailyTokenData represents daily token usage statistics per user.
+// DailyTokenData represents daily token usage statistics per user and model.
 type DailyTokenData struct {
 	UserID           int    `json:"user_id"`
 	Username         string `json:"username"`
+	ModelName        string `json:"model_name"`
 	Date             string `json:"date"`
 	PromptTokens     int    `json:"prompt_tokens"`
 	CompletionTokens int    `json:"completion_tokens"`
@@ -51,7 +52,7 @@ func dailyTotalTokensExpression(includeCache bool) string {
 }
 
 func dailyTokenSelectColumns(dateExpression string, includeCache bool) string {
-	return "user_id, username, " + dateExpression + " AS date, " +
+	return "user_id, username, model_name, " + dateExpression + " AS date, " +
 		"COALESCE(SUM(prompt_tokens), 0) AS prompt_tokens, " +
 		"COALESCE(SUM(completion_tokens), 0) AS completion_tokens, " +
 		dailyTotalTokensExpression(includeCache) + " AS total_tokens, " +
@@ -70,20 +71,20 @@ func dailyModelTokenSelectColumns(dateExpression string, includeCache bool) stri
 		"COALESCE(SUM(quota), 0) AS quota"
 }
 
-// GetDailyTokenDataByUserId returns daily usage for one user.
+// GetDailyTokenDataByUserId returns daily usage for one user grouped by model and date.
 func GetDailyTokenDataByUserId(userID int, startTime int64, endTime int64, includeCache bool) ([]*DailyTokenData, error) {
 	data := make([]*DailyTokenData, 0)
 	dateExpression := dailyTokenDateExpression()
 	err := LOG_DB.Table("logs").
 		Select(dailyTokenSelectColumns(dateExpression, includeCache)).
 		Where("user_id = ? AND type = ? AND created_at >= ? AND created_at <= ?", userID, LogTypeConsume, startTime, endTime).
-		Group("user_id, username, " + dateExpression).
-		Order("date DESC").
+		Group("user_id, username, model_name, " + dateExpression).
+		Order("date DESC, total_tokens DESC, model_name ASC").
 		Find(&data).Error
 	return data, err
 }
 
-// GetAllDailyTokenData returns daily usage for all users, optionally filtered by username.
+// GetAllDailyTokenData returns daily usage grouped by user, model, and date, optionally filtered by username.
 func GetAllDailyTokenData(startTime int64, endTime int64, username string, includeCache bool) ([]*DailyTokenData, error) {
 	data := make([]*DailyTokenData, 0)
 	dateExpression := dailyTokenDateExpression()
@@ -94,8 +95,8 @@ func GetAllDailyTokenData(startTime int64, endTime int64, username string, inclu
 		query = query.Where("username = ?", username)
 	}
 	err := query.
-		Group("user_id, username, " + dateExpression).
-		Order("date DESC, total_tokens DESC").
+		Group("user_id, username, model_name, " + dateExpression).
+		Order("date DESC, total_tokens DESC, model_name ASC").
 		Find(&data).Error
 	return data, err
 }
