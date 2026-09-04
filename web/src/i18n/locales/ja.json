@@ -5177,6 +5177,7 @@
     "User subscriptions will appear here once they subscribe to a plan.": "ユーザーがプランに加入すると、ここに表示されます。",
     "User Token Distribution": "ユーザー別トークン分布",
     "User Token Ranking": "ユーザー別トークン使用量ランキング",
+    "User Token Share by Model": "ユーザー別モデルのトークン比率",
     "User updated successfully": "ユーザーの更新に成功しました",
     "User Verification": "ユーザー認証",
     "User-Agent include (one per line)": "User-Agent include（1行に1つ）",

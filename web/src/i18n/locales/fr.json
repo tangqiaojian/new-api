@@ -5177,6 +5177,7 @@
     "User subscriptions will appear here once they subscribe to a plan.": "Les abonnements apparaîtront ici après souscription.",
     "User Token Distribution": "Répartition des tokens par utilisateur",
     "User Token Ranking": "Classement de l'utilisation des tokens par utilisateur",
+    "User Token Share by Model": "Part de tokens par modèle et utilisateur",
     "User updated successfully": "Utilisateur mis à jour avec succès",
     "User Verification": "Vérification de l'utilisateur",
     "User-Agent include (one per line)": "User-Agent inclus (un par ligne)",

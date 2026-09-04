@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import {
   ArrowLeftRight,
   ArrowUpDown,
@@ -25,7 +25,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useMemo, useState, useCallback } from 'react'
+import { useMemo, useState, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
@@ -52,17 +52,22 @@ import {
   getChannelModelStats,
   getSelfChannelModelStats,
 } from '@/features/dashboard/api'
-import { TIME_RANGE_PRESETS } from '@/features/dashboard/constants'
+import { DashboardTimeRangeBar } from '@/features/dashboard/components/ui/dashboard-time-range-bar'
 import { useAutoRefresh } from '@/features/dashboard/hooks/use-auto-refresh'
+import {
+  mergeChannelSelectItems,
+  resolveChannelSelectChange,
+  resolveUnixTimeRange,
+} from '@/features/dashboard/lib'
 import type {
   ChannelModelStatsItem,
   ChannelStatsFilters,
+  DashboardTimeWindow,
 } from '@/features/dashboard/types'
 import { toIntlLocale } from '@/i18n/languages'
 import { formatQuotaWithCurrency } from '@/lib/currency'
 import { formatCompactNumber, formatNumber } from '@/lib/format'
 import { ROLE } from '@/lib/roles'
-import { getRollingDateRange } from '@/lib/time'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/stores/auth-store'
 
@@ -132,32 +137,36 @@ export function ChannelStatsSection(props: ChannelStatsSectionProps) {
   const isAdmin = Boolean(userRole && userRole >= ROLE.ADMIN)
 
   const [compactMode, setCompactMode] = useState(true)
-  const [selectedChannelId, setSelectedChannelId] = useState<number | null>(
-    null
-  )
-  // Draft input vs applied keyword so users can type and click Search.
-  const [searchInput, setSearchInput] = useState('')
-  const [appliedQuery, setAppliedQuery] = useState('')
+  const selectedChannelId = props.filters.channelId
+  const appliedQuery = props.filters.searchQuery
   const selectedRange = props.filters.selectedRange
+  const startTimestamp = props.filters.start_timestamp
+  const endTimestamp = props.filters.end_timestamp
+  // Draft input vs applied keyword so users can type and click Search.
+  const [searchInput, setSearchInput] = useState(appliedQuery)
   const topLimit = props.filters.topLimit
   const onFiltersChange = props.onFiltersChange
   const [currentPage, setCurrentPage] = useState(1)
   const [sortField, setSortField] = useState<SortField>('request_count')
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
+  const lastChannelOptionsRef = useRef<{ id: number; name: string }[]>([])
+  const lastSelectedNameRef = useRef<string>('')
 
   const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
 
-  const timeRange = useMemo(() => {
-    const { start, end } = getRollingDateRange(selectedRange)
-    return {
-      start_timestamp: Math.floor(start.getTime() / 1000),
-      end_timestamp: Math.floor(end.getTime() / 1000),
-    }
-  }, [selectedRange])
+  const timeRange = useMemo(
+    () =>
+      resolveUnixTimeRange({
+        selectedRange,
+        start_timestamp: startTimestamp,
+        end_timestamp: endTimestamp,
+      }),
+    [endTimestamp, selectedRange, startTimestamp]
+  )
 
-  const handleRangeChange = useCallback(
-    (days: number) => {
-      onFiltersChange({ ...props.filters, selectedRange: days })
+  const handleTimeWindowChange = useCallback(
+    (window: DashboardTimeWindow) => {
+      onFiltersChange({ ...props.filters, ...window })
       setCurrentPage(1)
     },
     [onFiltersChange, props.filters]
@@ -190,6 +199,7 @@ export function ChannelStatsSection(props: ChannelStatsSectionProps) {
             include_cache: props.includeCache,
           }),
     select: (res) => (res.success ? res.data : []),
+    placeholderData: keepPreviousData,
     staleTime: 60_000,
     refetchInterval: refetchInterval || undefined,
   })
@@ -207,16 +217,29 @@ export function ChannelStatsSection(props: ChannelStatsSectionProps) {
       .sort((a, b) => a.name.localeCompare(b.name))
   }, [channelStatsData, t])
 
+  if (channelOptions.length > 0) {
+    lastChannelOptionsRef.current = channelOptions
+  }
+  const displayChannelOptions =
+    channelOptions.length > 0 ? channelOptions : lastChannelOptionsRef.current
+  const selectedChannelLabel = displayChannelOptions.find(
+    (channel) => channel.id === selectedChannelId
+  )?.name
+  if (selectedChannelLabel) {
+    lastSelectedNameRef.current = selectedChannelLabel
+  }
+
   // Base UI Select needs items=[{value,label}] so SelectValue shows labels, not raw ids.
   const channelSelectItems = useMemo(
-    () => [
-      { value: 'all', label: t('All channels') },
-      ...channelOptions.map((ch) => ({
-        value: String(ch.id),
-        label: ch.name,
-      })),
-    ],
-    [channelOptions, t]
+    () =>
+      mergeChannelSelectItems(
+        displayChannelOptions,
+        selectedChannelId,
+        lastSelectedNameRef.current ||
+          `${t('Channel')} #${selectedChannelId ?? ''}`,
+        t('All channels')
+      ),
+    [displayChannelOptions, selectedChannelId, t]
   )
 
   const topLimitSelectItems = useMemo(
@@ -237,13 +260,19 @@ export function ChannelStatsSection(props: ChannelStatsSectionProps) {
 
   const selectedChannelName = useMemo(() => {
     if (selectedChannelId === null) return undefined
-    return channelOptions.find((c) => c.id === selectedChannelId)?.name
-  }, [channelOptions, selectedChannelId])
+    return (
+      displayChannelOptions.find((channel) => channel.id === selectedChannelId)
+        ?.name || lastSelectedNameRef.current
+    )
+  }, [displayChannelOptions, selectedChannelId])
 
   const applySearch = useCallback(() => {
-    setAppliedQuery(searchInput.trim())
+    onFiltersChange({
+      ...props.filters,
+      searchQuery: searchInput.trim(),
+    })
     setCurrentPage(1)
-  }, [searchInput])
+  }, [onFiltersChange, props.filters, searchInput])
 
   const filteredData = useMemo(() => {
     let raw = (channelStatsData ?? []) as ChannelModelStatsItem[]
@@ -362,12 +391,13 @@ export function ChannelStatsSection(props: ChannelStatsSectionProps) {
     topLimit !== 20
 
   const clearFilters = () => {
-    setSelectedChannelId(null)
     setSearchInput('')
-    setAppliedQuery('')
-    if (topLimit !== 20) {
-      onFiltersChange({ ...props.filters, topLimit: 20 })
-    }
+    onFiltersChange({
+      ...props.filters,
+      channelId: null,
+      searchQuery: '',
+      topLimit: 20,
+    })
     setCurrentPage(1)
   }
 
@@ -381,32 +411,26 @@ export function ChannelStatsSection(props: ChannelStatsSectionProps) {
       />
 
       <div className='bg-card flex flex-col gap-2 rounded-lg border p-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-2 sm:p-3'>
-        <Tabs
-          value={String(selectedRange)}
-          onValueChange={(value) => handleRangeChange(Number(value))}
-          className='shrink-0'
-        >
-          <TabsList>
-            {TIME_RANGE_PRESETS.map((preset) => (
-              <TabsTrigger
-                key={preset.days}
-                value={String(preset.days)}
-                className='px-2.5 text-xs'
-              >
-                {t(preset.label)}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-        </Tabs>
+        <DashboardTimeRangeBar
+          value={props.filters}
+          onChange={handleTimeWindowChange}
+        />
 
         <Select
           items={channelSelectItems}
           value={selectedChannelId === null ? 'all' : String(selectedChannelId)}
           onValueChange={(value) => {
-            const next = value == null || value === 'all' ? null : Number(value)
-            setSelectedChannelId(
-              next != null && Number.isFinite(next) ? next : null
-            )
+            const resolution = resolveChannelSelectChange({
+              nextValue: value,
+              currentChannelId: selectedChannelId,
+              optionIds: displayChannelOptions.map((channel) => channel.id),
+              isLoading,
+            })
+            if (resolution.type === 'ignore') return
+            onFiltersChange({
+              ...props.filters,
+              channelId: resolution.channelId,
+            })
             setCurrentPage(1)
           }}
         >

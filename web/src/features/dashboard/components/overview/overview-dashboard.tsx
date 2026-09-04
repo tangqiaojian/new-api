@@ -47,9 +47,9 @@ import {
 } from '@/components/page-transition'
 import { Button } from '@/components/ui/button'
 import { IconBadge, type IconBadgeTone } from '@/components/ui/icon-badge'
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { TIME_RANGE_PRESETS } from '@/features/dashboard/constants'
+import { DashboardTimeRangeBar } from '@/features/dashboard/components/ui/dashboard-time-range-bar'
 import { useAutoRefresh } from '@/features/dashboard/hooks/use-auto-refresh'
+import { buildTimeWindow } from '@/features/dashboard/lib'
 import { fetchTokenKey, getApiKeys } from '@/features/keys/api'
 import type { ApiKey } from '@/features/keys/types'
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
@@ -472,7 +472,7 @@ export function OverviewDashboard() {
   const [manualSetupGuideExpanded, setManualSetupGuideExpanded] = useState<
     boolean | null
   >(() => getSavedSetupGuideExpanded())
-  const [summaryDays, setSummaryDays] = useState(1)
+  const [summaryWindow, setSummaryWindow] = useState(() => buildTimeWindow(1))
 
   const requestCount = Number(user?.request_count ?? 0)
   const remainQuota = Number(user?.quota ?? 0)
@@ -757,26 +757,17 @@ export function OverviewDashboard() {
       )}
 
       <div className='flex items-center gap-1.5 overflow-x-auto pb-1 sm:gap-2'>
-        <Tabs
-          value={String(summaryDays)}
-          onValueChange={(value) => setSummaryDays(Number(value))}
-          className='shrink-0'
-        >
-          <TabsList>
-            {TIME_RANGE_PRESETS.map((preset) => (
-              <TabsTrigger
-                key={preset.days}
-                value={String(preset.days)}
-                className='px-2.5 text-xs'
-              >
-                {t(preset.label)}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-        </Tabs>
+        <DashboardTimeRangeBar
+          value={summaryWindow}
+          onChange={setSummaryWindow}
+        />
       </div>
 
-      <SummaryCards days={summaryDays} />
+      <SummaryCards
+        days={summaryWindow.selectedRange > 0 ? summaryWindow.selectedRange : 1}
+        start={summaryWindow.start_timestamp}
+        end={summaryWindow.end_timestamp}
+      />
 
       {showContentPanels && (
         <CardStaggerContainer

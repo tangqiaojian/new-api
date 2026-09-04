@@ -54,3 +54,14 @@ export {
 } from './stats'
 export type { TodayModelTokenRow, TodayModelTokenSummary } from './stats'
 export { getPreviewText } from './text'
+export {
+  applyCustomTimeBound,
+  buildTimeWindow,
+  detectQuickRangeDays,
+  resolveUnixTimeRange,
+} from './time-range'
+export type { DashboardTimeWindow } from '@/features/dashboard/types'
+export {
+  mergeChannelSelectItems,
+  resolveChannelSelectChange,
+} from './channel-filters'

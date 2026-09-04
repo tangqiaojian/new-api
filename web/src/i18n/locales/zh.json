@@ -5177,6 +5177,7 @@
     "User subscriptions will appear here once they subscribe to a plan.": "用户订阅套餐后，记录将显示在这里。",
     "User Token Distribution": "用户 Token 分布",
     "User Token Ranking": "用户 Token 用量排行",
+    "User Token Share by Model": "用户按模型的 Token 占比",
     "User updated successfully": "用户更新成功",
     "User Verification": "用户验证",
     "User-Agent include (one per line)": "User-Agent include（每行一个）",

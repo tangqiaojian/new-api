@@ -1051,6 +1051,22 @@ export function processDailyTokensChartData(
       label: { visible: false },
       background: { fill: 'transparent' },
     },
+    spec_tokens_by_model: {
+      type: 'bar',
+      data: [{ id: 'tokensByModelData', values: [] }],
+      xField: 'User',
+      yField: 'Tokens',
+      seriesField: 'Model',
+      stack: true,
+      title: {
+        visible: true,
+        text: tt('User Token Share by Model'),
+        subtext: tt('No data available'),
+      },
+      legends: { visible: true, selectMode: 'single' },
+      color: { type: 'ordinal', range: TOKEN_COLORS },
+      background: { fill: 'transparent' },
+    },
   }
 
   if (!data || data.length === 0) return emptyResult
@@ -1116,6 +1132,59 @@ export function processDailyTokensChartData(
         Date: date,
         User: user,
         Tokens: tokens,
+      })
+    })
+  })
+
+  const userModelTokens = new Map<string, Map<string, number>>()
+  const modelTokenTotal = new Map<string, number>()
+  data.forEach((item) => {
+    const user = item.username || 'unknown'
+    if (!topUserSet.has(user)) return
+    const model = item.model_name || 'unknown'
+    const tokens = getTokenValue(item)
+    let models = userModelTokens.get(user)
+    if (!models) {
+      models = new Map()
+      userModelTokens.set(user, models)
+    }
+    models.set(model, (models.get(model) || 0) + tokens)
+    modelTokenTotal.set(model, (modelTokenTotal.get(model) || 0) + tokens)
+  })
+
+  const sortedModels = [...modelTokenTotal.entries()].sort((a, b) => b[1] - a[1])
+  const topModels = sortedModels.slice(0, limit).map(([model]) => model)
+  const topModelSet = new Set(topModels)
+  const otherLabel = tt('Other')
+  let hasOther = false
+  topUsers.forEach((user) => {
+    const models = userModelTokens.get(user)
+    if (!models) return
+    let otherTokens = 0
+    models.forEach((tokens, model) => {
+      if (!topModelSet.has(model)) otherTokens += tokens
+    })
+    if (otherTokens > 0) {
+      models.set(otherLabel, otherTokens)
+      hasOther = true
+    }
+  })
+  const stackedModels = hasOther ? [...topModels, otherLabel] : topModels
+  const modelColorMap = stackedModels.reduce<Record<string, string>>(
+    (acc, model, i) => {
+      acc[model] = TOKEN_COLORS[i % TOKEN_COLORS.length]
+      return acc
+    },
+    {}
+  )
+  const byModelValues: Array<{ User: string; Model: string; Tokens: number }> =
+    []
+  topUsers.forEach((user) => {
+    stackedModels.forEach((model) => {
+      byModelValues.push({
+        User: user,
+        Model: model,
+        Tokens: userModelTokens.get(user)?.get(model) || 0,
       })
     })
   })
@@ -1280,6 +1349,51 @@ export function processDailyTokensChartData(
           ],
         },
       },
+      background: { fill: 'transparent' },
+      animation: true,
+    },
+    spec_tokens_by_model: {
+      type: 'bar',
+      data: [{ id: 'tokensByModelData', values: byModelValues }],
+      xField: 'User',
+      yField: 'Tokens',
+      seriesField: 'Model',
+      stack: true,
+      title: {
+        visible: true,
+        text: tt('User Token Share by Model'),
+        subtext: `${metricLabel} - ${tt('Total:')} ${formatInt(totalTokens)}`,
+      },
+      legends: { visible: true, selectMode: 'single' },
+      bar: {
+        state: { hover: { stroke: '#000', lineWidth: 1 } },
+      },
+      axes: [
+        {
+          orient: 'bottom',
+          type: 'band',
+          label: { autoRotate: true, autoLimit: true, style: { fontSize: 10 } },
+        },
+        {
+          orient: 'left',
+          type: 'linear',
+          label: {
+            formatMethod: (value: number) => formatInt(value),
+          },
+        },
+      ],
+      tooltip: {
+        mark: {
+          content: [
+            {
+              key: (datum: Record<string, unknown>) => datum?.Model,
+              value: (datum: Record<string, unknown>) =>
+                formatInt(Number(datum?.Tokens) || 0),
+            },
+          ],
+        },
+      },
+      color: { specified: modelColorMap },
       background: { fill: 'transparent' },
       animation: true,
     },

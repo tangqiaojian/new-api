@@ -38,11 +38,15 @@ import {
   getDailyTokenData,
   getSelfDailyTokenData,
 } from '@/features/dashboard/api'
-import { TIME_RANGE_PRESETS } from '@/features/dashboard/constants'
+import { DashboardTimeRangeBar } from '@/features/dashboard/components/ui/dashboard-time-range-bar'
 import { useAutoRefresh } from '@/features/dashboard/hooks/use-auto-refresh'
-import { processDailyTokensChartData } from '@/features/dashboard/lib'
+import {
+  processDailyTokensChartData,
+  resolveUnixTimeRange,
+} from '@/features/dashboard/lib'
 import type {
   DailyTokensFilters,
+  DashboardTimeWindow,
   ProcessedDailyTokensChartData,
   TokenMetricType,
 } from '@/features/dashboard/types'
@@ -50,7 +54,6 @@ import { toIntlLocale } from '@/i18n/languages'
 import { formatQuotaWithCurrency } from '@/lib/currency'
 import { formatCompactNumber, formatNumber } from '@/lib/format'
 import { ROLE } from '@/lib/roles'
-import { getRollingDateRange } from '@/lib/time'
 import { VCHART_OPTION } from '@/lib/vchart'
 import { useAuthStore } from '@/stores/auth-store'
 
@@ -77,6 +80,11 @@ const TOKEN_CHARTS: {
     value: 'pie',
     labelKey: 'User Token Distribution',
     specKey: 'spec_tokens_pie',
+  },
+  {
+    value: 'by-model',
+    labelKey: 'User Token Share by Model',
+    specKey: 'spec_tokens_by_model',
   },
 ]
 
@@ -114,6 +122,8 @@ export function DailyTokensSection(props: DailyTokensSectionProps) {
   const [compactMode, setCompactMode] = useState(true)
 
   const selectedRange = props.filters.selectedRange
+  const startTimestamp = props.filters.start_timestamp
+  const endTimestamp = props.filters.end_timestamp
   const topUserLimit = props.filters.topUserLimit
   const onFiltersChange = props.onFiltersChange
   const [metricType, setMetricType] = useState<TokenMetricType>('total')
@@ -121,17 +131,19 @@ export function DailyTokensSection(props: DailyTokensSectionProps) {
 
   const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
 
-  const timeRange = useMemo(() => {
-    const { start, end } = getRollingDateRange(selectedRange)
-    return {
-      start_timestamp: Math.floor(start.getTime() / 1000),
-      end_timestamp: Math.floor(end.getTime() / 1000),
-    }
-  }, [selectedRange])
+  const timeRange = useMemo(
+    () =>
+      resolveUnixTimeRange({
+        selectedRange,
+        start_timestamp: startTimestamp,
+        end_timestamp: endTimestamp,
+      }),
+    [endTimestamp, selectedRange, startTimestamp]
+  )
 
-  const handleRangeChange = useCallback(
-    (days: number) => {
-      onFiltersChange({ ...props.filters, selectedRange: days })
+  const handleTimeWindowChange = useCallback(
+    (window: DashboardTimeWindow) => {
+      onFiltersChange({ ...props.filters, ...window })
     },
     [onFiltersChange, props.filters]
   )
@@ -232,23 +244,10 @@ export function DailyTokensSection(props: DailyTokensSectionProps) {
     <div className='space-y-3'>
       {/* Filter controls */}
       <div className='flex items-center gap-1.5 overflow-x-auto pb-1 sm:gap-2'>
-        <Tabs
-          value={String(selectedRange)}
-          onValueChange={(value) => handleRangeChange(Number(value))}
-          className='shrink-0'
-        >
-          <TabsList>
-            {TIME_RANGE_PRESETS.map((preset) => (
-              <TabsTrigger
-                key={preset.days}
-                value={String(preset.days)}
-                className='px-2.5 text-xs'
-              >
-                {t(preset.label)}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-        </Tabs>
+        <DashboardTimeRangeBar
+          value={props.filters}
+          onChange={handleTimeWindowChange}
+        />
 
         <Tabs
           value={metricType}
@@ -378,6 +377,9 @@ export function DailyTokensSection(props: DailyTokensSectionProps) {
                   <TableHead className='whitespace-nowrap'>
                     {t('Date')}
                   </TableHead>
+                  <TableHead className='whitespace-nowrap'>
+                    {t('Model')}
+                  </TableHead>
                   <TableHead className='text-right whitespace-nowrap'>
                     {t('Prompt Tokens')}
                   </TableHead>
@@ -397,7 +399,9 @@ export function DailyTokensSection(props: DailyTokensSectionProps) {
               </TableHeader>
               <TableBody>
                 {paginatedData.map((item) => (
-                  <TableRow key={`${item.user_id}-${item.date}`}>
+                  <TableRow
+                    key={`${item.user_id}-${item.model_name}-${item.date}`}
+                  >
                     {isAdmin && (
                       <TableCell className='font-medium whitespace-nowrap'>
                         {item.username}
@@ -405,6 +409,9 @@ export function DailyTokensSection(props: DailyTokensSectionProps) {
                     )}
                     <TableCell className='whitespace-nowrap'>
                       {item.date}
+                    </TableCell>
+                    <TableCell className='whitespace-nowrap'>
+                      {item.model_name}
                     </TableCell>
                     <TableCell className='text-right whitespace-nowrap tabular-nums'>
                       {formatNum(item.prompt_tokens)}

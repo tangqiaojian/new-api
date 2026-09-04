@@ -35,7 +35,11 @@ import {
   getSelfDailyModelTokenData,
 } from '@/features/dashboard/api'
 import { useAutoRefresh } from '@/features/dashboard/hooks/use-auto-refresh'
-import { aggregateTodayModelTokens } from '@/features/dashboard/lib'
+import {
+  aggregateTodayModelTokens,
+  resolveUnixTimeRange,
+} from '@/features/dashboard/lib'
+import type { DashboardFilters } from '@/features/dashboard/types'
 import { toIntlLocale } from '@/i18n/languages'
 import {
   formatCompactNumber,
@@ -43,6 +47,7 @@ import {
   formatQuota,
 } from '@/lib/format'
 import { ROLE } from '@/lib/roles'
+import dayjs from '@/lib/dayjs'
 import {
   dateToUnixTimestamp,
   getEndOfDay,
@@ -69,6 +74,7 @@ const MODEL_SKELETON_KEYS = [
 
 interface TodayModelTokensPanelProps {
   includeCache?: boolean
+  filters?: DashboardFilters
 }
 
 function formatStatNumber(
@@ -91,21 +97,48 @@ export function TodayModelTokensPanel(props: TodayModelTokensPanelProps) {
   const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
 
   const timeRange = useMemo(() => {
+    if (props.filters?.start_timestamp && props.filters?.end_timestamp) {
+      return resolveUnixTimeRange({
+        selectedRange: 0,
+        start_timestamp: props.filters.start_timestamp,
+        end_timestamp: props.filters.end_timestamp,
+      })
+    }
     const now = new Date()
     return {
       start_timestamp: dateToUnixTimestamp(getStartOfDay(now)),
       end_timestamp: dateToUnixTimestamp(getEndOfDay(now)),
     }
-  }, [])
+  }, [props.filters?.end_timestamp, props.filters?.start_timestamp])
 
-  const todayLabel = useMemo(() => {
-    return new Intl.DateTimeFormat(locale, {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      weekday: 'short',
-    }).format(new Date())
-  }, [locale])
+  const isCalendarToday = useMemo(() => {
+    const start = dayjs(timeRange.start_timestamp * 1000)
+    const end = dayjs(timeRange.end_timestamp * 1000)
+    const now = dayjs()
+    return start.isSame(now, 'day') && end.isSame(now, 'day')
+  }, [timeRange.end_timestamp, timeRange.start_timestamp])
+
+  const rangeLabel = useMemo(() => {
+    if (isCalendarToday) {
+      return new Intl.DateTimeFormat(locale, {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        weekday: 'short',
+      }).format(new Date())
+    }
+    const start = dayjs(timeRange.start_timestamp * 1000)
+    const end = dayjs(timeRange.end_timestamp * 1000)
+    if (start.isSame(end, 'day')) {
+      return `${start.format('YYYY-MM-DD HH:mm')} – ${end.format('HH:mm')}`
+    }
+    return `${start.format('YYYY-MM-DD HH:mm')} – ${end.format('YYYY-MM-DD HH:mm')}`
+  }, [
+    isCalendarToday,
+    locale,
+    timeRange.end_timestamp,
+    timeRange.start_timestamp,
+  ])
 
   const query = useQuery({
     queryKey: [
@@ -228,11 +261,15 @@ export function TodayModelTokensPanel(props: TodayModelTokensPanelProps) {
     modelUsageContent = (
       <div className='text-muted-foreground flex flex-col items-center justify-center gap-1 py-10 text-center'>
         <Cpu className='text-muted-foreground/50 mb-1 size-8' />
-        <div className='text-sm font-medium'>{t('No token usage today')}</div>
+        <div className='text-sm font-medium'>
+          {isCalendarToday ? t('No token usage today') : t('No data available')}
+        </div>
         <div className='max-w-sm text-xs leading-relaxed'>
-          {t(
-            'Model token stats will appear here after you make API calls today.'
-          )}
+          {isCalendarToday
+            ? t(
+                'Model token stats will appear here after you make API calls today.'
+              )
+            : t('No data available')}
         </div>
       </div>
     )
@@ -335,7 +372,7 @@ export function TodayModelTokensPanel(props: TodayModelTokensPanelProps) {
         </div>
         <div className='bg-muted/70 text-muted-foreground inline-flex w-fit items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium tabular-nums'>
           <CalendarDays className='size-3.5 opacity-70' />
-          {todayLabel}
+          {rangeLabel}
         </div>
       </div>
 

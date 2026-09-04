@@ -27,21 +27,22 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useTheme } from '@/context/theme-provider'
 import { getUserQuotaDataByUsers } from '@/features/dashboard/api'
-import {
-  TIME_GRANULARITY_OPTIONS,
-  TIME_RANGE_PRESETS,
-} from '@/features/dashboard/constants'
+import { DashboardTimeRangeBar } from '@/features/dashboard/components/ui/dashboard-time-range-bar'
+import { TIME_GRANULARITY_OPTIONS } from '@/features/dashboard/constants'
 import { useAutoRefresh } from '@/features/dashboard/hooks/use-auto-refresh'
 import {
+  buildTimeWindow,
   getDefaultDays,
-  saveGranularity,
   processUserChartData,
+  resolveUnixTimeRange,
+  saveGranularity,
 } from '@/features/dashboard/lib'
 import type {
+  DashboardTimeWindow,
   ProcessedUserChartData,
   UserChartsFilters,
 } from '@/features/dashboard/types'
-import { getRollingDateRange, type TimeGranularity } from '@/lib/time'
+import type { TimeGranularity } from '@/lib/time'
 import { VCHART_OPTION } from '@/lib/vchart'
 
 let themeManagerPromise: Promise<
@@ -85,20 +86,24 @@ export function UserCharts(props: UserChartsProps) {
   // sub-section switches; the rolling window is derived from the chosen range.
   const timeGranularity = props.filters.timeGranularity
   const selectedRange = props.filters.selectedRange
+  const startTimestamp = props.filters.start_timestamp
+  const endTimestamp = props.filters.end_timestamp
   const topUserLimit = props.filters.topUserLimit
   const onFiltersChange = props.onFiltersChange
 
-  const timeRange = useMemo(() => {
-    const { start, end } = getRollingDateRange(selectedRange)
-    return {
-      start_timestamp: Math.floor(start.getTime() / 1000),
-      end_timestamp: Math.floor(end.getTime() / 1000),
-    }
-  }, [selectedRange])
+  const timeRange = useMemo(
+    () =>
+      resolveUnixTimeRange({
+        selectedRange,
+        start_timestamp: startTimestamp,
+        end_timestamp: endTimestamp,
+      }),
+    [endTimestamp, selectedRange, startTimestamp]
+  )
 
-  const handleRangeChange = useCallback(
-    (days: number) => {
-      onFiltersChange({ ...props.filters, selectedRange: days })
+  const handleTimeWindowChange = useCallback(
+    (window: DashboardTimeWindow) => {
+      onFiltersChange({ ...props.filters, ...window })
     },
     [onFiltersChange, props.filters]
   )
@@ -109,7 +114,7 @@ export function UserCharts(props: UserChartsProps) {
       onFiltersChange({
         ...props.filters,
         timeGranularity: g,
-        selectedRange: getDefaultDays(g),
+        ...buildTimeWindow(getDefaultDays(g)),
       })
     },
     [onFiltersChange, props.filters]
@@ -166,23 +171,10 @@ export function UserCharts(props: UserChartsProps) {
   return (
     <div className='space-y-3'>
       <div className='flex items-center gap-1.5 overflow-x-auto pb-1 sm:gap-2'>
-        <Tabs
-          value={String(selectedRange)}
-          onValueChange={(value) => handleRangeChange(Number(value))}
-          className='shrink-0'
-        >
-          <TabsList>
-            {TIME_RANGE_PRESETS.map((preset) => (
-              <TabsTrigger
-                key={preset.days}
-                value={String(preset.days)}
-                className='px-2.5 text-xs'
-              >
-                {t(preset.label)}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-        </Tabs>
+        <DashboardTimeRangeBar
+          value={props.filters}
+          onChange={handleTimeWindowChange}
+        />
 
         <Tabs
           value={timeGranularity}

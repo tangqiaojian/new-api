@@ -18,6 +18,12 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import type { TimeGranularity } from '@/lib/time'
 
+export interface DashboardTimeWindow {
+  selectedRange: number
+  start_timestamp?: Date
+  end_timestamp?: Date
+}
+
 // ============================================================================
 // Quota & Usage Data Types
 // ============================================================================
@@ -37,6 +43,7 @@ export interface QuotaDataItem {
 export interface DailyTokenDataItem {
   user_id: number
   username: string
+  model_name: string
   date: string // YYYY-MM-DD format
   prompt_tokens: number
   completion_tokens: number
@@ -58,9 +65,8 @@ export interface DailyModelTokenDataItem {
   quota: number
 }
 
-export interface DailyTokensFilters {
+export interface DailyTokensFilters extends DashboardTimeWindow {
   timeGranularity: TimeGranularity
-  selectedRange: number
   topUserLimit: number
 }
 
@@ -237,9 +243,8 @@ export interface DashboardChartPreferences {
 
 // User analytics selections are held by the dashboard parent so they survive
 // switching between dashboard sub-sections, matching the model/flow filters.
-export interface UserChartsFilters {
+export interface UserChartsFilters extends DashboardTimeWindow {
   timeGranularity: TimeGranularity
-  selectedRange: number
   topUserLimit: number
 }
 
@@ -288,6 +293,7 @@ export interface ProcessedDailyTokensChartData {
   spec_tokens_trend: VChartSpec
   spec_tokens_rank: VChartSpec
   spec_tokens_pie: VChartSpec
+  spec_tokens_by_model: VChartSpec
 }
 
 export interface ProcessedDailyModelTokensChartData {
@@ -313,10 +319,11 @@ export interface ChannelModelStatsItem {
   quota: number
 }
 
-export interface ChannelStatsFilters {
+export interface ChannelStatsFilters extends DashboardTimeWindow {
   timeGranularity: TimeGranularity
-  selectedRange: number
   topLimit: number
+  channelId: number | null
+  searchQuery: string
 }
 
 // ============================================================================
@@ -348,9 +355,8 @@ export interface SubscriptionModelUsageDataItem {
   quota: number
 }
 
-export interface SubscriptionUsageFilters {
+export interface SubscriptionUsageFilters extends DashboardTimeWindow {
   timeGranularity: TimeGranularity
-  selectedRange: number
   model: string
 }
 

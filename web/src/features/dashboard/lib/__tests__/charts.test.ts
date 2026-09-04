@@ -31,6 +31,7 @@ describe('daily token chart processing', () => {
         {
           user_id: 1,
           username: 'alice',
+          model_name: 'gpt-a',
           date: '2026-08-12',
           prompt_tokens: 60,
           completion_tokens: 40,
@@ -42,6 +43,7 @@ describe('daily token chart processing', () => {
         {
           user_id: 1,
           username: 'alice',
+          model_name: 'gpt-a',
           date: '2026-08-13',
           prompt_tokens: 10,
           completion_tokens: 10,
@@ -53,6 +55,7 @@ describe('daily token chart processing', () => {
         {
           user_id: 2,
           username: 'bob',
+          model_name: 'gpt-b',
           date: '2026-08-13',
           prompt_tokens: 50,
           completion_tokens: 20,

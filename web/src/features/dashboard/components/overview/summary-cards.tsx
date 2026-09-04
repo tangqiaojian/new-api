@@ -139,6 +139,8 @@ const HEALTH_CONFIG: Record<
 
 interface SummaryCardsProps {
   days?: number
+  start?: Date
+  end?: Date
 }
 
 export function SummaryCards(props: SummaryCardsProps) {
@@ -148,7 +150,10 @@ export function SummaryCards(props: SummaryCardsProps) {
   const { refetchInterval } = useAutoRefresh()
   const days = props.days ?? 1
 
-  const summaryTimeRange = useMemo(() => computeTimeRange(days), [days])
+  const summaryTimeRange = useMemo(
+    () => computeTimeRange(days, props.start, props.end),
+    [days, props.end, props.start]
+  )
   const remainQuota = Number(user?.quota ?? 0)
   const usedQuota = Number(user?.used_quota ?? 0)
   const requestCount = Number(user?.request_count ?? 0)

@@ -65,6 +65,7 @@ import {
 } from './hooks/use-auto-refresh'
 import {
   buildDefaultDashboardFilters,
+  buildTimeWindow,
   getDefaultDays,
   getSavedChartPreferences,
   getSavedGranularity,
@@ -423,7 +424,7 @@ export function Dashboard() {
       const granularity = getSavedGranularity()
       return {
         timeGranularity: granularity,
-        selectedRange: getDefaultDays(granularity),
+        ...buildTimeWindow(getDefaultDays(granularity)),
         topUserLimit: 10,
       }
     }
@@ -433,19 +434,21 @@ export function Dashboard() {
   const [dailyTokensFilters, setDailyTokensFilters] =
     useState<DailyTokensFilters>(() => ({
       timeGranularity: 'day',
-      selectedRange: 7,
+      ...buildTimeWindow(7),
       topUserLimit: 10,
     }))
   const [channelStatsFilters, setChannelStatsFilters] =
     useState<ChannelStatsFilters>(() => ({
       timeGranularity: 'day',
-      selectedRange: 1,
+      ...buildTimeWindow(1),
       topLimit: 10,
+      channelId: null,
+      searchQuery: '',
     }))
   const [subscriptionUsageFilters, setSubscriptionUsageFilters] =
     useState<SubscriptionUsageFilters>(() => ({
       timeGranularity: 'day',
-      selectedRange: 7,
+      ...buildTimeWindow(7),
       model: '',
     }))
 
@@ -622,7 +625,10 @@ export function Dashboard() {
                 </FadeIn>
                 <FadeIn delay={0.04}>
                   <Suspense fallback={<LogStatCardsFallback />}>
-                    <LazyTodayModelTokensPanel includeCache={includeCache} />
+                    <LazyTodayModelTokensPanel
+                      includeCache={includeCache}
+                      filters={modelFilters}
+                    />
                   </Suspense>
                 </FadeIn>
                 {isAdmin && (
