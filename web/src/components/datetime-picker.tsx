@@ -23,7 +23,11 @@ import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
 import { Calendar } from '@/components/ui/calendar'
-import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import {
+  NativeSelect,
+  NativeSelectOption,
+} from '@/components/ui/native-select'
 import {
   Popover,
   PopoverContent,
@@ -31,6 +35,13 @@ import {
 } from '@/components/ui/popover'
 import dayjs from '@/lib/dayjs'
 import { cn } from '@/lib/utils'
+
+const HOUR_OPTIONS = Array.from({ length: 24 }, (_, hour) =>
+  hour.toString().padStart(2, '0')
+)
+const MINUTE_OPTIONS = Array.from({ length: 60 }, (_, minute) =>
+  minute.toString().padStart(2, '0')
+)
 
 const calendarLocales = {
   en: enUS,
@@ -78,32 +89,46 @@ export function DateTimePicker({
     }
   }, [value])
 
-  const handleDateSelect = (selectedDate: Date | undefined) => {
-    if (selectedDate) {
-      const [hours, minutes] = time.split(':').map(Number)
-      const newDate = new Date(selectedDate)
-      newDate.setHours(hours, minutes, 0, 0)
-      setDate(newDate)
-      setMonth(newDate)
-      onChange?.(newDate)
-      setOpen(false)
-    } else {
-      setDate(undefined)
-      setMonth(undefined)
-      onChange?.(undefined)
-    }
+  const hourId = React.useId()
+  const minuteId = React.useId()
+  const [rawHours, rawMinutes] = time.split(':')
+  const hours = rawHours || '00'
+  const minutes = rawMinutes || '00'
+  const triggerLabel = date
+    ? dayjs(date).format('YYYY-MM-DD HH:mm')
+    : placeholderText
+
+  const applyDateAndTime = (
+    selectedDate: Date,
+    nextHours: number,
+    nextMinutes: number
+  ) => {
+    const newDate = new Date(selectedDate)
+    newDate.setHours(nextHours, nextMinutes, 0, 0)
+    setDate(newDate)
+    setMonth(newDate)
+    onChange?.(newDate)
   }
 
-  const handleTimeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const newTime = e.target.value
-    setTime(newTime)
+  const handleDateSelect = (selectedDate: Date | undefined) => {
+    if (selectedDate) {
+      applyDateAndTime(selectedDate, Number(hours), Number(minutes))
+      return
+    }
+    setDate(undefined)
+    setMonth(undefined)
+    onChange?.(undefined)
+  }
 
+  const handleTimePartChange = (
+    part: 'hour' | 'minute',
+    nextValue: string
+  ) => {
+    const nextHours = part === 'hour' ? nextValue : hours
+    const nextMinutes = part === 'minute' ? nextValue : minutes
+    setTime(`${nextHours}:${nextMinutes}`)
     if (date) {
-      const [hours, minutes] = newTime.split(':').map(Number)
-      const newDate = new Date(date)
-      newDate.setHours(hours, minutes, 0, 0)
-      setDate(newDate)
-      onChange?.(newDate)
+      applyDateAndTime(date, Number(nextHours), Number(nextMinutes))
     }
   }
 
@@ -128,12 +153,13 @@ export function DateTimePicker({
             />
           }
         >
-          {date ? dayjs(date).format('YYYY-MM-DD') : placeholderText}
+          {triggerLabel}
           <ChevronDownIcon className='h-4 w-4 opacity-50' />
         </PopoverTrigger>
         <PopoverContent className='w-auto overflow-hidden p-0' align='start'>
           <Calendar
             mode='single'
+            required
             selected={date}
             month={month}
             onMonthChange={setMonth}
@@ -143,15 +169,52 @@ export function DateTimePicker({
             startMonth={new Date(currentYear - 100, 0)}
             endMonth={new Date(currentYear + 100, 11)}
           />
+          <div className='flex items-end gap-2 border-t p-3'>
+            <div className='flex min-w-0 flex-1 flex-col gap-1'>
+              <Label htmlFor={hourId}>{t('Hour')}</Label>
+              <NativeSelect
+                id={hourId}
+                aria-label={t('Hour')}
+                value={hours}
+                onChange={(event) =>
+                  handleTimePartChange('hour', event.target.value)
+                }
+              >
+                {HOUR_OPTIONS.map((hour) => (
+                  <NativeSelectOption key={hour} value={hour}>
+                    {hour}
+                  </NativeSelectOption>
+                ))}
+              </NativeSelect>
+            </div>
+            <div className='flex min-w-0 flex-1 flex-col gap-1'>
+              <Label htmlFor={minuteId}>{t('Minute')}</Label>
+              <NativeSelect
+                id={minuteId}
+                aria-label={t('Minute')}
+                value={minutes}
+                onChange={(event) =>
+                  handleTimePartChange('minute', event.target.value)
+                }
+              >
+                {MINUTE_OPTIONS.map((minute) => (
+                  <NativeSelectOption key={minute} value={minute}>
+                    {minute}
+                  </NativeSelectOption>
+                ))}
+              </NativeSelect>
+            </div>
+            <Button
+              type='button'
+              variant='outline'
+              className='shrink-0'
+              onClick={() => setOpen(false)}
+            >
+              {t('Done')}
+            </Button>
+          </div>
         </PopoverContent>
       </Popover>
-      <Input
-        type='time'
-        value={time}
-        onChange={handleTimeChange}
-        className='w-32 appearance-none [&::-webkit-calendar-picker-indicator]:hidden [&::-webkit-calendar-picker-indicator]:appearance-none'
-        disabled={!date}
-      />
       {date && (
         <Button
           type='button'
