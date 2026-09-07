@@ -2,6 +2,7 @@ package model
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -425,17 +426,23 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 		logger.LogError(c, "failed to record log: "+err.Error())
 	}
 	if common.DataExportEnabled {
+		cacheRead, cacheWrite := extractCacheTokenCounts(params.Other)
 		LogQuotaData(QuotaDataLogParams{
-			UserID:    userId,
-			Username:  username,
-			ModelName: params.ModelName,
-			Quota:     params.Quota,
-			CreatedAt: createdAt,
-			TokenUsed: params.PromptTokens + params.CompletionTokens,
-			UseGroup:  params.Group,
-			TokenID:   params.TokenId,
-			ChannelID: params.ChannelId,
-			NodeName:  common.NodeName,
+			UserID:           userId,
+			Username:         username,
+			ModelName:        params.ModelName,
+			Quota:            params.Quota,
+			CreatedAt:        createdAt,
+			TokenUsed:        params.PromptTokens + params.CompletionTokens,
+			PromptTokens:     params.PromptTokens,
+			CompletionTokens: params.CompletionTokens,
+			CacheReadTokens:  cacheRead,
+			CacheWriteTokens: cacheWrite,
+			Success:          !isStreamStatusError(params.Other),
+			UseGroup:         params.Group,
+			TokenID:          params.TokenId,
+			ChannelID:        params.ChannelId,
+			NodeName:         common.NodeName,
 		})
 	}
 }
@@ -488,16 +495,20 @@ func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
 		if nodeName == "" {
 			nodeName = common.NodeName
 		}
+		cacheRead, cacheWrite := extractCacheTokenCounts(params.Other)
 		LogQuotaData(QuotaDataLogParams{
-			UserID:    params.UserId,
-			Username:  username,
-			ModelName: params.ModelName,
-			Quota:     params.Quota,
-			CreatedAt: createdAt,
-			UseGroup:  params.Group,
-			TokenID:   params.TokenId,
-			ChannelID: params.ChannelId,
-			NodeName:  nodeName,
+			UserID:           params.UserId,
+			Username:         username,
+			ModelName:        params.ModelName,
+			Quota:            params.Quota,
+			CreatedAt:        createdAt,
+			CacheReadTokens:  cacheRead,
+			CacheWriteTokens: cacheWrite,
+			Success:          !isStreamStatusError(params.Other),
+			UseGroup:         params.Group,
+			TokenID:          params.TokenId,
+			ChannelID:        params.ChannelId,
+			NodeName:         nodeName,
 		})
 	}
 }
@@ -813,5 +824,60 @@ func logCacheTokensSumExpr() string {
 		// MySQL: JSON_EXTRACT returns a JSON value cast to SIGNED. Guard legacy
 		// empty values for the same reason as SQLite.
 		return "COALESCE(SUM(CAST(JSON_EXTRACT(CASE WHEN JSON_VALID(other) THEN other ELSE JSON_OBJECT() END, '$." + key + "') AS SIGNED)), 0)"
+	}
+}
+
+func extractCacheTokenCounts(other map[string]interface{}) (cacheRead int, cacheWrite int) {
+	if other == nil {
+		return 0, 0
+	}
+	cacheRead = otherMapInt(other, "cache_tokens")
+	cacheWrite = otherMapInt(other, "cache_write_tokens")
+	if cacheWrite <= 0 {
+		cacheWrite = otherMapInt(other, "cache_creation_tokens")
+	}
+	return cacheRead, cacheWrite
+}
+
+func isStreamStatusError(other map[string]interface{}) bool {
+	if other == nil {
+		return false
+	}
+	raw, ok := other["stream_status"]
+	if !ok || raw == nil {
+		return false
+	}
+	statusMap, ok := raw.(map[string]interface{})
+	if !ok {
+		return false
+	}
+	status, _ := statusMap["status"].(string)
+	return status == "error"
+}
+
+func otherMapInt(other map[string]interface{}, key string) int {
+	raw, ok := other[key]
+	if !ok || raw == nil {
+		return 0
+	}
+	switch v := raw.(type) {
+	case int:
+		return v
+	case int32:
+		return int(v)
+	case int64:
+		return int(v)
+	case float32:
+		return int(v)
+	case float64:
+		return int(v)
+	case json.Number:
+		i, err := v.Int64()
+		if err != nil {
+			return 0
+		}
+		return int(i)
+	default:
+		return 0
 	}
 }

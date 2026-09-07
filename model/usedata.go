@@ -11,31 +11,42 @@ import (
 
 // QuotaData 柱状图数据
 type QuotaData struct {
-	Id        int    `json:"id"`
-	UserID    int    `json:"user_id" gorm:"index"`
-	Username  string `json:"username" gorm:"index:idx_qdt_model_user_name,priority:2;size:64;default:''"`
-	ModelName string `json:"model_name" gorm:"index:idx_qdt_model_user_name,priority:1;size:64;default:''"`
-	CreatedAt int64  `json:"created_at" gorm:"bigint;index:idx_qdt_created_at,priority:2"`
-	UseGroup  string `json:"use_group" gorm:"index;size:64;default:''"`
-	TokenID   int    `json:"token_id" gorm:"index;default:0"`
-	ChannelID int    `json:"channel_id" gorm:"index;default:0"`
-	NodeName  string `json:"node_name" gorm:"index;size:64;default:''"`
-	TokenUsed int    `json:"token_used" gorm:"default:0"`
-	Count     int    `json:"count" gorm:"default:0"`
-	Quota     int    `json:"quota" gorm:"default:0"`
+	Id               int    `json:"id"`
+	UserID           int    `json:"user_id" gorm:"index"`
+	Username         string `json:"username" gorm:"index:idx_qdt_model_user_name,priority:2;size:64;default:''"`
+	ModelName        string `json:"model_name" gorm:"index:idx_qdt_model_user_name,priority:1;size:64;default:''"`
+	CreatedAt        int64  `json:"created_at" gorm:"bigint;index:idx_qdt_created_at,priority:2"`
+	UseGroup         string `json:"use_group" gorm:"index;size:64;default:''"`
+	TokenID          int    `json:"token_id" gorm:"index;default:0"`
+	ChannelID        int    `json:"channel_id" gorm:"index;default:0"`
+	NodeName         string `json:"node_name" gorm:"index;size:64;default:''"`
+	TokenUsed        int    `json:"token_used" gorm:"default:0"`
+	PromptTokens     int    `json:"prompt_tokens" gorm:"default:0"`
+	CompletionTokens int    `json:"completion_tokens" gorm:"default:0"`
+	CacheReadTokens  int    `json:"cache_read_tokens" gorm:"default:0"`
+	CacheWriteTokens int    `json:"cache_write_tokens" gorm:"default:0"`
+	SuccessCount     int    `json:"success_count" gorm:"default:0"`
+	ErrorCount       int    `json:"error_count" gorm:"default:0"`
+	Count            int    `json:"count" gorm:"default:0"`
+	Quota            int    `json:"quota" gorm:"default:0"`
 }
 
 type QuotaDataLogParams struct {
-	UserID    int
-	Username  string
-	ModelName string
-	Quota     int
-	CreatedAt int64
-	TokenUsed int
-	UseGroup  string
-	TokenID   int
-	ChannelID int
-	NodeName  string
+	UserID           int
+	Username         string
+	ModelName        string
+	Quota            int
+	CreatedAt        int64
+	TokenUsed        int
+	PromptTokens     int
+	CompletionTokens int
+	CacheReadTokens  int
+	CacheWriteTokens int
+	Success          bool
+	UseGroup         string
+	TokenID          int
+	ChannelID        int
+	NodeName         string
 }
 
 func UpdateQuotaData() {
@@ -65,11 +76,23 @@ func logQuotaDataCache(quotaData *QuotaData) {
 	count := quotaData.Count
 	quota := quotaData.Quota
 	tokenUsed := quotaData.TokenUsed
+	promptTokens := quotaData.PromptTokens
+	completionTokens := quotaData.CompletionTokens
+	cacheReadTokens := quotaData.CacheReadTokens
+	cacheWriteTokens := quotaData.CacheWriteTokens
+	successCount := quotaData.SuccessCount
+	errorCount := quotaData.ErrorCount
 	cachedQuotaData, ok := CacheQuotaData[key]
 	if ok {
 		cachedQuotaData.Count += count
 		cachedQuotaData.Quota += quota
 		cachedQuotaData.TokenUsed += tokenUsed
+		cachedQuotaData.PromptTokens += promptTokens
+		cachedQuotaData.CompletionTokens += completionTokens
+		cachedQuotaData.CacheReadTokens += cacheReadTokens
+		cachedQuotaData.CacheWriteTokens += cacheWriteTokens
+		cachedQuotaData.SuccessCount += successCount
+		cachedQuotaData.ErrorCount += errorCount
 		quotaData = cachedQuotaData
 	}
 	CacheQuotaData[key] = quotaData
@@ -78,18 +101,31 @@ func logQuotaDataCache(quotaData *QuotaData) {
 func LogQuotaData(params QuotaDataLogParams) {
 	// 只精确到小时
 	createdAt := params.CreatedAt - (params.CreatedAt % 3600)
+	successCount := 0
+	errorCount := 0
+	if params.Success {
+		successCount = 1
+	} else {
+		errorCount = 1
+	}
 	quotaData := &QuotaData{
-		UserID:    params.UserID,
-		Username:  params.Username,
-		ModelName: params.ModelName,
-		CreatedAt: createdAt,
-		UseGroup:  params.UseGroup,
-		TokenID:   params.TokenID,
-		ChannelID: params.ChannelID,
-		NodeName:  params.NodeName,
-		Count:     1,
-		Quota:     params.Quota,
-		TokenUsed: params.TokenUsed,
+		UserID:           params.UserID,
+		Username:         params.Username,
+		ModelName:        params.ModelName,
+		CreatedAt:        createdAt,
+		UseGroup:         params.UseGroup,
+		TokenID:          params.TokenID,
+		ChannelID:        params.ChannelID,
+		NodeName:         params.NodeName,
+		Count:            1,
+		Quota:            params.Quota,
+		TokenUsed:        params.TokenUsed,
+		PromptTokens:     params.PromptTokens,
+		CompletionTokens: params.CompletionTokens,
+		CacheReadTokens:  params.CacheReadTokens,
+		CacheWriteTokens: params.CacheWriteTokens,
+		SuccessCount:     successCount,
+		ErrorCount:       errorCount,
 	}
 
 	CacheQuotaDataLock.Lock()
@@ -129,9 +165,15 @@ func increaseQuotaData(quotaData *QuotaData) {
 		Where("user_id = ? and username = ? and model_name = ? and created_at = ? and use_group = ? and token_id = ? and channel_id = ? and node_name = ?",
 			quotaData.UserID, quotaData.Username, quotaData.ModelName, quotaData.CreatedAt, quotaData.UseGroup, quotaData.TokenID, quotaData.ChannelID, quotaData.NodeName).
 		Updates(map[string]interface{}{
-			"count":      gorm.Expr("count + ?", quotaData.Count),
-			"quota":      gorm.Expr("quota + ?", quotaData.Quota),
-			"token_used": gorm.Expr("token_used + ?", quotaData.TokenUsed),
+			"count":             gorm.Expr("count + ?", quotaData.Count),
+			"quota":             gorm.Expr("quota + ?", quotaData.Quota),
+			"token_used":        gorm.Expr("token_used + ?", quotaData.TokenUsed),
+			"prompt_tokens":     gorm.Expr("prompt_tokens + ?", quotaData.PromptTokens),
+			"completion_tokens": gorm.Expr("completion_tokens + ?", quotaData.CompletionTokens),
+			"cache_read_tokens": gorm.Expr("cache_read_tokens + ?", quotaData.CacheReadTokens),
+			"cache_write_tokens": gorm.Expr("cache_write_tokens + ?", quotaData.CacheWriteTokens),
+			"success_count":     gorm.Expr("success_count + ?", quotaData.SuccessCount),
+			"error_count":       gorm.Expr("error_count + ?", quotaData.ErrorCount),
 		}).Error
 	if err != nil {
 		common.SysLog(fmt.Sprintf("increaseQuotaData error: %s", err))
@@ -146,10 +188,32 @@ func quotaTokenUsedSumExpression(includeCache bool) string {
 	return expression
 }
 
+func logCacheWriteTokensPerRowExpr() string {
+	writeExpr := logJSONIntExpression("cache_write_tokens")
+	creationExpr := logJSONIntExpression("cache_creation_tokens")
+	// Prefer cache_write_tokens; fall back to cache_creation_tokens for older rows.
+	return "CASE WHEN COALESCE(" + writeExpr + ", 0) > 0 THEN " + writeExpr + " ELSE COALESCE(" + creationExpr + ", 0) END"
+}
+
+func quotaDataAggregateSelect(includeCache bool) string {
+	cacheReadExpr := "COALESCE(SUM(" + logJSONIntExpression("cache_tokens") + "), 0)"
+	cacheWriteExpr := "COALESCE(SUM(" + logCacheWriteTokensPerRowExpr() + "), 0)"
+	successExpr := "COALESCE(SUM(" + logStreamSuccessExpression() + "), 0)"
+	return "COUNT(*) AS count, " +
+		"COALESCE(SUM(quota), 0) AS quota, " +
+		"COALESCE(SUM(prompt_tokens), 0) AS prompt_tokens, " +
+		"COALESCE(SUM(completion_tokens), 0) AS completion_tokens, " +
+		cacheReadExpr + " AS cache_read_tokens, " +
+		cacheWriteExpr + " AS cache_write_tokens, " +
+		successExpr + " AS success_count, " +
+		"COUNT(*) - " + successExpr + " AS error_count, " +
+		quotaTokenUsedSumExpression(includeCache) + " AS token_used"
+}
+
 func GetQuotaDataByUsername(username string, startTime int64, endTime int64, includeCache bool) (quotaData []*QuotaData, err error) {
 	var quotaDatas []*QuotaData
 	err = LOG_DB.Table("logs").
-		Select("user_id, username, model_name, created_at - (created_at % 3600) AS created_at, COUNT(*) AS count, COALESCE(SUM(quota), 0) AS quota, "+quotaTokenUsedSumExpression(includeCache)+" AS token_used").
+		Select("user_id, username, model_name, created_at - (created_at % 3600) AS created_at, "+quotaDataAggregateSelect(includeCache)).
 		Where("username = ? AND type = ? AND created_at >= ? AND created_at <= ?", username, LogTypeConsume, startTime, endTime).
 		Group("user_id, username, model_name, created_at - (created_at % 3600)").
 		Find(&quotaDatas).Error
@@ -159,7 +223,7 @@ func GetQuotaDataByUsername(username string, startTime int64, endTime int64, inc
 func GetQuotaDataByUserId(userId int, startTime int64, endTime int64, includeCache bool) (quotaData []*QuotaData, err error) {
 	var quotaDatas []*QuotaData
 	err = LOG_DB.Table("logs").
-		Select("user_id, username, model_name, created_at - (created_at % 3600) AS created_at, COUNT(*) AS count, COALESCE(SUM(quota), 0) AS quota, "+quotaTokenUsedSumExpression(includeCache)+" AS token_used").
+		Select("user_id, username, model_name, created_at - (created_at % 3600) AS created_at, "+quotaDataAggregateSelect(includeCache)).
 		Where("user_id = ? AND type = ? AND created_at >= ? AND created_at <= ?", userId, LogTypeConsume, startTime, endTime).
 		Group("user_id, username, model_name, created_at - (created_at % 3600)").
 		Find(&quotaDatas).Error
@@ -169,7 +233,7 @@ func GetQuotaDataByUserId(userId int, startTime int64, endTime int64, includeCac
 func GetQuotaDataGroupByUser(startTime int64, endTime int64, includeCache bool) (quotaData []*QuotaData, err error) {
 	var quotaDatas []*QuotaData
 	err = LOG_DB.Table("logs").
-		Select("username, created_at - (created_at % 3600) AS created_at, COUNT(*) AS count, COALESCE(SUM(quota), 0) AS quota, "+quotaTokenUsedSumExpression(includeCache)+" AS token_used").
+		Select("username, created_at - (created_at % 3600) AS created_at, "+quotaDataAggregateSelect(includeCache)).
 		Where("type = ? AND created_at >= ? AND created_at <= ?", LogTypeConsume, startTime, endTime).
 		Group("username, created_at - (created_at % 3600)").
 		Find(&quotaDatas).Error
@@ -182,7 +246,7 @@ func GetAllQuotaDates(startTime int64, endTime int64, username string, includeCa
 	}
 	var quotaDatas []*QuotaData
 	err = LOG_DB.Table("logs").
-		Select("model_name, created_at - (created_at % 3600) AS created_at, COUNT(*) AS count, COALESCE(SUM(quota), 0) AS quota, "+quotaTokenUsedSumExpression(includeCache)+" AS token_used").
+		Select("model_name, created_at - (created_at % 3600) AS created_at, "+quotaDataAggregateSelect(includeCache)).
 		Where("type = ? AND created_at >= ? AND created_at <= ?", LogTypeConsume, startTime, endTime).
 		Group("model_name, created_at - (created_at % 3600)").
 		Find(&quotaDatas).Error

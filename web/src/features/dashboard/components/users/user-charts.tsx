@@ -27,11 +27,13 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useTheme } from '@/context/theme-provider'
 import { getUserQuotaDataByUsers } from '@/features/dashboard/api'
+import { UsageKpiGrid } from '@/features/dashboard/components/usage-kpi-grid'
 import { DashboardTimeRangeBar } from '@/features/dashboard/components/ui/dashboard-time-range-bar'
 import { TIME_GRANULARITY_OPTIONS } from '@/features/dashboard/constants'
 import { useAutoRefresh } from '@/features/dashboard/hooks/use-auto-refresh'
 import {
   buildTimeWindow,
+  calculateDashboardStats,
   getDefaultDays,
   processUserChartData,
   resolveUnixTimeRange,
@@ -161,6 +163,18 @@ export function UserCharts(props: UserChartsProps) {
       ),
     [userData, isLoading, timeGranularity, t, topUserLimit]
   )
+  const kpiStats = useMemo(() => {
+    const data = userData ?? []
+    if (data.length === 0) return null
+    const stats = calculateDashboardStats(data)
+    return {
+      totalCount: stats.totalCount,
+      promptTokens: stats.promptTokens,
+      completionTokens: stats.completionTokens,
+      cacheReadTokens: stats.cacheReadTokens,
+      successCount: stats.successCount,
+    }
+  }, [userData])
   const dataFingerprint = useMemo(() => {
     const items = userData ?? []
     let quotaSum = 0
@@ -170,6 +184,7 @@ export function UserCharts(props: UserChartsProps) {
 
   return (
     <div className='space-y-3'>
+      <UsageKpiGrid loading={isLoading} stats={kpiStats} />
       <div className='flex items-center gap-1.5 overflow-x-auto pb-1 sm:gap-2'>
         <DashboardTimeRangeBar
           value={props.filters}

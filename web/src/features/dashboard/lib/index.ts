@@ -51,6 +51,11 @@ export {
   safeDivide,
   calculateDashboardStats,
   aggregateTodayModelTokens,
+  kpiInputTokens,
+  kpiSuccessRate,
+  kpiCacheHitRate,
+  formatKpiTokenCount,
+  formatKpiPercent,
 } from './stats'
 export type { TodayModelTokenRow, TodayModelTokenSummary } from './stats'
 export { getPreviewText } from './text'

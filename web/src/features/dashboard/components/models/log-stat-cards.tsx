@@ -23,6 +23,7 @@ import { useTranslation } from 'react-i18next'
 import { IconBadge } from '@/components/ui/icon-badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { getUserQuotaDates } from '@/features/dashboard/api'
+import { UsageKpiGrid } from '@/features/dashboard/components/usage-kpi-grid'
 import { useAutoRefresh } from '@/features/dashboard/hooks/use-auto-refresh'
 import { useModelStatCardsConfig } from '@/features/dashboard/hooks/use-dashboard-config'
 import {
@@ -149,7 +150,22 @@ export function LogStatCards(props: LogStatCardsProps) {
   })
 
   return (
-    <div className='overflow-hidden rounded-lg border'>
+    <div className='space-y-3'>
+      <UsageKpiGrid
+        loading={quotaQuery.isLoading}
+        stats={
+          stats
+            ? {
+                totalCount: stats.totalCount,
+                promptTokens: stats.promptTokens,
+                completionTokens: stats.completionTokens,
+                cacheReadTokens: stats.cacheReadTokens,
+                successCount: stats.successCount,
+              }
+            : null
+        }
+      />
+      <div className='overflow-hidden rounded-lg border'>
       <div className='divide-border/60 grid min-w-0 grid-cols-2 divide-x sm:grid-cols-3 lg:grid-cols-5'>
         {items.map((it, idx) => {
           const Icon = it.icon
@@ -216,6 +232,7 @@ export function LogStatCards(props: LogStatCardsProps) {
           )
         })}
       </div>
+    </div>
     </div>
   )
 }

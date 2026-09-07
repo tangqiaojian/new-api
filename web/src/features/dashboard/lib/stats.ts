@@ -44,9 +44,67 @@ export function calculateDashboardStats(data: QuotaDataItem[]) {
       totalQuota: acc.totalQuota + (Number(item.quota) || 0),
       totalCount: acc.totalCount + (Number(item.count) || 0),
       totalTokens: acc.totalTokens + (Number(item.token_used) || 0),
+      promptTokens: acc.promptTokens + (Number(item.prompt_tokens) || 0),
+      completionTokens:
+        acc.completionTokens + (Number(item.completion_tokens) || 0),
+      cacheReadTokens:
+        acc.cacheReadTokens + (Number(item.cache_read_tokens) || 0),
+      cacheWriteTokens:
+        acc.cacheWriteTokens + (Number(item.cache_write_tokens) || 0),
+      successCount: acc.successCount + (Number(item.success_count) || 0),
+      errorCount: acc.errorCount + (Number(item.error_count) || 0),
     }),
-    { totalQuota: 0, totalCount: 0, totalTokens: 0 }
+    {
+      totalQuota: 0,
+      totalCount: 0,
+      totalTokens: 0,
+      promptTokens: 0,
+      completionTokens: 0,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+      successCount: 0,
+      errorCount: 0,
+    }
   )
+}
+
+/** Input tokens for KPI cards: prompt + cache reads (subtitle: includes cache hits). */
+export function kpiInputTokens(stats: {
+  promptTokens: number
+  cacheReadTokens: number
+}): number {
+  return stats.promptTokens + stats.cacheReadTokens
+}
+
+export function kpiSuccessRate(stats: {
+  successCount: number
+  totalCount: number
+}): number {
+  return safeDivide(stats.successCount, stats.totalCount, 4)
+}
+
+export function kpiCacheHitRate(stats: {
+  promptTokens: number
+  cacheReadTokens: number
+}): number {
+  return safeDivide(
+    stats.cacheReadTokens,
+    stats.promptTokens + stats.cacheReadTokens,
+    4
+  )
+}
+
+/** Format token counts for KPI: B / M / K with 1 decimal. */
+export function formatKpiTokenCount(value: number): string {
+  const abs = Math.abs(value)
+  if (abs >= 1e9) return `${(value / 1e9).toFixed(1)}B`
+  if (abs >= 1e6) return `${(value / 1e6).toFixed(1)}M`
+  if (abs >= 1e3) return `${(value / 1e3).toFixed(1)}K`
+  return String(Math.round(value))
+}
+
+export function formatKpiPercent(rate: number): string {
+  return `${(rate * 100).toFixed(2)}%`
 }
 
 export type TodayModelTokenRow = {
