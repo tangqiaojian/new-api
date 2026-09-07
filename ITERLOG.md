@@ -6,3 +6,5 @@ START_TIME=2026-09-07T13:44:04+08:00
 2026-09-07T14:10 iter8 presets Today/7/30 + deploy develop-dashboard healthy
 2026-09-07T14:12 iter9 model breakdown + Asia/Shanghai; commit fbc0f76
 2026-09-07T14:13 iter10 regression green + redeploy; no new product bugs
+2026-09-07T14:15 iter11 B5 Call Trend→Consumption Trend + chart title; redeploy
+2026-09-07T14:20 iter12 user list/detail Weekly Reset (从未重置); tests green
