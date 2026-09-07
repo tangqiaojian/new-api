@@ -57,6 +57,9 @@ export const userSchema = z.object({
   created_at: z.number().optional(),
   updated_at: z.number().optional(),
   last_login_at: z.number().optional(),
+  weekly_quota: z.number().optional(),
+  weekly_quota_used: z.number().optional(),
+  weekly_quota_reset_at: z.number().optional(),
   DeletedAt: z.any().nullable().optional(),
   remark: z.string().optional(),
   admin_permissions: z

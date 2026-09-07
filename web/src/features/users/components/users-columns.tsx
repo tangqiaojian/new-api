@@ -30,6 +30,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import { formatResetTimestamp } from '@/features/subscriptions/lib/format-reset-time'
 import { formatQuota, formatTimestamp } from '@/lib/format'
 
 import {
@@ -171,6 +172,31 @@ export function useUsersColumns(): ColumnDef<User>[] {
       size: 300,
       minSize: 260,
       meta: { mobileOrder: 40 },
+    },
+    {
+      id: 'weekly_reset',
+      header: t('Weekly Reset'),
+      cell: ({ row }) => {
+        const user = row.original
+        const weeklyQuota = user.weekly_quota ?? 0
+        const weeklyUsed = user.weekly_quota_used ?? 0
+        return (
+          <div className='flex min-w-[160px] flex-col gap-0.5 text-sm'>
+            <div className='text-muted-foreground text-xs'>{t('Next Reset')}</div>
+            <span className='tabular-nums'>
+              {formatResetTimestamp(t, user.weekly_quota_reset_at)}
+            </span>
+            {weeklyQuota > 0 ? (
+              <span className='text-muted-foreground text-xs tabular-nums'>
+                {t('Used:')} {formatQuota(weeklyUsed)} / {formatQuota(weeklyQuota)}
+              </span>
+            ) : null}
+          </div>
+        )
+      },
+      enableSorting: false,
+      size: 180,
+      meta: { mobileHidden: true },
     },
     {
       accessorKey: 'group',

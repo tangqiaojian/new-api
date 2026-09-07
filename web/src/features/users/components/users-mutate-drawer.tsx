@@ -62,6 +62,7 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet'
 import { Textarea } from '@/components/ui/textarea'
+import { formatResetTimestamp } from '@/features/subscriptions/lib/format-reset-time'
 import {
   ADMIN_PERMISSION_ACTIONS,
   ADMIN_PERMISSION_RESOURCES,
@@ -110,6 +111,7 @@ export function UsersMutateDrawer({
   const currentUser = useAuthStore((s) => s.auth.user)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [quotaDialogOpen, setQuotaDialogOpen] = useState(false)
+  const [detailUser, setDetailUser] = useState<User | null>(null)
 
   // Fetch groups
   const { data: groupsData } = useQuery({
@@ -138,11 +140,13 @@ export function UsersMutateDrawer({
       // For update, fetch fresh data
       getUser(currentRow.id).then((result) => {
         if (result.success && result.data) {
+          setDetailUser(result.data)
           form.reset(transformUserToFormDefaults(result.data))
         }
       })
     } else if (open && !isUpdate) {
       // For create, reset to defaults
+      setDetailUser(null)
       form.reset(USER_FORM_DEFAULT_VALUES)
     }
   }, [open, isUpdate, currentRow, form])
@@ -447,6 +451,42 @@ export function UsersMutateDrawer({
                       </FormItem>
                     )}
                   />
+
+                  <div className='space-y-2 rounded-md border p-3'>
+                    <h4 className='text-sm font-medium'>{t('Weekly Reset')}</h4>
+                    <div className='grid gap-2 text-sm sm:grid-cols-2'>
+                      <div>
+                        <div className='text-muted-foreground text-xs'>
+                          {t('Next Reset')}
+                        </div>
+                        <div className='tabular-nums'>
+                          {formatResetTimestamp(
+                            t,
+                            detailUser?.weekly_quota_reset_at ??
+                              currentRow?.weekly_quota_reset_at
+                          )}
+                        </div>
+                      </div>
+                      <div>
+                        <div className='text-muted-foreground text-xs'>
+                          {t('Used:')}
+                        </div>
+                        <div className='tabular-nums'>
+                          {formatQuota(
+                            detailUser?.weekly_quota_used ??
+                              currentRow?.weekly_quota_used ??
+                              0
+                          )}{' '}
+                          /{' '}
+                          {formatQuota(
+                            detailUser?.weekly_quota ??
+                              currentRow?.weekly_quota ??
+                              0
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </SideDrawerSection>
               )}
 
