@@ -7,3 +7,4 @@
 2026-09-07T15:08 iter6 Overview 同步甜甜圈+Token趋势
 2026-09-07T15:10 iter7 今日费用实际/标准价：logs.other group_ratio 反推 standard_quota；折扣划线；图标密度对齐
 2026-09-07T15:15 iter8 分组卡标题总额 + RPM/TPM 并排；累计用 request_count/used_quota；热更
+2026-09-07T15:25 iter9 user_group_ratio=-1 哨兵测试；用户详情分组卡+图表；完成审计
