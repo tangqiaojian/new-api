@@ -34,6 +34,7 @@ export interface QuotaDataItem {
   username?: string
   model_name?: string
   created_at: number
+  use_group?: string
   token_used?: number
   prompt_tokens?: number
   completion_tokens?: number

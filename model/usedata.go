@@ -252,3 +252,23 @@ func GetAllQuotaDates(startTime int64, endTime int64, username string, includeCa
 		Find(&quotaDatas).Error
 	return quotaDatas, err
 }
+
+// GetQuotaDataGroupByUseGroup aggregates consume logs by billing group for
+// Sub2API-style group/channel mini cards (today / range totals).
+func GetQuotaDataGroupByUseGroup(startTime int64, endTime int64, username string, userId int, includeCache bool) (quotaData []*QuotaData, err error) {
+	var quotaDatas []*QuotaData
+	groupExpr := logGroupCol + " AS use_group"
+	tx := LOG_DB.Table("logs").
+		Select(groupExpr+", "+quotaDataAggregateSelect(includeCache)).
+		Where("type = ? AND created_at >= ? AND created_at <= ?", LogTypeConsume, startTime, endTime)
+	if username != "" {
+		tx = tx.Where("username = ?", username)
+	}
+	if userId > 0 {
+		tx = tx.Where("user_id = ?", userId)
+	}
+	// Group by the selected alias so GORM does not double-quote the reserved
+	// `group` column name (breaks SQLite).
+	err = tx.Group("use_group").Find(&quotaDatas).Error
+	return quotaDatas, err
+}

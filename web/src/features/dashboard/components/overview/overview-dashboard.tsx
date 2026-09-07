@@ -47,7 +47,7 @@ import {
 } from '@/components/page-transition'
 import { Button } from '@/components/ui/button'
 import { IconBadge, type IconBadgeTone } from '@/components/ui/icon-badge'
-import { getUserQuotaDates } from '@/features/dashboard/api'
+import { getQuotaDataByGroups } from '@/features/dashboard/api'
 import { OpsGroupCards } from '@/features/dashboard/components/ops-group-cards'
 import { OpsStatsGrid } from '@/features/dashboard/components/ops-stats-grid'
 import { DashboardTimeRangeBar } from '@/features/dashboard/components/ui/dashboard-time-range-bar'
@@ -56,6 +56,7 @@ import { useOpsDashboardStats } from '@/features/dashboard/hooks/use-ops-dashboa
 import { buildTimeWindow } from '@/features/dashboard/lib'
 import { fetchTokenKey, getApiKeys } from '@/features/keys/api'
 import type { ApiKey } from '@/features/keys/types'
+import { getSelfSubscriptionFull } from '@/features/subscriptions/api'
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
 import { getUserModels } from '@/lib/api'
 import dayjs from '@/lib/dayjs'
@@ -487,7 +488,7 @@ export function OverviewDashboard() {
     queryFn: () => {
       const start = dayjs().tz().startOf('day').unix()
       const end = dayjs().tz().unix() + 3600
-      return getUserQuotaDates(
+      return getQuotaDataByGroups(
         { start_timestamp: start, end_timestamp: end },
         isAdminUser
       )
@@ -495,32 +496,46 @@ export function OverviewDashboard() {
     staleTime: 30_000,
     refetchInterval: refetchInterval || undefined,
   })
+  const selfSubsQuery = useQuery({
+    queryKey: ['ops-stats', 'self-subscriptions'],
+    queryFn: getSelfSubscriptionFull,
+    staleTime: 60_000,
+    enabled: !isAdminUser,
+  })
   const groupCards = useMemo(() => {
     const data = groupCardsQuery.data?.data ?? []
-    const byModel = new Map<
-      string,
-      { name: string; todayCost: number; requests: number; tokens: number }
-    >()
-    for (const item of data) {
-      const name = (item.model_name || '').trim() || t('Unknown')
-      const prev = byModel.get(name) || {
-        name,
-        todayCost: 0,
-        requests: 0,
-        tokens: 0,
-      }
-      prev.todayCost += Number(item.quota) || 0
-      prev.requests += Number(item.count) || 0
-      prev.tokens +=
-        (Number(item.prompt_tokens) || 0) +
-        (Number(item.completion_tokens) || 0) +
-        (Number(item.cache_read_tokens) || 0)
-      byModel.set(name, prev)
-    }
-    return [...byModel.values()]
+    const records = selfSubsQuery.data?.data?.subscriptions ?? []
+    const subs = records.map((r) =>
+      'subscription' in r && r.subscription ? r.subscription : (r as never)
+    )
+    const primarySub = subs.find((s) => s?.status === 'active') ?? subs[0]
+    const amountTotal = Number(primarySub?.amount_total) || 0
+    const amountUsed = Number(primarySub?.amount_used) || 0
+    const limitPercent =
+      amountTotal > 0
+        ? Math.min(100, Math.round((amountUsed / amountTotal) * 100))
+        : undefined
+
+    return data
+      .map((item) => {
+        const name = (item.use_group || '').trim() || t('Unknown')
+        const tokens =
+          (Number(item.prompt_tokens) || 0) +
+          (Number(item.completion_tokens) || 0) +
+          (Number(item.cache_read_tokens) || 0)
+        return {
+          name,
+          todayCost: Number(item.quota) || 0,
+          requests: Number(item.count) || 0,
+          tokens,
+          limitPercent,
+          resetAt:
+            primarySub?.next_reset_time ?? primarySub?.last_reset_time ?? 0,
+        }
+      })
       .sort((a, b) => b.todayCost - a.todayCost)
       .slice(0, 8)
-  }, [groupCardsQuery.data?.data, t])
+  }, [groupCardsQuery.data?.data, selfSubsQuery.data?.data, t])
 
   const requestCount = Number(user?.request_count ?? 0)
   const remainQuota = Number(user?.quota ?? 0)
