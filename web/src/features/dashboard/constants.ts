@@ -58,7 +58,7 @@ export const CONSUMPTION_DISTRIBUTION_CHART_OPTIONS = [
 ] as const
 
 export const MODEL_ANALYTICS_CHART_OPTIONS = [
-  { value: 'trend', labelKey: 'Call Trend' },
+  { value: 'trend', labelKey: 'Consumption Trend' },
   { value: 'proportion', labelKey: 'Call Count Distribution' },
   { value: 'top', labelKey: 'Call Count Ranking' },
 ] as const
