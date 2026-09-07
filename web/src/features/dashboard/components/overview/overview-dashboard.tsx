@@ -47,9 +47,11 @@ import {
 } from '@/components/page-transition'
 import { Button } from '@/components/ui/button'
 import { IconBadge, type IconBadgeTone } from '@/components/ui/icon-badge'
-import { getQuotaDataByGroups } from '@/features/dashboard/api'
+import { getQuotaDataByGroups, getUserQuotaDates } from '@/features/dashboard/api'
+import { OpsDistributionPie } from '@/features/dashboard/components/ops-distribution-pie'
 import { OpsGroupCards } from '@/features/dashboard/components/ops-group-cards'
 import { OpsStatsGrid } from '@/features/dashboard/components/ops-stats-grid'
+import { OpsTokenTrendChart } from '@/features/dashboard/components/ops-token-trend-chart'
 import { DashboardTimeRangeBar } from '@/features/dashboard/components/ui/dashboard-time-range-bar'
 import { useAutoRefresh } from '@/features/dashboard/hooks/use-auto-refresh'
 import { useOpsDashboardStats } from '@/features/dashboard/hooks/use-ops-dashboard-stats'
@@ -537,6 +539,21 @@ export function OverviewDashboard() {
       .slice(0, 8)
   }, [groupCardsQuery.data?.data, selfSubsQuery.data?.data, t])
 
+  const overviewQuotaQuery = useQuery({
+    queryKey: ['ops-stats', 'overview-quota-today', isAdminUser],
+    queryFn: () => {
+      const start = dayjs().tz().startOf('day').unix()
+      const end = dayjs().tz().unix() + 3600
+      return getUserQuotaDates(
+        { start_timestamp: start, end_timestamp: end },
+        isAdminUser
+      )
+    },
+    staleTime: 30_000,
+    refetchInterval: refetchInterval || undefined,
+  })
+  const overviewQuotaData = overviewQuotaQuery.data?.data ?? []
+
   const requestCount = Number(user?.request_count ?? 0)
   const remainQuota = Number(user?.quota ?? 0)
   const usedQuota = Number(user?.used_quota ?? 0)
@@ -831,6 +848,16 @@ export function OverviewDashboard() {
         loading={groupCardsQuery.isLoading}
         items={groupCards}
       />
+      <div className='grid gap-3 lg:grid-cols-2'>
+        <OpsDistributionPie
+          data={overviewQuotaData}
+          loading={overviewQuotaQuery.isLoading}
+        />
+        <OpsTokenTrendChart
+          data={overviewQuotaData}
+          loading={overviewQuotaQuery.isLoading}
+        />
+      </div>
 
       {showContentPanels && (
         <CardStaggerContainer
