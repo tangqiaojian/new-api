@@ -37,6 +37,7 @@ import {
 } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
+import { formatResetTimestamp } from '../lib/format-reset-time'
 import type { AdminUserSubscriptionItem } from '../types'
 
 function getProgressColor(percentage: number): string {
@@ -235,22 +236,37 @@ export function useUserSubscriptionsColumns({
         size: 170,
       },
       {
-        id: 'next_reset',
-        header: t('Next Reset'),
+        id: 'reset_times',
+        header: t('Reset Times'),
         cell: ({ row }) => {
-          const { next_reset_time, token_next_reset_time } = row.original
+          const {
+            last_reset_time,
+            next_reset_time,
+            token_last_reset_time,
+            token_next_reset_time,
+          } = row.original
           return (
-            <div className='text-muted-foreground space-y-0.5 text-xs'>
+            <div className='text-muted-foreground space-y-1 text-xs'>
               <div>
-                {t('Quota')}: {formatTimestampToDate(next_reset_time)}
+                {t('Quota')} · {t('Last Reset')}:{' '}
+                {formatResetTimestamp(t, last_reset_time)}
               </div>
               <div>
-                {t('Token')}: {formatTimestampToDate(token_next_reset_time)}
+                {t('Quota')} · {t('Next Reset')}:{' '}
+                {formatResetTimestamp(t, next_reset_time)}
+              </div>
+              <div>
+                {t('Token')} · {t('Last Reset')}:{' '}
+                {formatResetTimestamp(t, token_last_reset_time)}
+              </div>
+              <div>
+                {t('Token')} · {t('Next Reset')}:{' '}
+                {formatResetTimestamp(t, token_next_reset_time)}
               </div>
             </div>
           )
         },
-        size: 180,
+        size: 220,
       },
       {
         id: 'end_time',

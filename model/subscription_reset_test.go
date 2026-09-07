@@ -189,6 +189,39 @@ func TestAdminResetSingleUserSubscriptionNeverPeriodStampsLastResetTime(t *testi
 	assert.Zero(t, sub.NextResetTime)
 }
 
+func TestAdminResetUserSubscriptionsSyncsWeeklyQuotaResetAt(t *testing.T) {
+	truncateTables(t)
+
+	now := GetDBTimestamp()
+	plan := &SubscriptionPlan{
+		Id:               9330,
+		Title:            "WeeklySync",
+		PriceAmount:      10,
+		DurationUnit:     SubscriptionDurationMonth,
+		DurationValue:    1,
+		TotalAmount:      1000,
+		QuotaResetPeriod: SubscriptionResetDaily,
+	}
+	seedSubscriptionResetPlan(t, plan)
+	require.NoError(t, DB.Create(&User{
+		Id: 231, Username: "weekly-sync", Password: "x",
+		WeeklyQuota: 1000, WeeklyQuotaUsed: 250, WeeklyQuotaResetAt: 0,
+	}).Error)
+	seedSubscriptionResetSub(t, &UserSubscription{
+		Id: 9331, UserId: 231, PlanId: plan.Id, AmountTotal: 1000, AmountUsed: 300,
+		StartTime: now - 3600, EndTime: now + 30*24*3600, Status: "active",
+		LastResetTime: now - 7200, NextResetTime: now + 3600,
+	})
+
+	_, err := AdminResetUserSubscriptionsByPlan(231, plan.Id, false)
+	require.NoError(t, err)
+
+	var user User
+	require.NoError(t, DB.Select("weekly_quota_used", "weekly_quota_reset_at").First(&user, 231).Error)
+	assert.Zero(t, user.WeeklyQuotaUsed)
+	assert.Greater(t, user.WeeklyQuotaResetAt, int64(0))
+}
+
 func TestAdminResetUserSubscriptionsByPlanNoActiveMatchReturnsError(t *testing.T) {
 	truncateTables(t)
 

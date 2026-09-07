@@ -54,6 +54,8 @@ import {
   SheetTitle,
   SheetDescription,
 } from '@/components/ui/sheet'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Label } from '@/components/ui/label'
 import { formatQuota } from '@/lib/format'
 
 import {
@@ -65,6 +67,7 @@ import {
   resetUserSubscriptionsByPlan,
 } from '../../api'
 import { formatTimestamp } from '../../lib'
+import { formatResetTimestamp } from '../../lib/format-reset-time'
 import type {
   PlanRecord,
   SubscriptionResetScope,
@@ -122,6 +125,7 @@ export function UserSubscriptionsDialog(props: Props) {
   const [selectedPlanId, setSelectedPlanId] = useState<string>('')
   const [resetting, setResetting] = useState(false)
   const [resetScope, setResetScope] = useState<SubscriptionResetScope>('both')
+  const [advanceResetTime, setAdvanceResetTime] = useState(false)
   const [resetAction, setResetAction] = useState<{
     planId: number
     planTitle: string
@@ -218,6 +222,7 @@ export function UserSubscriptionsDialog(props: Props) {
       const res = await resetUserSubscriptionsByPlan(props.user.id, {
         plan_id: resetAction.planId,
         reset_scope: resetScope,
+        advance_reset_time: advanceResetTime,
       })
       if (res.success) {
         toast.success(
@@ -337,6 +342,14 @@ export function UserSubscriptionsDialog(props: Props) {
                         <div>
                           {t('End')}: {formatTimestamp(sub.end_time)}
                         </div>
+                        <div>
+                          {t('Last Reset')}:{' '}
+                          {formatResetTimestamp(t, sub.last_reset_time)}
+                        </div>
+                        <div>
+                          {t('Next Reset')}:{' '}
+                          {formatResetTimestamp(t, sub.next_reset_time)}
+                        </div>
                       </div>
                     )
                   },
@@ -371,6 +384,7 @@ export function UserSubscriptionsDialog(props: Props) {
                           disabled={!isActive}
                           onClick={() => {
                             setResetScope('both')
+                            setAdvanceResetTime(false)
                             setResetAction({
                               planId: sub.plan_id,
                               planTitle:
@@ -458,21 +472,39 @@ export function UserSubscriptionsDialog(props: Props) {
           handleConfirm={handleResetConfirm}
           isLoading={resetting}
         >
-          <Select
-            value={resetScope}
-            onValueChange={(value) =>
-              setResetScope(value as SubscriptionResetScope)
-            }
-          >
-            <SelectTrigger aria-label={t('Reset scope')}>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value='quota'>{t('Quota only')}</SelectItem>
-              <SelectItem value='tokens'>{t('Tokens only')}</SelectItem>
-              <SelectItem value='both'>{t('Quota and tokens')}</SelectItem>
-            </SelectContent>
-          </Select>
+          <div className='space-y-3'>
+            <Select
+              value={resetScope}
+              onValueChange={(value) =>
+                setResetScope(value as SubscriptionResetScope)
+              }
+            >
+              <SelectTrigger aria-label={t('Reset scope')}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value='quota'>{t('Quota only')}</SelectItem>
+                <SelectItem value='tokens'>{t('Tokens only')}</SelectItem>
+                <SelectItem value='both'>{t('Quota and tokens')}</SelectItem>
+              </SelectContent>
+            </Select>
+            <div className='flex items-start gap-2'>
+              <Checkbox
+                id='advance-reset-time-user'
+                checked={advanceResetTime}
+                onCheckedChange={(checked) =>
+                  setAdvanceResetTime(checked === true)
+                }
+                className='mt-0.5'
+              />
+              <Label
+                htmlFor='advance-reset-time-user'
+                className='text-sm leading-5 font-normal'
+              >
+                {t('Also roll to next billing period')}
+              </Label>
+            </div>
+          </div>
         </ConfirmDialog>
       )}
     </>

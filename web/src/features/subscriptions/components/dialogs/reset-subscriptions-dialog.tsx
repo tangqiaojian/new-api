@@ -21,6 +21,8 @@ import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
 import { ConfirmDialog } from '@/components/confirm-dialog'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Label } from '@/components/ui/label'
 import {
   Select,
   SelectContent,
@@ -37,11 +39,15 @@ export function ResetSubscriptionsDialog() {
   const { t } = useTranslation()
   const { open, setOpen, currentRow, triggerRefresh } = useSubscriptions()
   const [resetScope, setResetScope] = useState<SubscriptionResetScope>('both')
+  const [advanceResetTime, setAdvanceResetTime] = useState(false)
   const [resetting, setResetting] = useState(false)
   const isOpen = open === 'reset-subscriptions'
 
   useEffect(() => {
-    if (isOpen) setResetScope('both')
+    if (isOpen) {
+      setResetScope('both')
+      setAdvanceResetTime(false)
+    }
   }, [isOpen])
   const plan = currentRow?.plan
   const planLabel = plan?.title || (plan?.id ? `#${plan.id}` : '-')
@@ -52,6 +58,7 @@ export function ResetSubscriptionsDialog() {
     try {
       const res = await resetPlanSubscriptions(plan.id, {
         reset_scope: resetScope,
+        advance_reset_time: advanceResetTime,
       })
       if (res.success) {
         toast.success(
@@ -82,21 +89,39 @@ export function ResetSubscriptionsDialog() {
       disabled={!plan?.id}
       isLoading={resetting}
     >
-      <Select
-        value={resetScope}
-        onValueChange={(value) =>
-          setResetScope(value as SubscriptionResetScope)
-        }
-      >
-        <SelectTrigger aria-label={t('Reset scope')}>
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value='quota'>{t('Quota only')}</SelectItem>
-          <SelectItem value='tokens'>{t('Tokens only')}</SelectItem>
-          <SelectItem value='both'>{t('Quota and tokens')}</SelectItem>
-        </SelectContent>
-      </Select>
+      <div className='space-y-3'>
+        <Select
+          value={resetScope}
+          onValueChange={(value) =>
+            setResetScope(value as SubscriptionResetScope)
+          }
+        >
+          <SelectTrigger aria-label={t('Reset scope')}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value='quota'>{t('Quota only')}</SelectItem>
+            <SelectItem value='tokens'>{t('Tokens only')}</SelectItem>
+            <SelectItem value='both'>{t('Quota and tokens')}</SelectItem>
+          </SelectContent>
+        </Select>
+        <div className='flex items-start gap-2'>
+          <Checkbox
+            id='advance-reset-time-plan'
+            checked={advanceResetTime}
+            onCheckedChange={(checked) =>
+              setAdvanceResetTime(checked === true)
+            }
+            className='mt-0.5'
+          />
+          <Label
+            htmlFor='advance-reset-time-plan'
+            className='text-sm leading-5 font-normal'
+          >
+            {t('Also roll to next billing period')}
+          </Label>
+        </div>
+      </div>
     </ConfirmDialog>
   )
 }

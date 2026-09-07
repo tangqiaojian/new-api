@@ -1533,7 +1533,10 @@ func AdminResetSingleUserSubscription(userSubscriptionId int, resetScope string,
 		if err != nil {
 			return err
 		}
-		return resetUserSubscriptionTx(tx, &sub, plan, now, advance, resetScope)
+		if err := resetUserSubscriptionTx(tx, &sub, plan, now, advance, resetScope); err != nil {
+			return err
+		}
+		return syncWeeklyQuotaOnManualSubscriptionReset(tx, []int{sub.UserId}, now)
 	})
 }
 
@@ -1726,7 +1729,11 @@ func adminResetUserSubscriptionsByPlanTx(tx *gorm.DB, userId int, plan *Subscrip
 			return nil, err
 		}
 	}
-	return buildSubscriptionResetResult(plan, subs, advanceResetTime, resetScope), nil
+	result := buildSubscriptionResetResult(plan, subs, advanceResetTime, resetScope)
+	if err := syncWeeklyQuotaOnManualSubscriptionReset(tx, result.AffectedUserIds, now); err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
 func adminResetPlanSubscriptionsTx(tx *gorm.DB, plan *SubscriptionPlan, now int64, advanceResetTime bool, resetScope string) (*SubscriptionResetResult, error) {
@@ -1745,7 +1752,28 @@ func adminResetPlanSubscriptionsTx(tx *gorm.DB, plan *SubscriptionPlan, now int6
 			return nil, err
 		}
 	}
-	return buildSubscriptionResetResult(plan, subs, advanceResetTime, resetScope), nil
+	result := buildSubscriptionResetResult(plan, subs, advanceResetTime, resetScope)
+	if err := syncWeeklyQuotaOnManualSubscriptionReset(tx, result.AffectedUserIds, now); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+// syncWeeklyQuotaOnManualSubscriptionReset keeps user weekly_quota_* in step with
+// a manual subscription usage reset: zero used and ensure weekly_quota_reset_at
+// is a real next-reset timestamp (never left at 0 while used keeps climbing).
+func syncWeeklyQuotaOnManualSubscriptionReset(tx *gorm.DB, userIds []int, now int64) error {
+	if tx == nil || len(userIds) == 0 {
+		return nil
+	}
+	nextWeekly := calcNextWeeklyResetTime(time.Unix(now, 0))
+	return tx.Model(&User{}).
+		Where("id IN ? AND weekly_quota > 0", userIds).
+		Updates(map[string]interface{}{
+			"weekly_quota_used":     0,
+			"weekly_quota_reset_at": nextWeekly,
+			"weekly_quota_version":  gorm.Expr("weekly_quota_version + ?", 1),
+		}).Error
 }
 
 func AdminResetUserSubscriptionsByPlan(userId int, planId int, advanceResetTime bool, resetScope ...string) (*SubscriptionResetResult, error) {

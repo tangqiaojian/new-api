@@ -77,7 +77,9 @@ export const userSubscriptionSchema = z.object({
   amount_used: z.number(),
   tokens_total: z.number().optional(),
   tokens_used: z.number().optional(),
+  last_reset_time: z.number().optional(),
   next_reset_time: z.number().optional(),
+  token_last_reset_time: z.number().optional(),
   token_next_reset_time: z.number().optional(),
   quota_reset_anchor: z.number().int().nullable().optional(),
   quota_reset_timezone: z.string().nullable().optional(),
@@ -149,14 +151,17 @@ export type SubscriptionResetScope = 'quota' | 'tokens' | 'both'
 export interface ResetUserSubscriptionsRequest {
   plan_id: number
   reset_scope: SubscriptionResetScope
+  advance_reset_time?: boolean
 }
 
 export interface ResetPlanSubscriptionsRequest {
   reset_scope: SubscriptionResetScope
+  advance_reset_time?: boolean
 }
 
 export interface ResetSingleSubscriptionRequest {
   reset_scope: SubscriptionResetScope
+  advance_reset_time?: boolean
 }
 
 export interface SubscriptionResetResult {
@@ -165,6 +170,7 @@ export interface SubscriptionResetResult {
   reset_count: number
   user_count: number
   reset_scope: SubscriptionResetScope
+  advance_reset_time?: boolean
 }
 
 // ============================================================================
@@ -206,7 +212,9 @@ export interface AdminUserSubscriptionItem {
   status: string
   start_time: number
   end_time: number
+  last_reset_time: number
   next_reset_time: number
+  token_last_reset_time: number
   token_next_reset_time: number
 }
 

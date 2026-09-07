@@ -43,6 +43,7 @@ import {
 } from '@/components/ui/tooltip'
 import { useAutoRefresh } from '@/features/dashboard/hooks/use-auto-refresh'
 import { adminListAllSubscriptions } from '@/features/subscriptions/api'
+import { formatResetTimestamp } from '@/features/subscriptions/lib/format-reset-time'
 import type { AdminUserSubscriptionItem } from '@/features/subscriptions/types'
 import { useDebounce } from '@/hooks'
 import { formatQuotaWithCurrency } from '@/lib/currency'
@@ -470,12 +471,20 @@ export function AdminSubscriptionPlanUsage() {
                     </TableCell>
                     <TableCell className='text-muted-foreground space-y-0.5 text-xs whitespace-nowrap'>
                       <div>
-                        {t('Quota')}:{' '}
-                        {formatTimestampToDate(row.next_reset_time)}
+                        {t('Quota')} · {t('Last Reset')}:{' '}
+                        {formatResetTimestamp(t, row.last_reset_time)}
                       </div>
                       <div>
-                        {t('Token')}:{' '}
-                        {formatTimestampToDate(row.token_next_reset_time)}
+                        {t('Quota')} · {t('Next Reset')}:{' '}
+                        {formatResetTimestamp(t, row.next_reset_time)}
+                      </div>
+                      <div>
+                        {t('Token')} · {t('Last Reset')}:{' '}
+                        {formatResetTimestamp(t, row.token_last_reset_time)}
+                      </div>
+                      <div>
+                        {t('Token')} · {t('Next Reset')}:{' '}
+                        {formatResetTimestamp(t, row.token_next_reset_time)}
                       </div>
                     </TableCell>
                     <TableCell className='text-muted-foreground whitespace-nowrap'>

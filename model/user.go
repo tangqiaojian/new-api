@@ -1802,7 +1802,7 @@ func resetDueWeeklyQuotasAt(batchSize int, now time.Time) (int, error) {
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		var ids []int
 		if err := lockForUpdate(tx).Model(&User{}).
-			Where("weekly_quota > 0 AND weekly_quota_reset_at > 0 AND weekly_quota_reset_at <= ?", now.Unix()).
+			Where("weekly_quota > 0 AND weekly_quota_reset_at <= ?", now.Unix()).
 			Order("id asc").
 			Limit(batchSize).
 			Pluck("id", &ids).Error; err != nil {
@@ -1812,7 +1812,7 @@ func resetDueWeeklyQuotasAt(batchSize int, now time.Time) (int, error) {
 			return nil
 		}
 		result := tx.Model(&User{}).
-			Where("id IN ? AND weekly_quota > 0 AND weekly_quota_reset_at > 0 AND weekly_quota_reset_at <= ?", ids, now.Unix()).
+			Where("id IN ? AND weekly_quota > 0 AND weekly_quota_reset_at <= ?", ids, now.Unix()).
 			Updates(map[string]interface{}{
 				"weekly_quota_used":     0,
 				"weekly_quota_reset_at": calcNextWeeklyResetTime(now),

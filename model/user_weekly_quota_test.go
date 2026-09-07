@@ -160,3 +160,17 @@ func TestResetDueWeeklyQuotasHonorsBatchLimit(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 1, count)
 }
+
+func TestResetDueWeeklyQuotasIncludesZeroResetAt(t *testing.T) {
+	truncateTables(t)
+	now := time.Date(2026, time.August, 13, 12, 0, 0, 0, time.UTC)
+	createWeeklyQuotaUser(t, 9120, 100, 55, 0)
+
+	count, err := resetDueWeeklyQuotasAt(10, now)
+	require.NoError(t, err)
+	assert.Equal(t, 1, count)
+
+	used, resetAt := weeklyQuotaUsed(t, 9120)
+	assert.Equal(t, 0, used)
+	assert.Equal(t, calcNextWeeklyResetTime(now), resetAt)
+}
