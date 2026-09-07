@@ -152,11 +152,37 @@ export function useOpsDashboardStats(scope: OpsStatsScope = {}) {
     const apiKeysTotal = keysQuery.data?.data?.total ?? keys.length
     const apiKeysActive = keys.filter((k) => k.status === 1).length
 
+    // Prefer account-level lifetime counters (Sub2API "Total"); fall back to
+    // the 90-day quota aggregation window when viewing another user / no fields.
     let lifetimeFinal = emptyOpsBucket()
-    if (lifetimeBucket.requests) {
-      lifetimeFinal = lifetimeBucket
+    if (lifetimeBucket.requests || lifetimeBucket.quota) {
+      lifetimeFinal = { ...lifetimeBucket }
     } else if (todayBucket.requests) {
-      lifetimeFinal = todayBucket
+      lifetimeFinal = { ...todayBucket }
+    }
+    const accountRequests = Number(user?.request_count)
+    if (
+      (!username || username === user?.username) &&
+      Number.isFinite(accountRequests) &&
+      accountRequests > 0
+    ) {
+      lifetimeFinal = {
+        ...lifetimeFinal,
+        requests: accountRequests,
+      }
+    }
+    const accountUsed = Number(user?.used_quota)
+    if (
+      (!username || username === user?.username) &&
+      Number.isFinite(accountUsed) &&
+      accountUsed > 0
+    ) {
+      lifetimeFinal = {
+        ...lifetimeFinal,
+        quota: accountUsed,
+        // No separate lifetime standard without full-history scan; keep actual.
+        standardQuota: Math.max(lifetimeFinal.standardQuota, accountUsed),
+      }
     }
 
     return {
@@ -175,7 +201,10 @@ export function useOpsDashboardStats(scope: OpsStatsScope = {}) {
     logStatQuery.data,
     quotaQueries,
     user?.quota,
+    user?.request_count,
     user?.used_quota,
+    user?.username,
+    username,
   ])
 
   return { stats, loading }

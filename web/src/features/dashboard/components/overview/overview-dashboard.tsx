@@ -498,6 +498,19 @@ export function OverviewDashboard() {
     staleTime: 30_000,
     refetchInterval: refetchInterval || undefined,
   })
+  const groupCardsLifetimeQuery = useQuery({
+    queryKey: ['ops-stats', 'group-cards-lifetime', isAdminUser],
+    queryFn: () => {
+      const end = dayjs().tz().unix() + 3600
+      const start = end - 90 * 24 * 3600
+      return getQuotaDataByGroups(
+        { start_timestamp: start, end_timestamp: end },
+        isAdminUser
+      )
+    },
+    staleTime: 60_000,
+    refetchInterval: refetchInterval || undefined,
+  })
   const selfSubsQuery = useQuery({
     queryKey: ['ops-stats', 'self-subscriptions'],
     queryFn: getSelfSubscriptionFull,
@@ -505,7 +518,16 @@ export function OverviewDashboard() {
     enabled: !isAdminUser,
   })
   const groupCards = useMemo(() => {
-    const data = groupCardsQuery.data?.data ?? []
+    const todayRows = groupCardsQuery.data?.data ?? []
+    const lifetimeRows = groupCardsLifetimeQuery.data?.data ?? []
+    const lifetimeByName = new Map<string, number>()
+    for (const item of lifetimeRows) {
+      const name = (item.use_group || '').trim() || t('Unknown')
+      lifetimeByName.set(
+        name,
+        (lifetimeByName.get(name) ?? 0) + (Number(item.quota) || 0)
+      )
+    }
     const records = selfSubsQuery.data?.data?.subscriptions ?? []
     const subs = records.map((r) =>
       'subscription' in r && r.subscription ? r.subscription : (r as never)
@@ -518,26 +540,41 @@ export function OverviewDashboard() {
         ? Math.min(100, Math.round((amountUsed / amountTotal) * 100))
         : undefined
 
-    return data
-      .map((item) => {
-        const name = (item.use_group || '').trim() || t('Unknown')
+    const names = new Set<string>()
+    for (const item of todayRows) {
+      names.add((item.use_group || '').trim() || t('Unknown'))
+    }
+    for (const name of lifetimeByName.keys()) names.add(name)
+
+    return [...names]
+      .map((name) => {
+        const todayItem = todayRows.find(
+          (item) => ((item.use_group || '').trim() || t('Unknown')) === name
+        )
+        const todayCost = Number(todayItem?.quota) || 0
         const tokens =
-          (Number(item.prompt_tokens) || 0) +
-          (Number(item.completion_tokens) || 0) +
-          (Number(item.cache_read_tokens) || 0)
+          (Number(todayItem?.prompt_tokens) || 0) +
+          (Number(todayItem?.completion_tokens) || 0) +
+          (Number(todayItem?.cache_read_tokens) || 0)
         return {
           name,
-          todayCost: Number(item.quota) || 0,
-          requests: Number(item.count) || 0,
+          totalCost: lifetimeByName.get(name) ?? todayCost,
+          todayCost,
+          requests: Number(todayItem?.count) || 0,
           tokens,
           limitPercent,
           resetAt:
             primarySub?.next_reset_time ?? primarySub?.last_reset_time ?? 0,
         }
       })
-      .sort((a, b) => b.todayCost - a.todayCost)
+      .sort((a, b) => (b.totalCost ?? 0) - (a.totalCost ?? 0))
       .slice(0, 8)
-  }, [groupCardsQuery.data?.data, selfSubsQuery.data?.data, t])
+  }, [
+    groupCardsLifetimeQuery.data?.data,
+    groupCardsQuery.data?.data,
+    selfSubsQuery.data?.data,
+    t,
+  ])
 
   const overviewQuotaQuery = useQuery({
     queryKey: ['ops-stats', 'overview-quota-today', isAdminUser],
@@ -845,7 +882,7 @@ export function OverviewDashboard() {
 
       <OpsStatsGrid loading={opsLoading} stats={opsStats} />
       <OpsGroupCards
-        loading={groupCardsQuery.isLoading}
+        loading={groupCardsQuery.isLoading || groupCardsLifetimeQuery.isLoading}
         items={groupCards}
       />
       <div className='grid gap-3 lg:grid-cols-2'>

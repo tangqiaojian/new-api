@@ -169,14 +169,21 @@ export function OpsStatsGrid(props: OpsStatsGridProps) {
           tone='violet'
           loading={loading}
           value={
-            <span>
-              {formatTokens(stats?.rpm ?? 0)}{' '}
-              <span className='text-muted-foreground text-sm font-normal'>
-                RPM
+            <span className='flex flex-wrap items-baseline gap-x-3 gap-y-1'>
+              <span>
+                {formatTokens(stats?.rpm ?? 0)}{' '}
+                <span className='text-muted-foreground text-sm font-normal'>
+                  RPM
+                </span>
+              </span>
+              <span>
+                {formatTokens(stats?.tpm ?? 0)}{' '}
+                <span className='text-muted-foreground text-sm font-normal'>
+                  TPM
+                </span>
               </span>
             </span>
           }
-          subtitle={`${formatTokens(stats?.tpm ?? 0)} TPM`}
         />
         <OpsStatCard
           title={t('Avg Response')}

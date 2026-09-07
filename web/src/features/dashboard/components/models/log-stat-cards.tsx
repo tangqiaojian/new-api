@@ -132,9 +132,11 @@ export function LogStatCards(props: LogStatCardsProps) {
     return rows
       .map((item) => {
         const name = (item.use_group || '').trim() || 'default'
+        const cost = Number(item.quota) || 0
         return {
           name,
-          todayCost: Number(item.quota) || 0,
+          totalCost: cost,
+          todayCost: cost,
           requests: Number(item.count) || 0,
           tokens:
             (Number(item.prompt_tokens) || 0) +
@@ -142,7 +144,7 @@ export function LogStatCards(props: LogStatCardsProps) {
             (Number(item.cache_read_tokens) || 0),
         }
       })
-      .sort((a, b) => b.todayCost - a.todayCost)
+      .sort((a, b) => (b.totalCost ?? 0) - (a.totalCost ?? 0))
       .slice(0, 8)
   }, [groupQuery.data?.data])
 

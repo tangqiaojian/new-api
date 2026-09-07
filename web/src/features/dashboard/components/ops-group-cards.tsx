@@ -27,6 +27,8 @@ import { cn } from '@/lib/utils'
 
 export type OpsGroupCardItem = {
   name: string
+  /** Primary header amount (Sub2API total_actual_cost). */
+  totalCost?: number
   todayCost: number
   requests: number
   tokens: number
@@ -65,8 +67,13 @@ export function OpsGroupCards(props: OpsGroupCardsProps) {
               key={card?.name ?? `skeleton-${index}`}
               className='bg-card rounded-xl border p-4 shadow-sm'
             >
-              <div className='truncate text-sm font-semibold'>
-                {card?.name ?? '—'}
+              <div className='flex items-start justify-between gap-2'>
+                <div className='truncate text-sm font-semibold'>
+                  {card?.name ?? '—'}
+                </div>
+                <div className='shrink-0 text-sm font-semibold tabular-nums'>
+                  {formatQuota(card?.totalCost ?? card?.todayCost ?? 0)}
+                </div>
               </div>
               <div className='mt-3 grid grid-cols-3 gap-2 text-xs'>
                 <div>
