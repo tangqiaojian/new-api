@@ -701,15 +701,27 @@ func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelNa
 	// 只统计最近60秒的rpm和tpm
 	rpmTpmQuery = rpmTpmQuery.Where("created_at >= ?", time.Now().Add(-60*time.Second).Unix())
 
-	// 执行查询
-	if err := tx.Scan(&stat).Error; err != nil {
+	// Scan quota and rpm/tpm into separate structs. A second Scan into the same
+	// Stat zeroed Quota because the rpm/tpm SELECT does not project quota
+	// (see QuantumNous/new-api#7106).
+	var quotaOnly struct {
+		Quota int `json:"quota"`
+	}
+	if err := tx.Scan(&quotaOnly).Error; err != nil {
 		common.SysError("failed to query log stat: " + err.Error())
 		return stat, errors.New("查询统计数据失败")
 	}
-	if err := rpmTpmQuery.Scan(&stat).Error; err != nil {
+	var rpmTpmOnly struct {
+		Rpm int `json:"rpm"`
+		Tpm int `json:"tpm"`
+	}
+	if err := rpmTpmQuery.Scan(&rpmTpmOnly).Error; err != nil {
 		common.SysError("failed to query rpm/tpm stat: " + err.Error())
 		return stat, errors.New("查询统计数据失败")
 	}
+	stat.Quota = quotaOnly.Quota
+	stat.Rpm = rpmTpmOnly.Rpm
+	stat.Tpm = rpmTpmOnly.Tpm
 
 	return stat, nil
 }

@@ -1508,14 +1508,20 @@ func AdminAdjustUserSubscription(userSubscriptionId int, amountDelta int64, toke
 	})
 }
 
-// AdminResetSingleUserSubscription resets selected usage dimensions and schedules.
-func AdminResetSingleUserSubscription(userSubscriptionId int, resetScope string) error {
+// AdminResetSingleUserSubscription resets selected usage dimensions.
+// When advanceResetTime is true, next_reset_time is rolled forward; last_reset_time
+// is always stamped to now when the corresponding usage dimension is reset.
+func AdminResetSingleUserSubscription(userSubscriptionId int, resetScope string, advanceResetTime ...bool) error {
 	if userSubscriptionId <= 0 {
 		return errors.New("invalid userSubscriptionId")
 	}
 	resetScope, err := NormalizeResetScope(resetScope)
 	if err != nil {
 		return err
+	}
+	advance := true
+	if len(advanceResetTime) > 0 {
+		advance = advanceResetTime[0]
 	}
 	now := GetDBTimestamp()
 	return DB.Transaction(func(tx *gorm.DB) error {
@@ -1527,7 +1533,7 @@ func AdminResetSingleUserSubscription(userSubscriptionId int, resetScope string)
 		if err != nil {
 			return err
 		}
-		return resetUserSubscriptionTx(tx, &sub, plan, now, true, resetScope)
+		return resetUserSubscriptionTx(tx, &sub, plan, now, advance, resetScope)
 	})
 }
 
@@ -1572,20 +1578,20 @@ func resetUserSubscriptionTx(tx *gorm.DB, sub *UserSubscription, plan *Subscript
 		}
 	}
 	effectivePlan := effectiveResetPlan(plan, sub)
-	if advanceResetTime && resetQuota {
-		sub.NextResetTime = calcNextResetTime(time.Unix(now, 0), &effectivePlan, sub.EndTime)
-		if sub.NextResetTime > 0 {
-			sub.LastResetTime = now
-		} else {
-			sub.LastResetTime = 0
+	// Manual usage reset always stamps last_reset_time = now, even when the
+	// admin chooses not to roll the billing cycle. Only advanceResetTime may
+	// rewrite next_reset_time. Never clear last_reset_time when next is 0
+	// (e.g. QuotaResetPeriod=never): that erased the audit trail of the reset.
+	if resetQuota {
+		sub.LastResetTime = now
+		if advanceResetTime {
+			sub.NextResetTime = calcNextResetTime(time.Unix(now, 0), &effectivePlan, sub.EndTime)
 		}
 	}
-	if advanceResetTime && resetTokens {
-		sub.TokenNextResetTime = calcNextTokenResetTime(time.Unix(now, 0), &effectivePlan, sub.EndTime)
-		if sub.TokenNextResetTime > 0 {
-			sub.TokenLastResetTime = now
-		} else {
-			sub.TokenLastResetTime = 0
+	if resetTokens {
+		sub.TokenLastResetTime = now
+		if advanceResetTime {
+			sub.TokenNextResetTime = calcNextTokenResetTime(time.Unix(now, 0), &effectivePlan, sub.EndTime)
 		}
 	}
 	return tx.Save(sub).Error

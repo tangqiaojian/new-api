@@ -105,14 +105,88 @@ func TestAdminResetUserSubscriptionsByPlanKeepsResetTimes(t *testing.T) {
 	nextReset := now + 86400
 	seedSubscriptionResetSub(t, &UserSubscription{Id: 9302, UserId: 201, PlanId: plan.Id, AmountTotal: 2000, AmountUsed: 1200, StartTime: now - 172800, EndTime: now + 30*24*3600, Status: "active", LastResetTime: lastReset, NextResetTime: nextReset})
 
+	beforeReset := GetDBTimestamp()
 	result, err := AdminResetUserSubscriptionsByPlan(201, plan.Id, false)
+	afterReset := GetDBTimestamp()
 
 	require.NoError(t, err)
 	assert.False(t, result.AdvanceResetTime)
 	sub := getSubscriptionResetSub(t, 9302)
 	assert.Zero(t, sub.AmountUsed)
-	assert.Equal(t, lastReset, sub.LastResetTime)
+	// Manual usage reset always stamps LastResetTime; NextResetTime stays put
+	// when advanceResetTime is false.
+	assert.GreaterOrEqual(t, sub.LastResetTime, beforeReset)
+	assert.LessOrEqual(t, sub.LastResetTime, afterReset)
+	assert.NotEqual(t, lastReset, sub.LastResetTime)
 	assert.Equal(t, nextReset, sub.NextResetTime)
+}
+
+func TestAdminResetUserSubscriptionsByPlanAdvanceUpdatesBothTimes(t *testing.T) {
+	truncateTables(t)
+
+	now := GetDBTimestamp()
+	plan := &SubscriptionPlan{
+		Id:               9310,
+		Title:            "Advance",
+		PriceAmount:      20,
+		DurationUnit:     SubscriptionDurationMonth,
+		DurationValue:    1,
+		TotalAmount:      2000,
+		QuotaResetPeriod: SubscriptionResetDaily,
+	}
+	seedSubscriptionResetPlan(t, plan)
+
+	lastReset := now - 86400
+	nextReset := now + 3600
+	seedSubscriptionResetSub(t, &UserSubscription{
+		Id: 9311, UserId: 211, PlanId: plan.Id, AmountTotal: 2000, AmountUsed: 800,
+		StartTime: now - 172800, EndTime: now + 30*24*3600, Status: "active",
+		LastResetTime: lastReset, NextResetTime: nextReset,
+	})
+
+	beforeReset := GetDBTimestamp()
+	result, err := AdminResetUserSubscriptionsByPlan(211, plan.Id, true)
+	afterReset := GetDBTimestamp()
+
+	require.NoError(t, err)
+	assert.True(t, result.AdvanceResetTime)
+	sub := getSubscriptionResetSub(t, 9311)
+	assert.Zero(t, sub.AmountUsed)
+	assert.GreaterOrEqual(t, sub.LastResetTime, beforeReset)
+	assert.LessOrEqual(t, sub.LastResetTime, afterReset)
+	assert.Greater(t, sub.NextResetTime, sub.LastResetTime)
+	assert.NotEqual(t, nextReset, sub.NextResetTime)
+}
+
+func TestAdminResetSingleUserSubscriptionNeverPeriodStampsLastResetTime(t *testing.T) {
+	truncateTables(t)
+
+	now := GetDBTimestamp()
+	plan := &SubscriptionPlan{
+		Id:               9320,
+		Title:            "Never",
+		PriceAmount:      10,
+		DurationUnit:     SubscriptionDurationMonth,
+		DurationValue:    1,
+		TotalAmount:      1000,
+		QuotaResetPeriod: SubscriptionResetNever,
+	}
+	seedSubscriptionResetPlan(t, plan)
+	seedSubscriptionResetSub(t, &UserSubscription{
+		Id: 9321, UserId: 221, PlanId: plan.Id, AmountTotal: 1000, AmountUsed: 400,
+		StartTime: now - 3600, EndTime: now + 30*24*3600, Status: "active",
+		LastResetTime: now - 7200, NextResetTime: 0,
+	})
+
+	beforeReset := GetDBTimestamp()
+	require.NoError(t, AdminResetSingleUserSubscription(9321, SubscriptionResetScopeQuota))
+	afterReset := GetDBTimestamp()
+
+	sub := getSubscriptionResetSub(t, 9321)
+	assert.Zero(t, sub.AmountUsed)
+	assert.GreaterOrEqual(t, sub.LastResetTime, beforeReset)
+	assert.LessOrEqual(t, sub.LastResetTime, afterReset)
+	assert.Zero(t, sub.NextResetTime)
 }
 
 func TestAdminResetUserSubscriptionsByPlanNoActiveMatchReturnsError(t *testing.T) {
@@ -170,7 +244,8 @@ func TestAdminResetPlanSubscriptionsResetsAllActiveUsers(t *testing.T) {
 	for _, id := range []int{9502, 9503, 9504} {
 		sub := getSubscriptionResetSub(t, id)
 		assert.Zero(t, sub.AmountUsed)
-		assert.Zero(t, sub.LastResetTime)
+		// Never period: next stays 0, but last_reset_time must still stamp now.
+		assert.Greater(t, sub.LastResetTime, int64(0))
 		assert.Zero(t, sub.NextResetTime)
 	}
 	assert.EqualValues(t, 1300, getSubscriptionResetSub(t, 9505).AmountUsed)

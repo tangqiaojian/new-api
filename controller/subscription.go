@@ -490,8 +490,9 @@ type AdminUpdateUserSubscriptionRequest struct {
 }
 
 type AdminResetSubscriptionRequest struct {
-	PlanId     int    `json:"plan_id"`
-	ResetScope string `json:"reset_scope"`
+	PlanId           int    `json:"plan_id"`
+	ResetScope       string `json:"reset_scope"`
+	AdvanceResetTime *bool  `json:"advance_reset_time"`
 }
 
 func requireResetScope(scope string) (string, error) {
@@ -499,6 +500,15 @@ func requireResetScope(scope string) (string, error) {
 		return "", errors.New("reset_scope is required")
 	}
 	return model.NormalizeResetScope(scope)
+}
+
+func resetAdvanceFlag(req AdminResetSubscriptionRequest) bool {
+	// Default false: manual usage reset stamps last_reset_time without rolling
+	// the billing cycle unless the admin explicitly opts in.
+	if req.AdvanceResetTime == nil {
+		return false
+	}
+	return *req.AdvanceResetTime
 }
 
 func recordSubscriptionResetUserLogs(result *model.SubscriptionResetResult, adminInfo map[string]interface{}) {
@@ -599,7 +609,7 @@ func AdminResetUserSubscriptionsByPlan(c *gin.Context) {
 		common.ApiErrorMsg(c, "重置范围必须为 quota、tokens 或 both")
 		return
 	}
-	result, err := model.AdminResetUserSubscriptionsByPlan(userId, req.PlanId, true, resetScope)
+	result, err := model.AdminResetUserSubscriptionsByPlan(userId, req.PlanId, resetAdvanceFlag(req), resetScope)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -632,7 +642,7 @@ func AdminResetPlanSubscriptions(c *gin.Context) {
 		common.ApiErrorMsg(c, "重置范围必须为 quota、tokens 或 both")
 		return
 	}
-	result, err := model.AdminResetPlanSubscriptions(planId, true, resetScope)
+	result, err := model.AdminResetPlanSubscriptions(planId, resetAdvanceFlag(req), resetScope)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -762,7 +772,7 @@ func AdminResetSingleSubscription(c *gin.Context) {
 		common.ApiErrorMsg(c, "重置范围必须为 quota、tokens 或 both")
 		return
 	}
-	if err := model.AdminResetSingleUserSubscription(subId, resetScope); err != nil {
+	if err := model.AdminResetSingleUserSubscription(subId, resetScope, resetAdvanceFlag(req)); err != nil {
 		common.ApiError(c, err)
 		return
 	}
