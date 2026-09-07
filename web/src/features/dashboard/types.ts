@@ -34,7 +34,6 @@ export interface QuotaDataItem {
   username?: string
   model_name?: string
   created_at: number
-  use_group?: string
   token_used?: number
   prompt_tokens?: number
   completion_tokens?: number
@@ -44,8 +43,6 @@ export interface QuotaDataItem {
   error_count?: number
   count?: number
   quota?: number
-  /** Undiscounted charge (quota / group_ratio); Sub2API actual / standard. */
-  standard_quota?: number
 }
 
 // Daily token usage statistics per user
@@ -255,8 +252,6 @@ export interface DashboardChartPreferences {
 export interface UserChartsFilters extends DashboardTimeWindow {
   timeGranularity: TimeGranularity
   topUserLimit: number
-  /** When set, OpsStats and charts scope to this username. */
-  selectedUsername?: string | null
 }
 
 // ============================================================================

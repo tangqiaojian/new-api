@@ -620,13 +620,6 @@ export function Dashboard() {
                       filters={modelFilters}
                       onDataUpdate={handleDataUpdate}
                       includeCache={includeCache}
-                      onSelectUser={(username) => {
-                        setUserChartsFilters((prev) => ({
-                          ...prev,
-                          selectedUsername: username,
-                        }))
-                        handleSectionChange('users')
-                      }}
                     />
                   </Suspense>
                 </FadeIn>

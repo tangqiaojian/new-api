@@ -55,68 +55,6 @@ func TestGetAllQuotaDatesReturnsTokenSplitAndSuccessCounts(t *testing.T) {
 	assert.Equal(t, 78, quota)
 }
 
-func TestGetAllQuotaDatesStandardQuotaFromGroupRatio(t *testing.T) {
-	truncateTables(t)
-
-	start := int64(1_704_067_200)
-	require.NoError(t, LOG_DB.Create([]Log{
-		{
-			UserId: 1, Username: "alice", ModelName: "gpt-a", CreatedAt: start + 10,
-			Type: LogTypeConsume, PromptTokens: 10, CompletionTokens: 5, Quota: 50,
-			Other: `{"group_ratio":0.5}`,
-		},
-		{
-			UserId: 1, Username: "alice", ModelName: "gpt-a", CreatedAt: start + 20,
-			Type: LogTypeConsume, PromptTokens: 10, CompletionTokens: 5, Quota: 40,
-			Other: `{"user_group_ratio":0.2,"group_ratio":0.5}`,
-		},
-		{
-			UserId: 1, Username: "alice", ModelName: "gpt-a", CreatedAt: start + 30,
-			Type: LogTypeConsume, PromptTokens: 5, CompletionTokens: 5, Quota: 10,
-			Other: `{}`,
-		},
-	}).Error)
-
-	rows, err := GetAllQuotaDates(start, start+3600, "", false)
-	require.NoError(t, err)
-	require.NotEmpty(t, rows)
-
-	var quota, standard int
-	for _, row := range rows {
-		quota += row.Quota
-		standard += row.StandardQuota
-	}
-	// 50/0.5=100 + 40/0.2=200 + 10/1=10
-	assert.Equal(t, 100, quota)
-	assert.Equal(t, 310, standard)
-}
-
-func TestGetAllQuotaDatesIgnoresNegativeUserGroupRatioSentinel(t *testing.T) {
-	truncateTables(t)
-
-	start := int64(1_704_067_200)
-	require.NoError(t, LOG_DB.Create([]Log{
-		{
-			UserId: 1, Username: "alice", ModelName: "gpt-a", CreatedAt: start + 10,
-			Type: LogTypeConsume, PromptTokens: 10, CompletionTokens: 5, Quota: 50,
-			// -1 is a stored sentinel meaning "unset"; must fall through to group_ratio.
-			Other: `{"user_group_ratio":-1,"group_ratio":0.05}`,
-		},
-	}).Error)
-
-	rows, err := GetAllQuotaDates(start, start+3600, "", false)
-	require.NoError(t, err)
-	require.NotEmpty(t, rows)
-
-	var quota, standard int
-	for _, row := range rows {
-		quota += row.Quota
-		standard += row.StandardQuota
-	}
-	assert.Equal(t, 50, quota)
-	assert.Equal(t, 1000, standard)
-}
-
 func TestGetQuotaDataGroupByUserReturnsPerUserTokenSplit(t *testing.T) {
 	truncateTables(t)
 
@@ -179,36 +117,4 @@ func TestLogQuotaDataPersistsTokenSplitFields(t *testing.T) {
 	assert.Equal(t, 1, row.SuccessCount)
 	assert.Equal(t, 0, row.ErrorCount)
 	assert.Equal(t, 1, row.Count)
-}
-
-func TestGetQuotaDataGroupByUseGroupAggregates(t *testing.T) {
-	truncateTables(t)
-	start := int64(1_704_067_200)
-	require.NoError(t, LOG_DB.Create([]Log{
-		{
-			UserId: 1, Username: "alice", ModelName: "m1", Group: "grok", CreatedAt: start + 10,
-			Type: LogTypeConsume, PromptTokens: 10, CompletionTokens: 5, Quota: 100,
-		},
-		{
-			UserId: 1, Username: "alice", ModelName: "m2", Group: "grok", CreatedAt: start + 20,
-			Type: LogTypeConsume, PromptTokens: 20, CompletionTokens: 5, Quota: 50,
-		},
-		{
-			UserId: 2, Username: "bob", ModelName: "m1", Group: "zhipu", CreatedAt: start + 30,
-			Type: LogTypeConsume, PromptTokens: 5, CompletionTokens: 5, Quota: 30,
-		},
-	}).Error)
-
-	rows, err := GetQuotaDataGroupByUseGroup(start, start+3600, "", 0, false)
-	require.NoError(t, err)
-	require.Len(t, rows, 2)
-	byGroup := map[string]*QuotaData{}
-	for _, row := range rows {
-		byGroup[row.UseGroup] = row
-	}
-	require.Contains(t, byGroup, "grok")
-	require.Contains(t, byGroup, "zhipu")
-	assert.Equal(t, 150, byGroup["grok"].Quota)
-	assert.Equal(t, 2, byGroup["grok"].Count)
-	assert.Equal(t, 30, byGroup["zhipu"].Quota)
 }

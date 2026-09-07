@@ -47,21 +47,13 @@ import {
 } from '@/components/page-transition'
 import { Button } from '@/components/ui/button'
 import { IconBadge, type IconBadgeTone } from '@/components/ui/icon-badge'
-import { getQuotaDataByGroups, getUserQuotaDates } from '@/features/dashboard/api'
-import { OpsDistributionPie } from '@/features/dashboard/components/ops-distribution-pie'
-import { OpsGroupCards } from '@/features/dashboard/components/ops-group-cards'
-import { OpsStatsGrid } from '@/features/dashboard/components/ops-stats-grid'
-import { OpsTokenTrendChart } from '@/features/dashboard/components/ops-token-trend-chart'
 import { DashboardTimeRangeBar } from '@/features/dashboard/components/ui/dashboard-time-range-bar'
 import { useAutoRefresh } from '@/features/dashboard/hooks/use-auto-refresh'
-import { useOpsDashboardStats } from '@/features/dashboard/hooks/use-ops-dashboard-stats'
 import { buildTimeWindow } from '@/features/dashboard/lib'
 import { fetchTokenKey, getApiKeys } from '@/features/keys/api'
 import type { ApiKey } from '@/features/keys/types'
-import { getSelfSubscriptionFull } from '@/features/subscriptions/api'
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
 import { getUserModels } from '@/lib/api'
-import dayjs from '@/lib/dayjs'
 import { MOTION_TRANSITION } from '@/lib/motion'
 import { ROLE } from '@/lib/roles'
 import { cn } from '@/lib/utils'
@@ -75,6 +67,7 @@ import { AnnouncementsPanel } from './announcements-panel'
 import { ApiInfoPanel } from './api-info-panel'
 import { FAQPanel } from './faq-panel'
 import { PerformanceHealthPanel } from './performance-health-panel'
+import { SummaryCards } from './summary-cards'
 import { UptimePanel } from './uptime-panel'
 
 const SETUP_GUIDE_VISIBILITY_STORAGE_KEY =
@@ -480,116 +473,6 @@ export function OverviewDashboard() {
     boolean | null
   >(() => getSavedSetupGuideExpanded())
   const [summaryWindow, setSummaryWindow] = useState(() => buildTimeWindow(1))
-  const { stats: opsStats, loading: opsLoading } = useOpsDashboardStats({
-    refetchInterval: refetchInterval || false,
-  })
-
-  const isAdminUser = Boolean(user?.role && user.role >= ROLE.ADMIN)
-  const groupCardsQuery = useQuery({
-    queryKey: ['ops-stats', 'group-cards-today', isAdminUser],
-    queryFn: () => {
-      const start = dayjs().tz().startOf('day').unix()
-      const end = dayjs().tz().unix() + 3600
-      return getQuotaDataByGroups(
-        { start_timestamp: start, end_timestamp: end },
-        isAdminUser
-      )
-    },
-    staleTime: 30_000,
-    refetchInterval: refetchInterval || undefined,
-  })
-  const groupCardsLifetimeQuery = useQuery({
-    queryKey: ['ops-stats', 'group-cards-lifetime', isAdminUser],
-    queryFn: () => {
-      const end = dayjs().tz().unix() + 3600
-      const start = end - 90 * 24 * 3600
-      return getQuotaDataByGroups(
-        { start_timestamp: start, end_timestamp: end },
-        isAdminUser
-      )
-    },
-    staleTime: 60_000,
-    refetchInterval: refetchInterval || undefined,
-  })
-  const selfSubsQuery = useQuery({
-    queryKey: ['ops-stats', 'self-subscriptions'],
-    queryFn: getSelfSubscriptionFull,
-    staleTime: 60_000,
-    enabled: !isAdminUser,
-  })
-  const groupCards = useMemo(() => {
-    const todayRows = groupCardsQuery.data?.data ?? []
-    const lifetimeRows = groupCardsLifetimeQuery.data?.data ?? []
-    const lifetimeByName = new Map<string, number>()
-    for (const item of lifetimeRows) {
-      const name = (item.use_group || '').trim() || t('Unknown')
-      lifetimeByName.set(
-        name,
-        (lifetimeByName.get(name) ?? 0) + (Number(item.quota) || 0)
-      )
-    }
-    const records = selfSubsQuery.data?.data?.subscriptions ?? []
-    const subs = records.map((r) =>
-      'subscription' in r && r.subscription ? r.subscription : (r as never)
-    )
-    const primarySub = subs.find((s) => s?.status === 'active') ?? subs[0]
-    const amountTotal = Number(primarySub?.amount_total) || 0
-    const amountUsed = Number(primarySub?.amount_used) || 0
-    const limitPercent =
-      amountTotal > 0
-        ? Math.min(100, Math.round((amountUsed / amountTotal) * 100))
-        : undefined
-
-    const names = new Set<string>()
-    for (const item of todayRows) {
-      names.add((item.use_group || '').trim() || t('Unknown'))
-    }
-    for (const name of lifetimeByName.keys()) names.add(name)
-
-    return [...names]
-      .map((name) => {
-        const todayItem = todayRows.find(
-          (item) => ((item.use_group || '').trim() || t('Unknown')) === name
-        )
-        const todayCost = Number(todayItem?.quota) || 0
-        const tokens =
-          (Number(todayItem?.prompt_tokens) || 0) +
-          (Number(todayItem?.completion_tokens) || 0) +
-          (Number(todayItem?.cache_read_tokens) || 0)
-        return {
-          name,
-          totalCost: lifetimeByName.get(name) ?? todayCost,
-          todayCost,
-          requests: Number(todayItem?.count) || 0,
-          tokens,
-          limitPercent,
-          resetAt:
-            primarySub?.next_reset_time ?? primarySub?.last_reset_time ?? 0,
-        }
-      })
-      .sort((a, b) => (b.totalCost ?? 0) - (a.totalCost ?? 0))
-      .slice(0, 8)
-  }, [
-    groupCardsLifetimeQuery.data?.data,
-    groupCardsQuery.data?.data,
-    selfSubsQuery.data?.data,
-    t,
-  ])
-
-  const overviewQuotaQuery = useQuery({
-    queryKey: ['ops-stats', 'overview-quota-today', isAdminUser],
-    queryFn: () => {
-      const start = dayjs().tz().startOf('day').unix()
-      const end = dayjs().tz().unix() + 3600
-      return getUserQuotaDates(
-        { start_timestamp: start, end_timestamp: end },
-        isAdminUser
-      )
-    },
-    staleTime: 30_000,
-    refetchInterval: refetchInterval || undefined,
-  })
-  const overviewQuotaData = overviewQuotaQuery.data?.data ?? []
 
   const requestCount = Number(user?.request_count ?? 0)
   const remainQuota = Number(user?.quota ?? 0)
@@ -880,21 +763,11 @@ export function OverviewDashboard() {
         />
       </div>
 
-      <OpsStatsGrid loading={opsLoading} stats={opsStats} />
-      <OpsGroupCards
-        loading={groupCardsQuery.isLoading || groupCardsLifetimeQuery.isLoading}
-        items={groupCards}
+      <SummaryCards
+        days={summaryWindow.selectedRange > 0 ? summaryWindow.selectedRange : 1}
+        start={summaryWindow.start_timestamp}
+        end={summaryWindow.end_timestamp}
       />
-      <div className='grid gap-3 lg:grid-cols-2'>
-        <OpsDistributionPie
-          data={overviewQuotaData}
-          loading={overviewQuotaQuery.isLoading}
-        />
-        <OpsTokenTrendChart
-          data={overviewQuotaData}
-          loading={overviewQuotaQuery.isLoading}
-        />
-      </div>
 
       {showContentPanels && (
         <CardStaggerContainer

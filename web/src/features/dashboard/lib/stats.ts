@@ -40,30 +40,22 @@ export function safeDivide(
  */
 export function calculateDashboardStats(data: QuotaDataItem[]) {
   return data.reduce(
-    (acc, item) => {
-      const quota = Number(item.quota) || 0
-      const standardRaw = Number(item.standard_quota)
-      const standardQuota =
-        Number.isFinite(standardRaw) && standardRaw > 0 ? standardRaw : quota
-      return {
-        totalQuota: acc.totalQuota + quota,
-        totalStandardQuota: acc.totalStandardQuota + standardQuota,
-        totalCount: acc.totalCount + (Number(item.count) || 0),
-        totalTokens: acc.totalTokens + (Number(item.token_used) || 0),
-        promptTokens: acc.promptTokens + (Number(item.prompt_tokens) || 0),
-        completionTokens:
-          acc.completionTokens + (Number(item.completion_tokens) || 0),
-        cacheReadTokens:
-          acc.cacheReadTokens + (Number(item.cache_read_tokens) || 0),
-        cacheWriteTokens:
-          acc.cacheWriteTokens + (Number(item.cache_write_tokens) || 0),
-        successCount: acc.successCount + (Number(item.success_count) || 0),
-        errorCount: acc.errorCount + (Number(item.error_count) || 0),
-      }
-    },
+    (acc, item) => ({
+      totalQuota: acc.totalQuota + (Number(item.quota) || 0),
+      totalCount: acc.totalCount + (Number(item.count) || 0),
+      totalTokens: acc.totalTokens + (Number(item.token_used) || 0),
+      promptTokens: acc.promptTokens + (Number(item.prompt_tokens) || 0),
+      completionTokens:
+        acc.completionTokens + (Number(item.completion_tokens) || 0),
+      cacheReadTokens:
+        acc.cacheReadTokens + (Number(item.cache_read_tokens) || 0),
+      cacheWriteTokens:
+        acc.cacheWriteTokens + (Number(item.cache_write_tokens) || 0),
+      successCount: acc.successCount + (Number(item.success_count) || 0),
+      errorCount: acc.errorCount + (Number(item.error_count) || 0),
+    }),
     {
       totalQuota: 0,
-      totalStandardQuota: 0,
       totalCount: 0,
       totalTokens: 0,
       promptTokens: 0,
@@ -102,8 +94,8 @@ export function kpiCacheHitRate(stats: {
   )
 }
 
-/** Format token counts: B / M / K with 1 decimal (Sub2API style). */
-export function formatTokens(value: number): string {
+/** Format token counts for KPI: B / M / K with 1 decimal. */
+export function formatKpiTokenCount(value: number): string {
   const abs = Math.abs(value)
   if (abs >= 1e9) return `${(value / 1e9).toFixed(1)}B`
   if (abs >= 1e6) return `${(value / 1e6).toFixed(1)}M`
@@ -111,106 +103,8 @@ export function formatTokens(value: number): string {
   return String(Math.round(value))
 }
 
-/** @deprecated Prefer formatTokens — kept for older KPI helpers. */
-export function formatKpiTokenCount(value: number): string {
-  return formatTokens(value)
-}
-
 export function formatKpiPercent(rate: number): string {
   return `${(rate * 100).toFixed(2)}%`
-}
-
-export function formatDurationSeconds(seconds: number): string {
-  if (!Number.isFinite(seconds) || seconds <= 0) return '0ms'
-  if (seconds >= 1) return `${seconds.toFixed(2)}s`
-  return `${Math.round(seconds * 1000)}ms`
-}
-
-export type TokenSplit = {
-  promptTokens: number
-  completionTokens: number
-  cacheReadTokens: number
-}
-
-export type OpsBucketStats = {
-  requests: number
-  quota: number
-  /** Undiscounted quota (actual / group_ratio); falls back to quota. */
-  standardQuota: number
-  promptTokens: number
-  completionTokens: number
-  cacheReadTokens: number
-  cacheWriteTokens: number
-  tokenUsed: number
-}
-
-export type OpsDashboardStats = {
-  balanceQuota: number
-  usedQuota: number
-  apiKeysTotal: number
-  apiKeysActive: number
-  today: OpsBucketStats
-  lifetime: OpsBucketStats
-  rpm: number
-  tpm: number
-  avgUseTimeSec: number
-}
-
-export function emptyOpsBucket(): OpsBucketStats {
-  return {
-    requests: 0,
-    quota: 0,
-    standardQuota: 0,
-    promptTokens: 0,
-    completionTokens: 0,
-    cacheReadTokens: 0,
-    cacheWriteTokens: 0,
-    tokenUsed: 0,
-  }
-}
-
-export function bucketFromDashboardStats(
-  stats: ReturnType<typeof calculateDashboardStats> | null
-): OpsBucketStats {
-  if (!stats) return emptyOpsBucket()
-  return {
-    requests: stats.totalCount,
-    quota: stats.totalQuota,
-    standardQuota: stats.totalStandardQuota || stats.totalQuota,
-    promptTokens: stats.promptTokens,
-    completionTokens: stats.completionTokens,
-    cacheReadTokens: stats.cacheReadTokens,
-    cacheWriteTokens: stats.cacheWriteTokens,
-    tokenUsed: stats.totalTokens,
-  }
-}
-
-/** Sub2API Today Cost: actual / standard (standard muted; strike when discounted). */
-export function formatActualStandardCost(
-  actual: number,
-  standard: number,
-  format: (n: number) => string
-): { primary: string; secondary: string; discounted: boolean } {
-  const std = standard > 0 ? standard : actual
-  const discounted = Math.abs(actual - std) > 0.5
-  return {
-    primary: format(actual),
-    secondary: format(std),
-    discounted,
-  }
-}
-
-export function formatTokenSplitLine(
-  t: (key: string) => string,
-  split: TokenSplit
-): string {
-  return `${t('Input')}: ${formatTokens(split.promptTokens)} / ${t('Output')}: ${formatTokens(split.completionTokens)} / ${t('Cache')}: ${formatTokens(split.cacheReadTokens)}`
-}
-
-export function quotaProgressTone(percent: number): 'green' | 'amber' | 'red' {
-  if (percent >= 95) return 'red'
-  if (percent >= 75) return 'amber'
-  return 'green'
 }
 
 export type TodayModelTokenRow = {

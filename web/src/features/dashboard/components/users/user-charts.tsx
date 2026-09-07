@@ -34,18 +34,15 @@ import {
 } from '@/components/ui/select'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useTheme } from '@/context/theme-provider'
-import { getQuotaDataByGroups, getUserQuotaDataByUsers } from '@/features/dashboard/api'
-import { OpsDistributionPie } from '@/features/dashboard/components/ops-distribution-pie'
-import { OpsGroupCards } from '@/features/dashboard/components/ops-group-cards'
-import { OpsStatsGrid } from '@/features/dashboard/components/ops-stats-grid'
-import { OpsTokenTrendChart } from '@/features/dashboard/components/ops-token-trend-chart'
+import { getUserQuotaDataByUsers } from '@/features/dashboard/api'
+import { UsageKpiGrid } from '@/features/dashboard/components/usage-kpi-grid'
 import { DashboardTimeRangeBar } from '@/features/dashboard/components/ui/dashboard-time-range-bar'
 import { TIME_GRANULARITY_OPTIONS } from '@/features/dashboard/constants'
 import { useAutoRefresh } from '@/features/dashboard/hooks/use-auto-refresh'
-import { useOpsDashboardStats } from '@/features/dashboard/hooks/use-ops-dashboard-stats'
 import {
   buildTimeWindow,
-  formatTokens,
+  calculateDashboardStats,
+  formatKpiTokenCount,
   getDefaultDays,
   processUserChartData,
   resolveUnixTimeRange,
@@ -57,10 +54,8 @@ import type {
   UserChartsFilters,
 } from '@/features/dashboard/types'
 import { formatQuota } from '@/lib/format'
-import { ROLE } from '@/lib/roles'
 import type { TimeGranularity } from '@/lib/time'
 import { VCHART_OPTION } from '@/lib/vchart'
-import { useAuthStore } from '@/stores/auth-store'
 
 let themeManagerPromise: Promise<
   (typeof import('@visactor/vchart'))['ThemeManager']
@@ -160,16 +155,7 @@ export function UserCharts(props: UserChartsProps) {
     updateTheme()
   }, [resolvedTheme])
 
-  const selectedUsername = props.filters.selectedUsername ?? null
-  const setSelectedUsername = useCallback(
-    (username: string | null) => {
-      onFiltersChange({ ...props.filters, selectedUsername: username })
-    },
-    [onFiltersChange, props.filters]
-  )
-
-  const user = useAuthStore((s) => s.auth.user)
-  const isAdmin = !!(user?.role && user.role >= ROLE.ADMIN)
+  const [selectedUsername, setSelectedUsername] = useState<string | null>(null)
 
   const { data: userData, isLoading } = useQuery({
     queryKey: ['dashboard', 'user-quota', timeRange],
@@ -192,7 +178,7 @@ export function UserCharts(props: UserChartsProps) {
     if (selectedUsername && !usernames.includes(selectedUsername)) {
       setSelectedUsername(null)
     }
-  }, [selectedUsername, setSelectedUsername, usernames])
+  }, [selectedUsername, usernames])
 
   const scopedUserData = useMemo(() => {
     const data = userData ?? []
@@ -217,54 +203,17 @@ export function UserCharts(props: UserChartsProps) {
       selectedUsername,
     ]
   )
-  const { stats: opsStats, loading: opsLoading } = useOpsDashboardStats({
-    username: selectedUsername ?? undefined,
-    refetchInterval: refetchInterval || false,
-  })
-
-  const groupQuery = useQuery({
-    queryKey: [
-      'dashboard',
-      'users',
-      'group-cards',
-      timeRange,
-      selectedUsername,
-      isAdmin,
-    ],
-    queryFn: () =>
-      getQuotaDataByGroups(
-        {
-          start_timestamp: timeRange.start_timestamp,
-          end_timestamp: timeRange.end_timestamp,
-          username: selectedUsername ?? undefined,
-        },
-        isAdmin
-      ),
-    staleTime: 60_000,
-    enabled: !!selectedUsername,
-    refetchInterval: refetchInterval || undefined,
-  })
-
-  const groupCards = useMemo(() => {
-    const rows = groupQuery.data?.data ?? []
-    return rows
-      .map((item) => {
-        const name = (item.use_group || '').trim() || 'default'
-        const cost = Number(item.quota) || 0
-        return {
-          name,
-          totalCost: cost,
-          todayCost: cost,
-          requests: Number(item.count) || 0,
-          tokens:
-            (Number(item.prompt_tokens) || 0) +
-            (Number(item.completion_tokens) || 0) +
-            (Number(item.cache_read_tokens) || 0),
-        }
-      })
-      .sort((a, b) => (b.totalCost ?? 0) - (a.totalCost ?? 0))
-      .slice(0, 8)
-  }, [groupQuery.data?.data])
+  const kpiStats = useMemo(() => {
+    if (scopedUserData.length === 0) return null
+    const stats = calculateDashboardStats(scopedUserData)
+    return {
+      totalCount: stats.totalCount,
+      promptTokens: stats.promptTokens,
+      completionTokens: stats.completionTokens,
+      cacheReadTokens: stats.cacheReadTokens,
+      successCount: stats.successCount,
+    }
+  }, [scopedUserData])
 
   const modelBreakdown = useMemo(() => {
     const byModel = new Map<
@@ -351,62 +300,7 @@ export function UserCharts(props: UserChartsProps) {
         ) : null}
       </div>
 
-      <OpsStatsGrid loading={isLoading || opsLoading} stats={opsStats} />
-
-      {selectedUsername ? (
-        <>
-          <OpsGroupCards
-            loading={groupQuery.isLoading}
-            items={groupCards}
-          />
-          <div className='grid gap-3 lg:grid-cols-2'>
-            <OpsDistributionPie
-              data={scopedUserData}
-              loading={isLoading}
-            />
-            <OpsTokenTrendChart data={scopedUserData} loading={isLoading} />
-          </div>
-        </>
-      ) : null}
-
-      {!selectedUsername && usernames.length > 0 ? (
-        <div className='overflow-hidden rounded-lg border'>
-          <div className='border-b px-3 py-2 text-sm font-semibold sm:px-5'>
-            {t('User Consumption Ranking')}
-          </div>
-          <div className='divide-y'>
-            {[...usernames]
-              .map((name) => {
-                const rows = (userData ?? []).filter((i) => i.username === name)
-                const quota = rows.reduce(
-                  (sum, row) => sum + (Number(row.quota) || 0),
-                  0
-                )
-                return { name, quota }
-              })
-              .sort((a, b) => b.quota - a.quota)
-              .slice(0, topUserLimit)
-              .map((row, index) => (
-                <button
-                  key={row.name}
-                  type='button'
-                  className='hover:bg-muted/40 flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm sm:px-5'
-                  onClick={() => setSelectedUsername(row.name)}
-                >
-                  <span className='truncate'>
-                    <span className='text-muted-foreground mr-2 tabular-nums'>
-                      #{index + 1}
-                    </span>
-                    {row.name}
-                  </span>
-                  <span className='shrink-0 tabular-nums'>
-                    {formatQuota(row.quota)}
-                  </span>
-                </button>
-              ))}
-          </div>
-        </div>
-      ) : null}
+      <UsageKpiGrid loading={isLoading} stats={kpiStats} />
 
       {selectedUsername && modelBreakdown.length > 0 ? (
         <div className='overflow-hidden rounded-lg border'>
@@ -430,18 +324,18 @@ export function UserCharts(props: UserChartsProps) {
                   <tr key={row.modelName} className='border-t'>
                     <td className='px-3 py-2 font-medium'>{row.modelName}</td>
                     <td className='px-3 py-2 tabular-nums'>
-                      {formatTokens(row.count)}
+                      {formatKpiTokenCount(row.count)}
                     </td>
                     <td className='px-3 py-2 tabular-nums'>
-                      {formatTokens(
+                      {formatKpiTokenCount(
                         row.promptTokens + row.cacheReadTokens
                       )}
                     </td>
                     <td className='px-3 py-2 tabular-nums'>
-                      {formatTokens(row.completionTokens)}
+                      {formatKpiTokenCount(row.completionTokens)}
                     </td>
                     <td className='px-3 py-2 tabular-nums'>
-                      {formatTokens(row.cacheReadTokens)}
+                      {formatKpiTokenCount(row.cacheReadTokens)}
                     </td>
                     <td className='px-3 py-2 tabular-nums'>
                       {formatQuota(row.quota)}

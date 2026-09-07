@@ -1,21 +1,4 @@
 {
-  "Average time": "平均响应时间",
-  "Avg Response": "平均耗时",
-  "Balance": "余额",
-  "Cache": "缓存",
-  "enabled": "启用",
-  "Input": "输入",
-  "Output": "输出",
-  "Performance": "性能",
-  "Requests": "请求",
-  "Resets at": "重置于",
-  "Today Cost": "今日费用",
-  "Today Requests": "今日请求",
-  "Today Tokens": "今日 Token",
-  "Token Trend": "Token 趋势",
-  "Tokens": "Token",
-  "Total": "累计",
-  "Total Tokens": "累计 Token",
   "translation": {
     "360": "360",
     "1000": "1000",
@@ -5467,7 +5450,5 @@
     "Zhipu V4": "智谱 V4",
     "Zoom": "缩放"
   },
-  "Unknown": "未知",
-  "Used": "已用",
   "Weekly Reset": "周额度重置"
 }

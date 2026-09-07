@@ -18,38 +18,57 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useQuery } from '@tanstack/react-query'
 import { useEffect, useMemo } from 'react'
+import { useTranslation } from 'react-i18next'
 
-import {
-  getQuotaDataByGroups,
-  getUserQuotaDates,
-} from '@/features/dashboard/api'
-import { OpsDistributionPie } from '@/features/dashboard/components/ops-distribution-pie'
-import { OpsGroupCards } from '@/features/dashboard/components/ops-group-cards'
-import { OpsStatsGrid } from '@/features/dashboard/components/ops-stats-grid'
-import { OpsTokenTrendChart } from '@/features/dashboard/components/ops-token-trend-chart'
+import { IconBadge } from '@/components/ui/icon-badge'
+import { Skeleton } from '@/components/ui/skeleton'
+import { getUserQuotaDates } from '@/features/dashboard/api'
+import { UsageKpiGrid } from '@/features/dashboard/components/usage-kpi-grid'
 import { useAutoRefresh } from '@/features/dashboard/hooks/use-auto-refresh'
-import { useOpsDashboardStats } from '@/features/dashboard/hooks/use-ops-dashboard-stats'
-import { buildQueryParams, getDefaultDays } from '@/features/dashboard/lib'
+import { useModelStatCardsConfig } from '@/features/dashboard/hooks/use-dashboard-config'
+import {
+  buildQueryParams,
+  calculateDashboardStats,
+  getDefaultDays,
+} from '@/features/dashboard/lib'
 import type {
-  DashboardFilters,
   QuotaDataItem,
+  DashboardFilters,
 } from '@/features/dashboard/types'
+import { toIntlLocale } from '@/i18n/languages'
+import { formatCompactNumber, formatNumber, formatQuota } from '@/lib/format'
 import { ROLE } from '@/lib/roles'
 import { computeTimeRange } from '@/lib/time'
+import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/stores/auth-store'
 
 interface LogStatCardsProps {
   filters?: DashboardFilters
   onDataUpdate?: (data: QuotaDataItem[], loading: boolean) => void
   includeCache?: boolean
-  onSelectUser?: (username: string) => void
+}
+
+const MAX_INLINE_STAT_CHARS = 9
+
+function formatStatNumber(value: number, locale: Intl.LocalesArgument) {
+  const fullValue = formatNumber(value, locale)
+  const displayValue =
+    fullValue.length > MAX_INLINE_STAT_CHARS
+      ? formatCompactNumber(value, locale)
+      : fullValue
+
+  return {
+    displayValue,
+    fullValue,
+  }
 }
 
 export function LogStatCards(props: LogStatCardsProps) {
+  const { i18n } = useTranslation()
+  const statCardsConfig = useModelStatCardsConfig()
   const user = useAuthStore((state) => state.auth.user)
   const isAdmin = !!(user?.role && user.role >= ROLE.ADMIN)
   const { refetchInterval } = useAutoRefresh()
-  const username = props.filters?.username?.trim() || undefined
 
   const timeRange = useMemo(
     () =>
@@ -68,12 +87,8 @@ export function LogStatCards(props: LogStatCardsProps) {
     () => buildQueryParams(timeRange, props.filters),
     [props.filters, timeRange]
   )
-
-  const { stats: opsStats, loading: opsLoading } = useOpsDashboardStats({
-    username,
-    includeCache: props.includeCache,
-    refetchInterval: refetchInterval || false,
-  })
+  const timeRangeMinutes =
+    (timeRange.end_timestamp - timeRange.start_timestamp) / 60
 
   const quotaQuery = useQuery({
     queryKey: [
@@ -93,33 +108,13 @@ export function LogStatCards(props: LogStatCardsProps) {
     refetchInterval: refetchInterval || undefined,
   })
 
-  const groupQuery = useQuery({
-    queryKey: [
-      'dashboard',
-      'models',
-      'group-cards',
-      timeRange,
-      username,
-      isAdmin,
-      props.includeCache,
-    ],
-    queryFn: () =>
-      getQuotaDataByGroups(
-        {
-          start_timestamp: timeRange.start_timestamp,
-          end_timestamp: timeRange.end_timestamp,
-          username,
-          include_cache: props.includeCache,
-        },
-        isAdmin
-      ),
-    staleTime: 60_000,
-    refetchInterval: refetchInterval || undefined,
-  })
-
   const data = useMemo(
     () => quotaQuery.data?.data ?? [],
     [quotaQuery.data?.data]
+  )
+  const stats = useMemo(
+    () => (data.length > 0 ? calculateDashboardStats(data) : null),
+    [data]
   )
   const onDataUpdate = props.onDataUpdate
 
@@ -127,39 +122,117 @@ export function LogStatCards(props: LogStatCardsProps) {
     onDataUpdate?.(data, quotaQuery.isLoading)
   }, [data, onDataUpdate, quotaQuery.isLoading])
 
-  const groupCards = useMemo(() => {
-    const rows = groupQuery.data?.data ?? []
-    return rows
-      .map((item) => {
-        const name = (item.use_group || '').trim() || 'default'
-        const cost = Number(item.quota) || 0
-        return {
-          name,
-          totalCost: cost,
-          todayCost: cost,
-          requests: Number(item.count) || 0,
-          tokens:
-            (Number(item.prompt_tokens) || 0) +
-            (Number(item.completion_tokens) || 0) +
-            (Number(item.cache_read_tokens) || 0),
-        }
-      })
-      .sort((a, b) => (b.totalCost ?? 0) - (a.totalCost ?? 0))
-      .slice(0, 8)
-  }, [groupQuery.data?.data])
+  const adaptedStats = {
+    rpm: stats?.totalCount ?? 0,
+    quota: stats?.totalQuota ?? 0,
+    tpm: stats?.totalTokens ?? 0,
+  }
+
+  const items = statCardsConfig.map((config) => {
+    const rawValue = config.getValue(adaptedStats, timeRangeMinutes)
+    const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
+    const formatted =
+      config.key === 'quota'
+        ? {
+            displayValue: formatQuota(rawValue),
+            fullValue: formatQuota(rawValue),
+          }
+        : formatStatNumber(rawValue, locale)
+
+    return {
+      title: config.title,
+      value: formatted.displayValue,
+      fullValue: formatted.fullValue,
+      desc: config.description,
+      icon: config.icon,
+      iconTone: config.iconTone,
+    }
+  })
 
   return (
     <div className='space-y-3'>
-      <OpsStatsGrid loading={opsLoading} stats={opsStats} />
-      <OpsGroupCards loading={groupQuery.isLoading} items={groupCards} />
-      <div className='grid gap-3 lg:grid-cols-2'>
-        <OpsDistributionPie
-          data={data}
-          loading={quotaQuery.isLoading}
-          onSelectUser={props.onSelectUser}
-        />
-        <OpsTokenTrendChart data={data} loading={quotaQuery.isLoading} />
+      <UsageKpiGrid
+        loading={quotaQuery.isLoading}
+        stats={
+          stats
+            ? {
+                totalCount: stats.totalCount,
+                promptTokens: stats.promptTokens,
+                completionTokens: stats.completionTokens,
+                cacheReadTokens: stats.cacheReadTokens,
+                successCount: stats.successCount,
+              }
+            : null
+        }
+      />
+      <div className='overflow-hidden rounded-lg border'>
+      <div className='divide-border/60 grid min-w-0 grid-cols-2 divide-x sm:grid-cols-3 lg:grid-cols-5'>
+        {items.map((it, idx) => {
+          const Icon = it.icon
+          let valueContent
+          if (quotaQuery.isLoading) {
+            valueContent = (
+              <div className='mt-1 flex flex-col gap-1 sm:mt-2 sm:gap-1.5'>
+                <Skeleton className='h-5 w-16 sm:h-7 sm:w-20' />
+                <Skeleton className='hidden h-3.5 w-28 md:block' />
+              </div>
+            )
+          } else if (quotaQuery.isError) {
+            valueContent = (
+              <>
+                <div className='text-muted-foreground mt-1 font-mono text-base leading-tight font-bold tracking-tight tabular-nums sm:mt-2 sm:text-2xl sm:leading-normal'>
+                  --
+                </div>
+                <div className='text-muted-foreground/40 mt-1 hidden text-xs md:block'>
+                  {it.desc}
+                </div>
+              </>
+            )
+          } else {
+            valueContent = (
+              <>
+                <div
+                  className='text-foreground mt-1 max-w-full truncate font-mono text-base leading-tight font-bold tracking-tight tabular-nums sm:mt-2 sm:text-2xl sm:leading-normal'
+                  title={it.fullValue}
+                >
+                  {it.value}
+                </div>
+                <div className='text-muted-foreground/60 mt-1 hidden text-xs md:block'>
+                  {it.desc}
+                </div>
+              </>
+            )
+          }
+
+          return (
+            <div
+              key={it.title}
+              className={cn(
+                'min-w-0 px-2.5 py-1.5 sm:px-5 sm:py-4',
+                idx === items.length - 1 &&
+                  items.length % 2 !== 0 &&
+                  'col-span-2 sm:col-span-1'
+              )}
+            >
+              <div className='flex min-w-0 items-center gap-1.5 sm:gap-2'>
+                <IconBadge
+                  tone={it.iconTone}
+                  size='stat'
+                  className='size-4 rounded-sm sm:size-7 sm:rounded-md [&>svg]:size-2.5 sm:[&>svg]:size-3.5'
+                >
+                  <Icon />
+                </IconBadge>
+                <div className='text-muted-foreground truncate text-[11px] leading-4 font-medium tracking-wide uppercase sm:text-xs sm:tracking-wider'>
+                  {it.title}
+                </div>
+              </div>
+
+              {valueContent}
+            </div>
+          )
+        })}
       </div>
+    </div>
     </div>
   )
 }

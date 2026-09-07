@@ -29,10 +29,6 @@ type QuotaData struct {
 	ErrorCount       int    `json:"error_count" gorm:"default:0"`
 	Count            int    `json:"count" gorm:"default:0"`
 	Quota            int    `json:"quota" gorm:"default:0"`
-	// StandardQuota is the undiscounted charge inferred from other.group_ratio
-	// (actual quota / group_ratio). Used for Sub2API-style "actual / standard" cost.
-	// Aggregated query-only; not a quota_data table column.
-	StandardQuota int `json:"standard_quota" gorm:"->;column:standard_quota;-:migration"`
 }
 
 type QuotaDataLogParams struct {
@@ -199,29 +195,12 @@ func logCacheWriteTokensPerRowExpr() string {
 	return "CASE WHEN COALESCE(" + writeExpr + ", 0) > 0 THEN " + writeExpr + " ELSE COALESCE(" + creationExpr + ", 0) END"
 }
 
-func logGroupRatioPerRowExpr() string {
-	userRatio := logJSONFloatExpression("user_group_ratio")
-	groupRatio := logJSONFloatExpression("group_ratio")
-	// Prefer per-user special ratio when positive; otherwise group ratio; else 1.
-	return "CASE WHEN COALESCE(" + userRatio + ", 0) > 0 THEN " + userRatio +
-		" WHEN COALESCE(" + groupRatio + ", 0) > 0 THEN " + groupRatio +
-		" ELSE 1 END"
-}
-
-func logStandardQuotaPerRowExpr() string {
-	ratio := "(" + logGroupRatioPerRowExpr() + ")"
-	// quota * 1.0 is portable across SQLite/MySQL/PostgreSQL (avoid CAST AS REAL).
-	return "CASE WHEN " + ratio + " > 0 THEN (quota * 1.0) / " + ratio + " ELSE (quota * 1.0) END"
-}
-
 func quotaDataAggregateSelect(includeCache bool) string {
 	cacheReadExpr := "COALESCE(SUM(" + logJSONIntExpression("cache_tokens") + "), 0)"
 	cacheWriteExpr := "COALESCE(SUM(" + logCacheWriteTokensPerRowExpr() + "), 0)"
 	successExpr := "COALESCE(SUM(" + logStreamSuccessExpression() + "), 0)"
-	standardExpr := "COALESCE(ROUND(SUM(" + logStandardQuotaPerRowExpr() + ")), 0)"
 	return "COUNT(*) AS count, " +
 		"COALESCE(SUM(quota), 0) AS quota, " +
-		standardExpr + " AS standard_quota, " +
 		"COALESCE(SUM(prompt_tokens), 0) AS prompt_tokens, " +
 		"COALESCE(SUM(completion_tokens), 0) AS completion_tokens, " +
 		cacheReadExpr + " AS cache_read_tokens, " +
@@ -271,25 +250,5 @@ func GetAllQuotaDates(startTime int64, endTime int64, username string, includeCa
 		Where("type = ? AND created_at >= ? AND created_at <= ?", LogTypeConsume, startTime, endTime).
 		Group("model_name, created_at - (created_at % 3600)").
 		Find(&quotaDatas).Error
-	return quotaDatas, err
-}
-
-// GetQuotaDataGroupByUseGroup aggregates consume logs by billing group for
-// Sub2API-style group/channel mini cards (today / range totals).
-func GetQuotaDataGroupByUseGroup(startTime int64, endTime int64, username string, userId int, includeCache bool) (quotaData []*QuotaData, err error) {
-	var quotaDatas []*QuotaData
-	groupExpr := logGroupCol + " AS use_group"
-	tx := LOG_DB.Table("logs").
-		Select(groupExpr+", "+quotaDataAggregateSelect(includeCache)).
-		Where("type = ? AND created_at >= ? AND created_at <= ?", LogTypeConsume, startTime, endTime)
-	if username != "" {
-		tx = tx.Where("username = ?", username)
-	}
-	if userId > 0 {
-		tx = tx.Where("user_id = ?", userId)
-	}
-	// Group by the selected alias so GORM does not double-quote the reserved
-	// `group` column name (breaks SQLite).
-	err = tx.Group("use_group").Find(&quotaDatas).Error
 	return quotaDatas, err
 }

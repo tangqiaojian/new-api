@@ -2,11 +2,8 @@ import { describe, expect, it } from 'vitest'
 
 import {
   calculateDashboardStats,
-  formatActualStandardCost,
   formatKpiPercent,
   formatKpiTokenCount,
-  formatTokens,
-  formatTokenSplitLine,
   kpiCacheHitRate,
   kpiInputTokens,
   kpiSuccessRate,
@@ -47,38 +44,6 @@ describe('calculateDashboardStats token split', () => {
     expect(stats.successCount).toBe(2)
     expect(stats.errorCount).toBe(1)
     expect(stats.totalCount).toBe(3)
-    expect(stats.totalQuota).toBe(15)
-    expect(stats.totalStandardQuota).toBe(15)
-  })
-
-  it('sums standard_quota when group discounts apply', () => {
-    const stats = calculateDashboardStats([
-      {
-        created_at: 1,
-        quota: 50,
-        standard_quota: 100,
-        count: 1,
-      },
-      {
-        created_at: 2,
-        quota: 40,
-        standard_quota: 200,
-        count: 1,
-      },
-    ])
-    expect(stats.totalQuota).toBe(90)
-    expect(stats.totalStandardQuota).toBe(300)
-  })
-})
-
-describe('formatActualStandardCost', () => {
-  it('marks discounted when actual differs from standard', () => {
-    const same = formatActualStandardCost(10, 10, String)
-    expect(same.discounted).toBe(false)
-    const discounted = formatActualStandardCost(50, 100, String)
-    expect(discounted.primary).toBe('50')
-    expect(discounted.secondary).toBe('100')
-    expect(discounted.discounted).toBe(true)
   })
 })
 
@@ -96,21 +61,11 @@ describe('KPI helpers', () => {
     expect(kpiCacheHitRate(stats)).toBe(0.3333)
   })
 
-  it('formats B/M/K with one decimal via formatTokens', () => {
-    expect(formatTokens(1_500_000_000)).toBe('1.5B')
-    expect(formatTokens(2_300_000)).toBe('2.3M')
-    expect(formatTokens(4_200)).toBe('4.2K')
-    expect(formatTokens(42)).toBe('42')
+  it('formats B/M/K with one decimal', () => {
+    expect(formatKpiTokenCount(1_500_000_000)).toBe('1.5B')
+    expect(formatKpiTokenCount(2_300_000)).toBe('2.3M')
+    expect(formatKpiTokenCount(4_200)).toBe('4.2K')
     expect(formatKpiTokenCount(42)).toBe('42')
     expect(formatKpiPercent(0.9941)).toBe('99.41%')
-  })
-
-  it('builds Sub2API token split subtitle in one line', () => {
-    const line = formatTokenSplitLine((k) => k, {
-      promptTokens: 1200,
-      completionTokens: 340,
-      cacheReadTokens: 80,
-    })
-    expect(line).toBe('Input: 1.2K / Output: 340 / Cache: 80')
   })
 })
