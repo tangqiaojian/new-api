@@ -91,6 +91,32 @@ func TestGetAllQuotaDatesStandardQuotaFromGroupRatio(t *testing.T) {
 	assert.Equal(t, 310, standard)
 }
 
+func TestGetAllQuotaDatesIgnoresNegativeUserGroupRatioSentinel(t *testing.T) {
+	truncateTables(t)
+
+	start := int64(1_704_067_200)
+	require.NoError(t, LOG_DB.Create([]Log{
+		{
+			UserId: 1, Username: "alice", ModelName: "gpt-a", CreatedAt: start + 10,
+			Type: LogTypeConsume, PromptTokens: 10, CompletionTokens: 5, Quota: 50,
+			// -1 is a stored sentinel meaning "unset"; must fall through to group_ratio.
+			Other: `{"user_group_ratio":-1,"group_ratio":0.05}`,
+		},
+	}).Error)
+
+	rows, err := GetAllQuotaDates(start, start+3600, "", false)
+	require.NoError(t, err)
+	require.NotEmpty(t, rows)
+
+	var quota, standard int
+	for _, row := range rows {
+		quota += row.Quota
+		standard += row.StandardQuota
+	}
+	assert.Equal(t, 50, quota)
+	assert.Equal(t, 1000, standard)
+}
+
 func TestGetQuotaDataGroupByUserReturnsPerUserTokenSplit(t *testing.T) {
 	truncateTables(t)
 
