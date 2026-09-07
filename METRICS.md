@@ -11,3 +11,5 @@
 | 10 | 2026-09-07T14:13+08 | — | go+vitest | 0 | clean regression + redeploy |
 | 11 | 2026-09-07T14:15+08 | B5-tab | go+vitest | 0 | Consumption Trend tab+chart title; redeploy |
 | 12 | 2026-09-07T14:20+08 | B4 user UI | go+vitest | 0 | user list/detail weekly reset display |
+| 13 | 2026-09-07T14:22+08 | — | go+vitest+tsc | 0 | clean regression #1 |
+| 14 | 2026-09-07T14:22+08 | — | go+vitest | 0 | clean regression #2; goal DONE |

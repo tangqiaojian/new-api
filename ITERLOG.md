@@ -8,3 +8,5 @@ START_TIME=2026-09-07T13:44:04+08:00
 2026-09-07T14:13 iter10 regression green + redeploy; no new product bugs
 2026-09-07T14:15 iter11 B5 Call Trend→Consumption Trend + chart title; redeploy
 2026-09-07T14:20 iter12 user list/detail Weekly Reset (从未重置); tests green
+2026-09-07T14:22 iter13 clean regression (go+vitest+typecheck); no new bugs
+2026-09-07T14:22 iter14 clean regression #2; docker healthy; DONE
