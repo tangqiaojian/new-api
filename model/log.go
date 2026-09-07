@@ -658,13 +658,14 @@ func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int
 }
 
 type Stat struct {
-	Quota int `json:"quota"`
-	Rpm   int `json:"rpm"`
-	Tpm   int `json:"tpm"`
+	Quota      int     `json:"quota"`
+	Rpm        int     `json:"rpm"`
+	Tpm        int     `json:"tpm"`
+	AvgUseTime float64 `json:"avg_use_time"`
 }
 
 func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, channel int, group string, includeCache bool) (stat Stat, err error) {
-	tx := LOG_DB.Table("logs").Select("COALESCE(sum(quota), 0) quota")
+	tx := LOG_DB.Table("logs").Select("COALESCE(sum(quota), 0) quota, COALESCE(AVG(use_time), 0) avg_use_time")
 
 	// 为rpm和tpm创建单独的查询。tpm = sum(prompt_tokens) + sum(completion_tokens)，
 	// 当 includeCache 为 true 时再加上从 other JSON 列解析出的 cache_tokens。
@@ -716,7 +717,8 @@ func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelNa
 	// Stat zeroed Quota because the rpm/tpm SELECT does not project quota
 	// (see QuantumNous/new-api#7106).
 	var quotaOnly struct {
-		Quota int `json:"quota"`
+		Quota      int     `json:"quota"`
+		AvgUseTime float64 `json:"avg_use_time"`
 	}
 	if err := tx.Scan(&quotaOnly).Error; err != nil {
 		common.SysError("failed to query log stat: " + err.Error())
@@ -731,6 +733,7 @@ func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelNa
 		return stat, errors.New("查询统计数据失败")
 	}
 	stat.Quota = quotaOnly.Quota
+	stat.AvgUseTime = quotaOnly.AvgUseTime
 	stat.Rpm = rpmTpmOnly.Rpm
 	stat.Tpm = rpmTpmOnly.Tpm
 

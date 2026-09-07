@@ -4,6 +4,8 @@ import {
   calculateDashboardStats,
   formatKpiPercent,
   formatKpiTokenCount,
+  formatTokens,
+  formatTokenSplitLine,
   kpiCacheHitRate,
   kpiInputTokens,
   kpiSuccessRate,
@@ -61,11 +63,21 @@ describe('KPI helpers', () => {
     expect(kpiCacheHitRate(stats)).toBe(0.3333)
   })
 
-  it('formats B/M/K with one decimal', () => {
-    expect(formatKpiTokenCount(1_500_000_000)).toBe('1.5B')
-    expect(formatKpiTokenCount(2_300_000)).toBe('2.3M')
-    expect(formatKpiTokenCount(4_200)).toBe('4.2K')
+  it('formats B/M/K with one decimal via formatTokens', () => {
+    expect(formatTokens(1_500_000_000)).toBe('1.5B')
+    expect(formatTokens(2_300_000)).toBe('2.3M')
+    expect(formatTokens(4_200)).toBe('4.2K')
+    expect(formatTokens(42)).toBe('42')
     expect(formatKpiTokenCount(42)).toBe('42')
     expect(formatKpiPercent(0.9941)).toBe('99.41%')
+  })
+
+  it('builds Sub2API token split subtitle in one line', () => {
+    const line = formatTokenSplitLine((k) => k, {
+      promptTokens: 1200,
+      completionTokens: 340,
+      cacheReadTokens: 80,
+    })
+    expect(line).toBe('Input: 1.2K / Output: 340 / Cache: 80')
   })
 })

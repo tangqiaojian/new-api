@@ -1,20 +1,12 @@
 # BUGS
 
-| ID | 状态 | 描述 | 证据 |
-|----|------|------|------|
-| B1 | fixed | /api/data 缺 token 拆分 | usedata_token_split_test.go |
-| B2 | fixed | SumUsedQuota 二次 Scan 覆盖 quota | log_stat_test.go |
-| B3 | fixed | 用户维度 KPI + 详情下钻 | UsageKpiGrid + 选择器 + 模型拆分 |
-| B4 | fixed | 手动重置不写 LastResetTime；weekly=0 | subscription_reset_test.go |
-| B5 | fixed | 看板交互 | 见明细全部 fixed |
-
-## B5 明细
-
-| 子项 | 状态 | 说明 |
-|------|------|------|
-| B5-amount-zero | fixed | charts Usage toFixed(6) |
-| B5-empty | fixed | 用户区空态 |
-| B5-timezone | fixed | dayjs 默认 Asia/Shanghai |
-| B5-tab-label | fixed | Call Trend → Consumption Trend（图是额度不是次数） |
-| B5-filter-cards | fixed | buildQueryParams+queryKey 含 filters/username；UsageKpiGrid 同源数据 |
-| B5-presets | fixed | Today / 7 Days / 30 Days |
+| ID | 状态 | 描述 |
+|----|------|------|
+| S1 | fixed | 超大数字四宫格 UsageKpiGrid — 已降级为 OpsStatsGrid 包装，Overview/Dashboard/用户区改用 8 张小卡 |
+| S2 | open | 图表区：甜甜圈切用户排行、Token 趋势叠层、Top 用户趋势未对齐 Sub2API |
+| S3 | open | 分组卡目前按 model_name 聚合；尚未接 use_group + 订阅限额进度 |
+| S4 | open | 今日费用「实际/标准价」暂同值（网关暂无独立标准价字段） |
+| B4 | fixed | 订阅手动重置 LastResetTime（上轮保留） |
+| B1 | fixed | /api/data token 拆分（上轮保留） |
+| B2 | fixed | SumUsedQuota Scan（上轮保留）；本轮补 avg_use_time |
+| B3 | fixed | /api/data/users 非空（上轮保留） |

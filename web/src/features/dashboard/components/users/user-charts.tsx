@@ -35,14 +35,14 @@ import {
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useTheme } from '@/context/theme-provider'
 import { getUserQuotaDataByUsers } from '@/features/dashboard/api'
-import { UsageKpiGrid } from '@/features/dashboard/components/usage-kpi-grid'
+import { OpsStatsGrid } from '@/features/dashboard/components/ops-stats-grid'
 import { DashboardTimeRangeBar } from '@/features/dashboard/components/ui/dashboard-time-range-bar'
 import { TIME_GRANULARITY_OPTIONS } from '@/features/dashboard/constants'
 import { useAutoRefresh } from '@/features/dashboard/hooks/use-auto-refresh'
+import { useOpsDashboardStats } from '@/features/dashboard/hooks/use-ops-dashboard-stats'
 import {
   buildTimeWindow,
-  calculateDashboardStats,
-  formatKpiTokenCount,
+  formatTokens,
   getDefaultDays,
   processUserChartData,
   resolveUnixTimeRange,
@@ -203,17 +203,10 @@ export function UserCharts(props: UserChartsProps) {
       selectedUsername,
     ]
   )
-  const kpiStats = useMemo(() => {
-    if (scopedUserData.length === 0) return null
-    const stats = calculateDashboardStats(scopedUserData)
-    return {
-      totalCount: stats.totalCount,
-      promptTokens: stats.promptTokens,
-      completionTokens: stats.completionTokens,
-      cacheReadTokens: stats.cacheReadTokens,
-      successCount: stats.successCount,
-    }
-  }, [scopedUserData])
+  const { stats: opsStats, loading: opsLoading } = useOpsDashboardStats({
+    username: selectedUsername ?? undefined,
+    refetchInterval: refetchInterval || false,
+  })
 
   const modelBreakdown = useMemo(() => {
     const byModel = new Map<
@@ -300,7 +293,7 @@ export function UserCharts(props: UserChartsProps) {
         ) : null}
       </div>
 
-      <UsageKpiGrid loading={isLoading} stats={kpiStats} />
+      <OpsStatsGrid loading={isLoading || opsLoading} stats={opsStats} />
 
       {selectedUsername && modelBreakdown.length > 0 ? (
         <div className='overflow-hidden rounded-lg border'>
@@ -324,18 +317,18 @@ export function UserCharts(props: UserChartsProps) {
                   <tr key={row.modelName} className='border-t'>
                     <td className='px-3 py-2 font-medium'>{row.modelName}</td>
                     <td className='px-3 py-2 tabular-nums'>
-                      {formatKpiTokenCount(row.count)}
+                      {formatTokens(row.count)}
                     </td>
                     <td className='px-3 py-2 tabular-nums'>
-                      {formatKpiTokenCount(
+                      {formatTokens(
                         row.promptTokens + row.cacheReadTokens
                       )}
                     </td>
                     <td className='px-3 py-2 tabular-nums'>
-                      {formatKpiTokenCount(row.completionTokens)}
+                      {formatTokens(row.completionTokens)}
                     </td>
                     <td className='px-3 py-2 tabular-nums'>
-                      {formatKpiTokenCount(row.cacheReadTokens)}
+                      {formatTokens(row.cacheReadTokens)}
                     </td>
                     <td className='px-3 py-2 tabular-nums'>
                       {formatQuota(row.quota)}

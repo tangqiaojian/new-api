@@ -47,13 +47,18 @@ import {
 } from '@/components/page-transition'
 import { Button } from '@/components/ui/button'
 import { IconBadge, type IconBadgeTone } from '@/components/ui/icon-badge'
+import { getUserQuotaDates } from '@/features/dashboard/api'
+import { OpsGroupCards } from '@/features/dashboard/components/ops-group-cards'
+import { OpsStatsGrid } from '@/features/dashboard/components/ops-stats-grid'
 import { DashboardTimeRangeBar } from '@/features/dashboard/components/ui/dashboard-time-range-bar'
 import { useAutoRefresh } from '@/features/dashboard/hooks/use-auto-refresh'
+import { useOpsDashboardStats } from '@/features/dashboard/hooks/use-ops-dashboard-stats'
 import { buildTimeWindow } from '@/features/dashboard/lib'
 import { fetchTokenKey, getApiKeys } from '@/features/keys/api'
 import type { ApiKey } from '@/features/keys/types'
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
 import { getUserModels } from '@/lib/api'
+import dayjs from '@/lib/dayjs'
 import { MOTION_TRANSITION } from '@/lib/motion'
 import { ROLE } from '@/lib/roles'
 import { cn } from '@/lib/utils'
@@ -67,7 +72,6 @@ import { AnnouncementsPanel } from './announcements-panel'
 import { ApiInfoPanel } from './api-info-panel'
 import { FAQPanel } from './faq-panel'
 import { PerformanceHealthPanel } from './performance-health-panel'
-import { SummaryCards } from './summary-cards'
 import { UptimePanel } from './uptime-panel'
 
 const SETUP_GUIDE_VISIBILITY_STORAGE_KEY =
@@ -473,6 +477,50 @@ export function OverviewDashboard() {
     boolean | null
   >(() => getSavedSetupGuideExpanded())
   const [summaryWindow, setSummaryWindow] = useState(() => buildTimeWindow(1))
+  const { stats: opsStats, loading: opsLoading } = useOpsDashboardStats({
+    refetchInterval: refetchInterval || false,
+  })
+
+  const isAdminUser = Boolean(user?.role && user.role >= ROLE.ADMIN)
+  const groupCardsQuery = useQuery({
+    queryKey: ['ops-stats', 'group-cards-today', isAdminUser],
+    queryFn: () => {
+      const start = dayjs().tz().startOf('day').unix()
+      const end = dayjs().tz().unix() + 3600
+      return getUserQuotaDates(
+        { start_timestamp: start, end_timestamp: end },
+        isAdminUser
+      )
+    },
+    staleTime: 30_000,
+    refetchInterval: refetchInterval || undefined,
+  })
+  const groupCards = useMemo(() => {
+    const data = groupCardsQuery.data?.data ?? []
+    const byModel = new Map<
+      string,
+      { name: string; todayCost: number; requests: number; tokens: number }
+    >()
+    for (const item of data) {
+      const name = (item.model_name || '').trim() || t('Unknown')
+      const prev = byModel.get(name) || {
+        name,
+        todayCost: 0,
+        requests: 0,
+        tokens: 0,
+      }
+      prev.todayCost += Number(item.quota) || 0
+      prev.requests += Number(item.count) || 0
+      prev.tokens +=
+        (Number(item.prompt_tokens) || 0) +
+        (Number(item.completion_tokens) || 0) +
+        (Number(item.cache_read_tokens) || 0)
+      byModel.set(name, prev)
+    }
+    return [...byModel.values()]
+      .sort((a, b) => b.todayCost - a.todayCost)
+      .slice(0, 8)
+  }, [groupCardsQuery.data?.data, t])
 
   const requestCount = Number(user?.request_count ?? 0)
   const remainQuota = Number(user?.quota ?? 0)
@@ -763,10 +811,10 @@ export function OverviewDashboard() {
         />
       </div>
 
-      <SummaryCards
-        days={summaryWindow.selectedRange > 0 ? summaryWindow.selectedRange : 1}
-        start={summaryWindow.start_timestamp}
-        end={summaryWindow.end_timestamp}
+      <OpsStatsGrid loading={opsLoading} stats={opsStats} />
+      <OpsGroupCards
+        loading={groupCardsQuery.isLoading}
+        items={groupCards}
       />
 
       {showContentPanels && (

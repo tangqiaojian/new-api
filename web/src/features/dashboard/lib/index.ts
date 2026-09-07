@@ -56,8 +56,19 @@ export {
   kpiCacheHitRate,
   formatKpiTokenCount,
   formatKpiPercent,
+  formatTokens,
+  formatDurationSeconds,
+  formatTokenSplitLine,
+  quotaProgressTone,
+  bucketFromDashboardStats,
+  emptyOpsBucket,
 } from './stats'
-export type { TodayModelTokenRow, TodayModelTokenSummary } from './stats'
+export type {
+  TodayModelTokenRow,
+  TodayModelTokenSummary,
+  OpsDashboardStats,
+  OpsBucketStats,
+} from './stats'
 export { getPreviewText } from './text'
 export {
   applyCustomTimeBound,

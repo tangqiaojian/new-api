@@ -1,40 +1,26 @@
-# PLAN — 数据看板 + 用户用量 + 订阅手动重置
+# PLAN — Sub2API 风格运营仪表盘
 
 ## 目标
 
-把 New-API「数据看板 + 用户用量 + 订阅手动重置时间」做到可上线。数字先对，再对齐参考 UI。
+把 New-API 控制台改成 Sub2API 信息架构：8 张小图标卡（今日/累计）+ 分组/渠道卡 + 图表区。
+**作废**上一轮超大数字四宫格。Overview / Dashboard / 用户详情复用同一套 Stats。
 
-## 当前迭代
+## 当前
 
-**完成**：B1–B5 已关闭；iter13–14 连续无新回归；192.168.6.88 `develop-dashboard` healthy。
+**iter1 完成**：`OpsStatsGrid` + `OpsGroupCards` 已挂 Overview / Models / Users；`UsageKpiGrid` 降级包装。
 
-### 已完成
+## 下一轮
 
-- B4 手动重置写 LastResetTime；advance 可选；Never 周期不清除 last；weekly 同步；UI「从未重置」；用户列表/详情周额度下次重置
-- B2 SumUsedQuota 二次 Scan 不再覆盖 quota
-- B1 /api/data token 拆分 + LogQuotaData 入账；UsageKpiGrid 挂 models/users
-- B3 用户选择器切换四卡 KPI；模型拆分；空态；排行/趋势
-- B5：小额 ¥0、空态、Asia/Shanghai、Today/7/30、Tab/图标题「消耗趋势」、筛选驱动 queryKey
-- 部署 192.168.6.88：version=develop-dashboard，docker healthy
+- 图表区：模型甜甜圈可切用户排行；Token 趋势叠输入/输出/缓存；Top 用户趋势；点用户进同一仪表盘
+- 分组卡：按 `group`/`use_group` + 订阅日/周/月进度条与重置时间
+- 今日费用标准价字段（若后端可区分）
 
-### 可选后续（非停止条件）
+## 完成标准（待勾）
 
-- 对账脚本 dashboard SUM vs logs SUM
-- 大用户量聚合性能
-
-### 风险
-
-- 部署未 push；二进制本地 gitignore
-- 线上需登录才能验看板；勿改生产库/密码
-
-## 完成标准
-
-- [x] B1 新请求入账 prompt/completion/cache_read/cache_write + success/error
-- [x] B2 同范围顶部用量与 logs SUM 一致；rpm/tpm 不再被覆盖（后端单测绿）
-- [x] B3 /api/data/users 聚合字段 + 用户区 KPI（详情选择器）
-- [x] B4 手动重置写 last_reset_time；UI 展示；weekly 对齐；单测绿
-- [x] B5 看板交互 bug 全部关闭
-- [x] UsageKpiGrid 管理员总览(models) + 用户区共用
-- [x] i18n zh-CN + en；暗色用 card token
-- [x] 连续 2 迭代无新回归（iter13 + iter14）
-- [x] 部署到 192.168.6.88（develop-dashboard healthy）
+- [x] Overview 打开先看到 8 张小图标卡（非巨无霸四宫格）
+- [x] Token 卡一张内读完输入/输出/缓存
+- [x] 今日与累计两套数
+- [ ] 订阅进度条与重置时间（分组卡）完整
+- [ ] 点排行进同一套仪表盘
+- [ ] 截图对照 Sub2API 密度/对齐/图标色
+- [x] P0 订阅重置 + token 拆分 + 用户排行接口（上轮保留）

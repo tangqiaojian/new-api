@@ -255,6 +255,7 @@ export interface LogStatistics {
   quota: number
   rpm: number
   tpm: number
+  avg_use_time?: number
 }
 
 // ============================================================================
