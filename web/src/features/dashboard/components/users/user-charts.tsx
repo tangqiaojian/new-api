@@ -34,8 +34,11 @@ import {
 } from '@/components/ui/select'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useTheme } from '@/context/theme-provider'
-import { getUserQuotaDataByUsers } from '@/features/dashboard/api'
+import { getQuotaDataByGroups, getUserQuotaDataByUsers } from '@/features/dashboard/api'
+import { OpsDistributionPie } from '@/features/dashboard/components/ops-distribution-pie'
+import { OpsGroupCards } from '@/features/dashboard/components/ops-group-cards'
 import { OpsStatsGrid } from '@/features/dashboard/components/ops-stats-grid'
+import { OpsTokenTrendChart } from '@/features/dashboard/components/ops-token-trend-chart'
 import { DashboardTimeRangeBar } from '@/features/dashboard/components/ui/dashboard-time-range-bar'
 import { TIME_GRANULARITY_OPTIONS } from '@/features/dashboard/constants'
 import { useAutoRefresh } from '@/features/dashboard/hooks/use-auto-refresh'
@@ -54,8 +57,10 @@ import type {
   UserChartsFilters,
 } from '@/features/dashboard/types'
 import { formatQuota } from '@/lib/format'
+import { ROLE } from '@/lib/roles'
 import type { TimeGranularity } from '@/lib/time'
 import { VCHART_OPTION } from '@/lib/vchart'
+import { useAuthStore } from '@/stores/auth-store'
 
 let themeManagerPromise: Promise<
   (typeof import('@visactor/vchart'))['ThemeManager']
@@ -163,6 +168,9 @@ export function UserCharts(props: UserChartsProps) {
     [onFiltersChange, props.filters]
   )
 
+  const user = useAuthStore((s) => s.auth.user)
+  const isAdmin = !!(user?.role && user.role >= ROLE.ADMIN)
+
   const { data: userData, isLoading } = useQuery({
     queryKey: ['dashboard', 'user-quota', timeRange],
     queryFn: () => getUserQuotaDataByUsers(timeRange),
@@ -213,6 +221,50 @@ export function UserCharts(props: UserChartsProps) {
     username: selectedUsername ?? undefined,
     refetchInterval: refetchInterval || false,
   })
+
+  const groupQuery = useQuery({
+    queryKey: [
+      'dashboard',
+      'users',
+      'group-cards',
+      timeRange,
+      selectedUsername,
+      isAdmin,
+    ],
+    queryFn: () =>
+      getQuotaDataByGroups(
+        {
+          start_timestamp: timeRange.start_timestamp,
+          end_timestamp: timeRange.end_timestamp,
+          username: selectedUsername ?? undefined,
+        },
+        isAdmin
+      ),
+    staleTime: 60_000,
+    enabled: !!selectedUsername,
+    refetchInterval: refetchInterval || undefined,
+  })
+
+  const groupCards = useMemo(() => {
+    const rows = groupQuery.data?.data ?? []
+    return rows
+      .map((item) => {
+        const name = (item.use_group || '').trim() || 'default'
+        const cost = Number(item.quota) || 0
+        return {
+          name,
+          totalCost: cost,
+          todayCost: cost,
+          requests: Number(item.count) || 0,
+          tokens:
+            (Number(item.prompt_tokens) || 0) +
+            (Number(item.completion_tokens) || 0) +
+            (Number(item.cache_read_tokens) || 0),
+        }
+      })
+      .sort((a, b) => (b.totalCost ?? 0) - (a.totalCost ?? 0))
+      .slice(0, 8)
+  }, [groupQuery.data?.data])
 
   const modelBreakdown = useMemo(() => {
     const byModel = new Map<
@@ -300,6 +352,22 @@ export function UserCharts(props: UserChartsProps) {
       </div>
 
       <OpsStatsGrid loading={isLoading || opsLoading} stats={opsStats} />
+
+      {selectedUsername ? (
+        <>
+          <OpsGroupCards
+            loading={groupQuery.isLoading}
+            items={groupCards}
+          />
+          <div className='grid gap-3 lg:grid-cols-2'>
+            <OpsDistributionPie
+              data={scopedUserData}
+              loading={isLoading}
+            />
+            <OpsTokenTrendChart data={scopedUserData} loading={isLoading} />
+          </div>
+        </>
+      ) : null}
 
       {!selectedUsername && usernames.length > 0 ? (
         <div className='overflow-hidden rounded-lg border'>
