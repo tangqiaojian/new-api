@@ -199,7 +199,7 @@ export function processChartData(
         legends: { visible: true, selectMode: 'single' },
         title: {
           visible: true,
-          text: tt('Call Trend'),
+          text: tt('Consumption Trend'),
         },
       },
       spec_rank_bar: {
@@ -594,7 +594,7 @@ export function processChartData(
       color: modelColor,
       title: {
         visible: true,
-        text: tt('Call Trend'),
+        text: tt('Consumption Trend'),
       },
       tooltip: {
         mark: {
