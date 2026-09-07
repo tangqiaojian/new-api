@@ -42,6 +42,7 @@ import { useAutoRefresh } from '@/features/dashboard/hooks/use-auto-refresh'
 import {
   buildTimeWindow,
   calculateDashboardStats,
+  formatKpiTokenCount,
   getDefaultDays,
   processUserChartData,
   resolveUnixTimeRange,
@@ -52,6 +53,7 @@ import type {
   ProcessedUserChartData,
   UserChartsFilters,
 } from '@/features/dashboard/types'
+import { formatQuota } from '@/lib/format'
 import type { TimeGranularity } from '@/lib/time'
 import { VCHART_OPTION } from '@/lib/vchart'
 
@@ -178,23 +180,32 @@ export function UserCharts(props: UserChartsProps) {
     }
   }, [selectedUsername, usernames])
 
+  const scopedUserData = useMemo(() => {
+    const data = userData ?? []
+    if (!selectedUsername) return data
+    return data.filter((item) => item.username === selectedUsername)
+  }, [selectedUsername, userData])
+
   const chartData = useMemo(
     () =>
       processUserChartData(
-        isLoading ? [] : (userData ?? []),
+        isLoading ? [] : scopedUserData,
         timeGranularity,
         t,
-        topUserLimit
+        selectedUsername ? 1 : topUserLimit
       ),
-    [userData, isLoading, timeGranularity, t, topUserLimit]
+    [
+      scopedUserData,
+      isLoading,
+      timeGranularity,
+      t,
+      topUserLimit,
+      selectedUsername,
+    ]
   )
   const kpiStats = useMemo(() => {
-    const data = userData ?? []
-    const scoped = selectedUsername
-      ? data.filter((item) => item.username === selectedUsername)
-      : data
-    if (scoped.length === 0) return null
-    const stats = calculateDashboardStats(scoped)
+    if (scopedUserData.length === 0) return null
+    const stats = calculateDashboardStats(scopedUserData)
     return {
       totalCount: stats.totalCount,
       promptTokens: stats.promptTokens,
@@ -202,13 +213,47 @@ export function UserCharts(props: UserChartsProps) {
       cacheReadTokens: stats.cacheReadTokens,
       successCount: stats.successCount,
     }
-  }, [selectedUsername, userData])
+  }, [scopedUserData])
+
+  const modelBreakdown = useMemo(() => {
+    const byModel = new Map<
+      string,
+      {
+        modelName: string
+        count: number
+        promptTokens: number
+        completionTokens: number
+        cacheReadTokens: number
+        quota: number
+      }
+    >()
+    for (const item of scopedUserData) {
+      const modelName = (item.model_name || '').trim() || 'unknown'
+      const prev = byModel.get(modelName) || {
+        modelName,
+        count: 0,
+        promptTokens: 0,
+        completionTokens: 0,
+        cacheReadTokens: 0,
+        quota: 0,
+      }
+      prev.count += Number(item.count) || 0
+      prev.promptTokens += Number(item.prompt_tokens) || 0
+      prev.completionTokens += Number(item.completion_tokens) || 0
+      prev.cacheReadTokens += Number(item.cache_read_tokens) || 0
+      prev.quota += Number(item.quota) || 0
+      byModel.set(modelName, prev)
+    }
+    return [...byModel.values()].sort(
+      (a, b) => b.quota - a.quota || b.count - a.count
+    )
+  }, [scopedUserData])
+
   const dataFingerprint = useMemo(() => {
-    const items = userData ?? []
     let quotaSum = 0
-    for (const item of items) quotaSum += item.quota ?? 0
-    return `${items.length}-${quotaSum}-${selectedUsername ?? 'all'}`
-  }, [selectedUsername, userData])
+    for (const item of scopedUserData) quotaSum += item.quota ?? 0
+    return `${scopedUserData.length}-${quotaSum}-${selectedUsername ?? 'all'}`
+  }, [scopedUserData, selectedUsername])
 
   return (
     <div className='space-y-3'>
@@ -256,6 +301,52 @@ export function UserCharts(props: UserChartsProps) {
       </div>
 
       <UsageKpiGrid loading={isLoading} stats={kpiStats} />
+
+      {selectedUsername && modelBreakdown.length > 0 ? (
+        <div className='overflow-hidden rounded-lg border'>
+          <div className='border-b px-3 py-2 text-sm font-semibold sm:px-5'>
+            {t('Model breakdown')}
+          </div>
+          <div className='overflow-x-auto'>
+            <table className='w-full text-left text-sm'>
+              <thead className='bg-muted/40 text-muted-foreground'>
+                <tr>
+                  <th className='px-3 py-2 font-medium'>{t('Model')}</th>
+                  <th className='px-3 py-2 font-medium'>{t('Requests')}</th>
+                  <th className='px-3 py-2 font-medium'>{t('Input TOKEN')}</th>
+                  <th className='px-3 py-2 font-medium'>{t('Output TOKEN')}</th>
+                  <th className='px-3 py-2 font-medium'>{t('Cache TOKEN')}</th>
+                  <th className='px-3 py-2 font-medium'>{t('Quota')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {modelBreakdown.map((row) => (
+                  <tr key={row.modelName} className='border-t'>
+                    <td className='px-3 py-2 font-medium'>{row.modelName}</td>
+                    <td className='px-3 py-2 tabular-nums'>
+                      {formatKpiTokenCount(row.count)}
+                    </td>
+                    <td className='px-3 py-2 tabular-nums'>
+                      {formatKpiTokenCount(
+                        row.promptTokens + row.cacheReadTokens
+                      )}
+                    </td>
+                    <td className='px-3 py-2 tabular-nums'>
+                      {formatKpiTokenCount(row.completionTokens)}
+                    </td>
+                    <td className='px-3 py-2 tabular-nums'>
+                      {formatKpiTokenCount(row.cacheReadTokens)}
+                    </td>
+                    <td className='px-3 py-2 tabular-nums'>
+                      {formatQuota(row.quota)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : null}
 
       {!isLoading && (userData?.length ?? 0) === 0 ? (
         <div className='text-muted-foreground rounded-lg border border-dashed px-4 py-10 text-center text-sm'>

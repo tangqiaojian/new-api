@@ -18,7 +18,13 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import dayjs from 'dayjs'
 import relativeTime from 'dayjs/plugin/relativeTime'
+import timezone from 'dayjs/plugin/timezone'
+import utc from 'dayjs/plugin/utc'
 
 dayjs.extend(relativeTime)
+dayjs.extend(utc)
+dayjs.extend(timezone)
+// Align dashboard/log timestamps with the API server timezone.
+dayjs.tz.setDefault('Asia/Shanghai')
 
 export default dayjs
