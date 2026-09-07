@@ -295,6 +295,45 @@ export function UserCharts(props: UserChartsProps) {
 
       <OpsStatsGrid loading={isLoading || opsLoading} stats={opsStats} />
 
+      {!selectedUsername && usernames.length > 0 ? (
+        <div className='overflow-hidden rounded-lg border'>
+          <div className='border-b px-3 py-2 text-sm font-semibold sm:px-5'>
+            {t('User Consumption Ranking')}
+          </div>
+          <div className='divide-y'>
+            {[...usernames]
+              .map((name) => {
+                const rows = (userData ?? []).filter((i) => i.username === name)
+                const quota = rows.reduce(
+                  (sum, row) => sum + (Number(row.quota) || 0),
+                  0
+                )
+                return { name, quota }
+              })
+              .sort((a, b) => b.quota - a.quota)
+              .slice(0, topUserLimit)
+              .map((row, index) => (
+                <button
+                  key={row.name}
+                  type='button'
+                  className='hover:bg-muted/40 flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm sm:px-5'
+                  onClick={() => setSelectedUsername(row.name)}
+                >
+                  <span className='truncate'>
+                    <span className='text-muted-foreground mr-2 tabular-nums'>
+                      #{index + 1}
+                    </span>
+                    {row.name}
+                  </span>
+                  <span className='shrink-0 tabular-nums'>
+                    {formatQuota(row.quota)}
+                  </span>
+                </button>
+              ))}
+          </div>
+        </div>
+      ) : null}
+
       {selectedUsername && modelBreakdown.length > 0 ? (
         <div className='overflow-hidden rounded-lg border'>
           <div className='border-b px-3 py-2 text-sm font-semibold sm:px-5'>
