@@ -23,6 +23,7 @@ import {
   getQuotaDataByGroups,
   getUserQuotaDates,
 } from '@/features/dashboard/api'
+import { OpsDistributionPie } from '@/features/dashboard/components/ops-distribution-pie'
 import { OpsGroupCards } from '@/features/dashboard/components/ops-group-cards'
 import { OpsStatsGrid } from '@/features/dashboard/components/ops-stats-grid'
 import { OpsTokenTrendChart } from '@/features/dashboard/components/ops-token-trend-chart'
@@ -41,6 +42,7 @@ interface LogStatCardsProps {
   filters?: DashboardFilters
   onDataUpdate?: (data: QuotaDataItem[], loading: boolean) => void
   includeCache?: boolean
+  onSelectUser?: (username: string) => void
 }
 
 export function LogStatCards(props: LogStatCardsProps) {
@@ -148,7 +150,14 @@ export function LogStatCards(props: LogStatCardsProps) {
     <div className='space-y-3'>
       <OpsStatsGrid loading={opsLoading} stats={opsStats} />
       <OpsGroupCards loading={groupQuery.isLoading} items={groupCards} />
-      <OpsTokenTrendChart data={data} loading={quotaQuery.isLoading} />
+      <div className='grid gap-3 lg:grid-cols-2'>
+        <OpsDistributionPie
+          data={data}
+          loading={quotaQuery.isLoading}
+          onSelectUser={props.onSelectUser}
+        />
+        <OpsTokenTrendChart data={data} loading={quotaQuery.isLoading} />
+      </div>
     </div>
   )
 }

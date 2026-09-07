@@ -155,7 +155,13 @@ export function UserCharts(props: UserChartsProps) {
     updateTheme()
   }, [resolvedTheme])
 
-  const [selectedUsername, setSelectedUsername] = useState<string | null>(null)
+  const selectedUsername = props.filters.selectedUsername ?? null
+  const setSelectedUsername = useCallback(
+    (username: string | null) => {
+      onFiltersChange({ ...props.filters, selectedUsername: username })
+    },
+    [onFiltersChange, props.filters]
+  )
 
   const { data: userData, isLoading } = useQuery({
     queryKey: ['dashboard', 'user-quota', timeRange],
@@ -178,7 +184,7 @@ export function UserCharts(props: UserChartsProps) {
     if (selectedUsername && !usernames.includes(selectedUsername)) {
       setSelectedUsername(null)
     }
-  }, [selectedUsername, usernames])
+  }, [selectedUsername, setSelectedUsername, usernames])
 
   const scopedUserData = useMemo(() => {
     const data = userData ?? []

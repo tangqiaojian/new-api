@@ -253,6 +253,8 @@ export interface DashboardChartPreferences {
 export interface UserChartsFilters extends DashboardTimeWindow {
   timeGranularity: TimeGranularity
   topUserLimit: number
+  /** When set, OpsStats and charts scope to this username. */
+  selectedUsername?: string | null
 }
 
 // ============================================================================
