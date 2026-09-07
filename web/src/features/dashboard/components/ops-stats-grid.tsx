@@ -30,6 +30,7 @@ import { useTranslation } from 'react-i18next'
 
 import { OpsStatCard } from '@/features/dashboard/components/ops-stat-card'
 import {
+  formatActualStandardCost,
   formatDurationSeconds,
   formatTokenSplitLine,
   formatTokens,
@@ -63,6 +64,17 @@ export function OpsStatsGrid(props: OpsStatsGridProps) {
     (lifetime?.promptTokens ?? 0) +
     (lifetime?.completionTokens ?? 0) +
     (lifetime?.cacheReadTokens ?? 0)
+
+  const todayCost = formatActualStandardCost(
+    today?.quota ?? 0,
+    today?.standardQuota ?? today?.quota ?? 0,
+    formatQuota
+  )
+  const lifetimeCost = formatActualStandardCost(
+    lifetime?.quota ?? 0,
+    lifetime?.standardQuota ?? lifetime?.quota ?? 0,
+    formatQuota
+  )
 
   return (
     <div className={cn('space-y-3', props.className)}>
@@ -98,13 +110,31 @@ export function OpsStatsGrid(props: OpsStatsGridProps) {
           loading={loading}
           value={
             <span>
-              {formatQuota(today?.quota ?? 0)}
+              {todayCost.primary}
               <span className='text-muted-foreground ml-1 text-sm font-normal'>
-                / {formatQuota(today?.quota ?? 0)}
+                /{' '}
+                <span
+                  className={
+                    todayCost.discounted ? 'line-through opacity-70' : undefined
+                  }
+                >
+                  {todayCost.secondary}
+                </span>
               </span>
             </span>
           }
-          subtitle={`${t('Total')}: ${formatQuota(lifetime?.quota ?? 0)} / ${formatQuota(lifetime?.quota ?? 0)}`}
+          subtitle={
+            <span>
+              {t('Total')}: {lifetimeCost.primary} /{' '}
+              <span
+                className={
+                  lifetimeCost.discounted ? 'line-through opacity-70' : undefined
+                }
+              >
+                {lifetimeCost.secondary}
+              </span>
+            </span>
+          }
         />
       </div>
 

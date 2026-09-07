@@ -40,22 +40,30 @@ export function safeDivide(
  */
 export function calculateDashboardStats(data: QuotaDataItem[]) {
   return data.reduce(
-    (acc, item) => ({
-      totalQuota: acc.totalQuota + (Number(item.quota) || 0),
-      totalCount: acc.totalCount + (Number(item.count) || 0),
-      totalTokens: acc.totalTokens + (Number(item.token_used) || 0),
-      promptTokens: acc.promptTokens + (Number(item.prompt_tokens) || 0),
-      completionTokens:
-        acc.completionTokens + (Number(item.completion_tokens) || 0),
-      cacheReadTokens:
-        acc.cacheReadTokens + (Number(item.cache_read_tokens) || 0),
-      cacheWriteTokens:
-        acc.cacheWriteTokens + (Number(item.cache_write_tokens) || 0),
-      successCount: acc.successCount + (Number(item.success_count) || 0),
-      errorCount: acc.errorCount + (Number(item.error_count) || 0),
-    }),
+    (acc, item) => {
+      const quota = Number(item.quota) || 0
+      const standardRaw = Number(item.standard_quota)
+      const standardQuota =
+        Number.isFinite(standardRaw) && standardRaw > 0 ? standardRaw : quota
+      return {
+        totalQuota: acc.totalQuota + quota,
+        totalStandardQuota: acc.totalStandardQuota + standardQuota,
+        totalCount: acc.totalCount + (Number(item.count) || 0),
+        totalTokens: acc.totalTokens + (Number(item.token_used) || 0),
+        promptTokens: acc.promptTokens + (Number(item.prompt_tokens) || 0),
+        completionTokens:
+          acc.completionTokens + (Number(item.completion_tokens) || 0),
+        cacheReadTokens:
+          acc.cacheReadTokens + (Number(item.cache_read_tokens) || 0),
+        cacheWriteTokens:
+          acc.cacheWriteTokens + (Number(item.cache_write_tokens) || 0),
+        successCount: acc.successCount + (Number(item.success_count) || 0),
+        errorCount: acc.errorCount + (Number(item.error_count) || 0),
+      }
+    },
     {
       totalQuota: 0,
+      totalStandardQuota: 0,
       totalCount: 0,
       totalTokens: 0,
       promptTokens: 0,
@@ -127,6 +135,8 @@ export type TokenSplit = {
 export type OpsBucketStats = {
   requests: number
   quota: number
+  /** Undiscounted quota (actual / group_ratio); falls back to quota. */
+  standardQuota: number
   promptTokens: number
   completionTokens: number
   cacheReadTokens: number
@@ -150,6 +160,7 @@ export function emptyOpsBucket(): OpsBucketStats {
   return {
     requests: 0,
     quota: 0,
+    standardQuota: 0,
     promptTokens: 0,
     completionTokens: 0,
     cacheReadTokens: 0,
@@ -165,11 +176,27 @@ export function bucketFromDashboardStats(
   return {
     requests: stats.totalCount,
     quota: stats.totalQuota,
+    standardQuota: stats.totalStandardQuota || stats.totalQuota,
     promptTokens: stats.promptTokens,
     completionTokens: stats.completionTokens,
     cacheReadTokens: stats.cacheReadTokens,
     cacheWriteTokens: stats.cacheWriteTokens,
     tokenUsed: stats.totalTokens,
+  }
+}
+
+/** Sub2API Today Cost: actual / standard (standard muted; strike when discounted). */
+export function formatActualStandardCost(
+  actual: number,
+  standard: number,
+  format: (n: number) => string
+): { primary: string; secondary: string; discounted: boolean } {
+  const std = standard > 0 ? standard : actual
+  const discounted = Math.abs(actual - std) > 0.5
+  return {
+    primary: format(actual),
+    secondary: format(std),
+    discounted,
   }
 }
 

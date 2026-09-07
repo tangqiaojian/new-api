@@ -5,3 +5,4 @@
 2026-09-07T15:00 iter4 Token 趋势叠 Input/Output/Cache；再次热更 develop-dashboard
 2026-09-07T15:05 iter5 甜甜圈可切模型分布/用户排行，点用户跳转 Users 同套仪表盘
 2026-09-07T15:08 iter6 Overview 同步甜甜圈+Token趋势
+2026-09-07T15:10 iter7 今日费用实际/标准价：logs.other group_ratio 反推 standard_quota；折扣划线；图标密度对齐

@@ -44,6 +44,8 @@ export interface QuotaDataItem {
   error_count?: number
   count?: number
   quota?: number
+  /** Undiscounted charge (quota / group_ratio); Sub2API actual / standard. */
+  standard_quota?: number
 }
 
 // Daily token usage statistics per user

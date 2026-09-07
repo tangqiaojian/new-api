@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   calculateDashboardStats,
+  formatActualStandardCost,
   formatKpiPercent,
   formatKpiTokenCount,
   formatTokens,
@@ -46,6 +47,38 @@ describe('calculateDashboardStats token split', () => {
     expect(stats.successCount).toBe(2)
     expect(stats.errorCount).toBe(1)
     expect(stats.totalCount).toBe(3)
+    expect(stats.totalQuota).toBe(15)
+    expect(stats.totalStandardQuota).toBe(15)
+  })
+
+  it('sums standard_quota when group discounts apply', () => {
+    const stats = calculateDashboardStats([
+      {
+        created_at: 1,
+        quota: 50,
+        standard_quota: 100,
+        count: 1,
+      },
+      {
+        created_at: 2,
+        quota: 40,
+        standard_quota: 200,
+        count: 1,
+      },
+    ])
+    expect(stats.totalQuota).toBe(90)
+    expect(stats.totalStandardQuota).toBe(300)
+  })
+})
+
+describe('formatActualStandardCost', () => {
+  it('marks discounted when actual differs from standard', () => {
+    const same = formatActualStandardCost(10, 10, String)
+    expect(same.discounted).toBe(false)
+    const discounted = formatActualStandardCost(50, 100, String)
+    expect(discounted.primary).toBe('50')
+    expect(discounted.secondary).toBe('100')
+    expect(discounted.discounted).toBe(true)
   })
 })
 

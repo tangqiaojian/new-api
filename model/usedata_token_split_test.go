@@ -55,6 +55,42 @@ func TestGetAllQuotaDatesReturnsTokenSplitAndSuccessCounts(t *testing.T) {
 	assert.Equal(t, 78, quota)
 }
 
+func TestGetAllQuotaDatesStandardQuotaFromGroupRatio(t *testing.T) {
+	truncateTables(t)
+
+	start := int64(1_704_067_200)
+	require.NoError(t, LOG_DB.Create([]Log{
+		{
+			UserId: 1, Username: "alice", ModelName: "gpt-a", CreatedAt: start + 10,
+			Type: LogTypeConsume, PromptTokens: 10, CompletionTokens: 5, Quota: 50,
+			Other: `{"group_ratio":0.5}`,
+		},
+		{
+			UserId: 1, Username: "alice", ModelName: "gpt-a", CreatedAt: start + 20,
+			Type: LogTypeConsume, PromptTokens: 10, CompletionTokens: 5, Quota: 40,
+			Other: `{"user_group_ratio":0.2,"group_ratio":0.5}`,
+		},
+		{
+			UserId: 1, Username: "alice", ModelName: "gpt-a", CreatedAt: start + 30,
+			Type: LogTypeConsume, PromptTokens: 5, CompletionTokens: 5, Quota: 10,
+			Other: `{}`,
+		},
+	}).Error)
+
+	rows, err := GetAllQuotaDates(start, start+3600, "", false)
+	require.NoError(t, err)
+	require.NotEmpty(t, rows)
+
+	var quota, standard int
+	for _, row := range rows {
+		quota += row.Quota
+		standard += row.StandardQuota
+	}
+	// 50/0.5=100 + 40/0.2=200 + 10/1=10
+	assert.Equal(t, 100, quota)
+	assert.Equal(t, 310, standard)
+}
+
 func TestGetQuotaDataGroupByUserReturnsPerUserTokenSplit(t *testing.T) {
 	truncateTables(t)
 

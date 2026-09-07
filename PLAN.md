@@ -15,8 +15,11 @@ Overview / Dashboard / 用户详情复用同一套 Stats。**禁止**超大数�
 
 ## 仍待你目视确认
 
-- 与 Sub2API 截图对照：密度、对齐、图标色
-- 今日费用「实际 / 标准价」目前同值（网关无独立标准价字段）
+- 与 Sub2API 截图对照：密度、对齐、图标色（暗色 `*-900/30` + `*-400` 已对齐代码）
+
+## 本轮新增
+
+- 今日费用「实际 / 标准价」：后端从日志 `other.group_ratio`（优先 `user_group_ratio`）反推 `standard_quota`；UI 展示 `actual / standard`，有折扣时标准价划线
 
 ## 完成标准
 
@@ -26,4 +29,5 @@ Overview / Dashboard / 用户详情复用同一套 Stats。**禁止**超大数�
 - [x] 分组卡 + 订阅进度/重置
 - [x] 点排行进同一套仪表盘
 - [ ] 截图对照 Sub2API（待确认）
+- [x] 今日费用实际 / 标准价（group_ratio 反推）
 - [x] P0 订阅重置 / token 拆分 / 用户排行

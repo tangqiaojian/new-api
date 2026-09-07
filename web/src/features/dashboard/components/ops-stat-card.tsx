@@ -69,30 +69,30 @@ export function OpsStatCard(props: OpsStatCardProps) {
     >
       <div
         className={cn(
-          'flex size-9 shrink-0 items-center justify-center rounded-lg sm:size-10',
+          'flex size-10 shrink-0 items-center justify-center rounded-lg',
           TONE_CLASSES[props.tone]
         )}
       >
-        <Icon className='size-4 sm:size-5' aria-hidden='true' />
+        <Icon className='size-5' aria-hidden='true' />
       </div>
-      <div className='min-w-0 flex-1'>
+      <div className='min-w-0 flex-1 space-y-1'>
         <div className='text-muted-foreground text-xs leading-none'>
           {props.title}
         </div>
         {props.loading ? (
-          <Skeleton className='mt-1.5 h-5 w-24' />
+          <Skeleton className='h-5 w-24' />
         ) : (
-          <div className='mt-1.5 text-xl leading-tight font-semibold tracking-tight tabular-nums'>
+          <div className='text-xl leading-none font-semibold tracking-tight tabular-nums'>
             {props.value}
           </div>
         )}
         {(() => {
           if (props.loading) {
-            return <Skeleton className='mt-1.5 h-3 w-32' />
+            return <Skeleton className='h-3 w-32' />
           }
           if (props.subtitle) {
             return (
-              <div className='text-muted-foreground mt-1 text-xs leading-snug'>
+              <div className='text-muted-foreground text-xs leading-snug'>
                 {props.subtitle}
               </div>
             )

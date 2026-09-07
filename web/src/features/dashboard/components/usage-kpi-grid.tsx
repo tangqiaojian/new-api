@@ -45,6 +45,7 @@ export function UsageKpiGrid(props: UsageKpiGridProps) {
     ? {
         requests: props.stats.totalCount,
         quota: 0,
+        standardQuota: 0,
         promptTokens: props.stats.promptTokens,
         completionTokens: props.stats.completionTokens,
         cacheReadTokens: props.stats.cacheReadTokens,
