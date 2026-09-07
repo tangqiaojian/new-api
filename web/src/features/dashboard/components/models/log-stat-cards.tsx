@@ -25,6 +25,7 @@ import {
 } from '@/features/dashboard/api'
 import { OpsGroupCards } from '@/features/dashboard/components/ops-group-cards'
 import { OpsStatsGrid } from '@/features/dashboard/components/ops-stats-grid'
+import { OpsTokenTrendChart } from '@/features/dashboard/components/ops-token-trend-chart'
 import { useAutoRefresh } from '@/features/dashboard/hooks/use-auto-refresh'
 import { useOpsDashboardStats } from '@/features/dashboard/hooks/use-ops-dashboard-stats'
 import { buildQueryParams, getDefaultDays } from '@/features/dashboard/lib'
@@ -147,6 +148,7 @@ export function LogStatCards(props: LogStatCardsProps) {
     <div className='space-y-3'>
       <OpsStatsGrid loading={opsLoading} stats={opsStats} />
       <OpsGroupCards loading={groupQuery.isLoading} items={groupCards} />
+      <OpsTokenTrendChart data={data} loading={quotaQuery.isLoading} />
     </div>
   )
 }
