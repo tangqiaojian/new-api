@@ -333,9 +333,10 @@ export function processChartData(
     let timeData = sortedModels.map((model) => {
       const stats = timeModelMap.get(time)?.get(model)
       const rawQuota = Number(stats?.quota) || 0
-      const usd = rawQuota ? rawQuota / quotaPerUnit : 0
-      // Match legacy frontend getQuotaWithUnit(..., 4)
-      const usage = usd ? Number(usd.toFixed(4)) : 0
+      const usd = rawQuota / quotaPerUnit
+      // Keep enough precision so tiny quotas don't collapse to ¥0 / $0.0000
+      // while stacked bar totals still match the underlying rawQuota sum.
+      const usage = rawQuota ? Number(usd.toFixed(6)) : 0
       return {
         Time: time,
         Model: model,
@@ -372,14 +373,14 @@ export function processChartData(
     sortedModels.forEach((model) => {
       const stats = modelMap?.get(model)
       const rawQuota = Number(stats?.quota) || 0
-      const usd = rawQuota ? rawQuota / quotaPerUnit : 0
-      const usage = usd ? Number(usd.toFixed(4)) : 0
+      const usd = rawQuota / quotaPerUnit
+      const usage = rawQuota ? Number(usd.toFixed(6)) : 0
       timeSum += rawQuota
       const key = topAreaModels.has(model) ? model : otherLabel
       const prev = buckets.get(key) || { rawQuota: 0, usage: 0 }
       buckets.set(key, {
         rawQuota: prev.rawQuota + rawQuota,
-        usage: Number((prev.usage + usage).toFixed(4)),
+        usage: Number((prev.usage + usage).toFixed(6)),
       })
     })
     for (const [model, vals] of buckets) {
@@ -773,7 +774,7 @@ export function processUserChartData(
   const rankValues = sorted.slice(0, limit).map(([username, quota]) => ({
     User: username,
     rawQuota: quota,
-    Usage: Number((quota / quotaPerUnit).toFixed(4)),
+    Usage: Number((quota / quotaPerUnit).toFixed(6)),
   }))
 
   const userColorMap = topUsers.reduce<Record<string, string>>(
@@ -816,7 +817,7 @@ export function processUserChartData(
         Time: time,
         User: user,
         rawQuota: q,
-        Usage: Number((q / quotaPerUnit).toFixed(4)),
+        Usage: Number((q / quotaPerUnit).toFixed(6)),
       })
     })
   })

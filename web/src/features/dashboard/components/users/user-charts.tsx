@@ -18,12 +18,20 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useQuery } from '@tanstack/react-query'
 import { VChart } from '@visactor/react-vchart'
-import { Users, Loader2 } from 'lucide-react'
+import { Users, Loader2, X } from 'lucide-react'
 import { useEffect, useMemo, useState, useRef, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { IconBadge } from '@/components/ui/icon-badge'
+import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useTheme } from '@/context/theme-provider'
 import { getUserQuotaDataByUsers } from '@/features/dashboard/api'
@@ -145,6 +153,8 @@ export function UserCharts(props: UserChartsProps) {
     updateTheme()
   }, [resolvedTheme])
 
+  const [selectedUsername, setSelectedUsername] = useState<string | null>(null)
+
   const { data: userData, isLoading } = useQuery({
     queryKey: ['dashboard', 'user-quota', timeRange],
     queryFn: () => getUserQuotaDataByUsers(timeRange),
@@ -152,6 +162,21 @@ export function UserCharts(props: UserChartsProps) {
     staleTime: 60_000,
     refetchInterval: refetchInterval || undefined,
   })
+
+  const usernames = useMemo(() => {
+    const names = new Set<string>()
+    for (const item of userData ?? []) {
+      const name = (item.username || '').trim()
+      if (name) names.add(name)
+    }
+    return [...names].sort((a, b) => a.localeCompare(b))
+  }, [userData])
+
+  useEffect(() => {
+    if (selectedUsername && !usernames.includes(selectedUsername)) {
+      setSelectedUsername(null)
+    }
+  }, [selectedUsername, usernames])
 
   const chartData = useMemo(
     () =>
@@ -165,8 +190,11 @@ export function UserCharts(props: UserChartsProps) {
   )
   const kpiStats = useMemo(() => {
     const data = userData ?? []
-    if (data.length === 0) return null
-    const stats = calculateDashboardStats(data)
+    const scoped = selectedUsername
+      ? data.filter((item) => item.username === selectedUsername)
+      : data
+    if (scoped.length === 0) return null
+    const stats = calculateDashboardStats(scoped)
     return {
       totalCount: stats.totalCount,
       promptTokens: stats.promptTokens,
@@ -174,17 +202,67 @@ export function UserCharts(props: UserChartsProps) {
       cacheReadTokens: stats.cacheReadTokens,
       successCount: stats.successCount,
     }
-  }, [userData])
+  }, [selectedUsername, userData])
   const dataFingerprint = useMemo(() => {
     const items = userData ?? []
     let quotaSum = 0
     for (const item of items) quotaSum += item.quota ?? 0
-    return `${items.length}-${quotaSum}`
-  }, [userData])
+    return `${items.length}-${quotaSum}-${selectedUsername ?? 'all'}`
+  }, [selectedUsername, userData])
 
   return (
     <div className='space-y-3'>
+      <div className='flex flex-wrap items-center gap-2'>
+        <div className='text-sm font-medium'>
+          {selectedUsername
+            ? t('User detail: {{username}}', { username: selectedUsername })
+            : t('All users')}
+        </div>
+        <Select
+          items={[
+            { value: '__all__', label: t('All users') },
+            ...usernames.map((name) => ({ value: name, label: name })),
+          ]}
+          value={selectedUsername ?? '__all__'}
+          onValueChange={(value) =>
+            setSelectedUsername(
+              !value || value === '__all__' ? null : String(value)
+            )
+          }
+        >
+          <SelectTrigger className='w-[200px]' aria-label={t('Select user')}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value='__all__'>{t('All users')}</SelectItem>
+            {usernames.map((name) => (
+              <SelectItem key={name} value={name}>
+                {name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {selectedUsername ? (
+          <Button
+            type='button'
+            variant='ghost'
+            size='sm'
+            onClick={() => setSelectedUsername(null)}
+          >
+            <X className='mr-1 size-4' />
+            {t('Clear')}
+          </Button>
+        ) : null}
+      </div>
+
       <UsageKpiGrid loading={isLoading} stats={kpiStats} />
+
+      {!isLoading && (userData?.length ?? 0) === 0 ? (
+        <div className='text-muted-foreground rounded-lg border border-dashed px-4 py-10 text-center text-sm'>
+          {t('No usage data in the selected time range')}
+        </div>
+      ) : null}
+
       <div className='flex items-center gap-1.5 overflow-x-auto pb-1 sm:gap-2'>
         <DashboardTimeRangeBar
           value={props.filters}
